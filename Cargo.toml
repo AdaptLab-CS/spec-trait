@@ -1,0 +1,4 @@
+[workspace]
+members = ["crates/spec-trait-bin", "crates/spec-trait-macro"]
+
+resolver = "2"
