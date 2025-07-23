@@ -23,7 +23,7 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // let expr = parse_macro_input!(attr);
     let cond = parse(attr);
-    print!("* resulting condition *: {:?}", cond);
+    println!("\n* resulting condition: {:?}", cond);
 
     // Leggi `file_cache.cache` (usando serde) e verifica se le condizioni sono soddisfatte
 
@@ -31,62 +31,29 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[derive(Debug)]
-enum ComplexCond {
-    Simple(TypeOrTrait),
-    All(Vec<ComplexCond>),
-    Any(Vec<ComplexCond>),
-    Not(Box<ComplexCond>),
+enum WhenCondition {
+    Type(String /* parameter */, String /* type */),
+    Trait(String /* parameter */, Vec<String> /* traits */),
+    All(Vec<WhenCondition>),
+    Any(Vec<WhenCondition>),
+    Not(Box<WhenCondition>),
 }
 
-#[derive(Debug)]
-enum TypeOrTrait {
-    Type(String /* generic parameter */, String /* type */),
-    Trait(
-        String,      /* generic parameter */
-        Vec<String>, /* traits */
-    ),
-}
-
-fn parse(attr: TokenStream) -> ComplexCond {
-    println!("Parsing attribute: {:?}", attr);
+fn parse(attr: TokenStream) -> WhenCondition {
     let mut tokens = attr.into_iter().peekable();
     parse_tokens(&mut tokens)
 }
 
-fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> ComplexCond {
-    if let Some(token) = tokens.peek() {
+fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> WhenCondition {
+    if let Some(token) = tokens.next() {
         match token {
             TokenTree::Ident(ident) => {
                 let ident_str = ident.to_string();
-                tokens.next();
-
-                println!("Parsed identifier: {}", ident_str);
 
                 if ident_str == "all" || ident_str == "any" || ident_str == "not" {
-                    if let Some(TokenTree::Group(group)) = tokens.next() {
-                        println!("Parsing group for '{}': {:?}", ident_str, group);
-                        let group_stream = group.stream();
-                        let group_tokens = &mut group_stream.into_iter().peekable();
-                        return parse_aggr(&ident_str, group_tokens);
-                    } else {
-                        panic!("Expected a group after '{}'", ident_str);
-                    }
-                }
-
-                if let Some(TokenTree::Punct(punct)) = tokens.peek() {
-                    match punct.as_char() {
-                        ':' => {
-                            tokens.next();
-                            parse_trait(tokens, ident_str)
-                        }
-                        '=' => {
-                            tokens.next();
-                            parse_type(tokens, ident_str)
-                        }
-                        _ => panic!("Unexpected punctuation: {}", punct),
-                    }
+                    handle_aggr(ident_str, tokens)
                 } else {
-                    panic!("Expected ':' or '=' after identifier");
+                    handle_type_or_trait(ident_str, tokens)
                 }
             }
             _ => panic!("Unexpected token: {:?}", token),
@@ -96,14 +63,62 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Compl
     }
 }
 
-fn parse_trait(
+fn handle_aggr(
+    ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
-    param: String,
-) -> ComplexCond {
+) -> WhenCondition {
+    if let Some(TokenTree::Group(group)) = tokens.next() {
+        let group_tokens = &mut group.stream().into_iter().peekable();
+        parse_aggr(ident, group_tokens)
+    } else {
+        panic!("Expected a group after `{}`", ident);
+    }
+}
+
+fn handle_type_or_trait(
+    ident: String,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+) -> WhenCondition {
+    if let Some(TokenTree::Punct(punct)) = tokens.next() {
+        match punct.as_char() {
+            ':' => parse_trait(ident, tokens),
+            '=' => parse_type(ident, tokens),
+            _ => panic!("Unexpected punctuation: {}", punct),
+        }
+    } else {
+        panic!("Expected ':' or '=' after identifier");
+    }
+}
+
+fn parse_type(
+    ident: String,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+) -> WhenCondition {
+    let mut type_name = String::new();
+
+    if let Some(TokenTree::Punct(punct)) = tokens.peek() {
+        if punct.as_char() == '&' {
+            tokens.next();
+            type_name.push('&');
+        }
+    }
+
+    if let Some(TokenTree::Ident(name)) = tokens.next() {
+        type_name.push_str(&name.to_string());
+        WhenCondition::Type(ident, type_name)
+    } else {
+        panic!("Expected a type name after '='");
+    }
+}
+
+fn parse_trait(
+    ident: String,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+) -> WhenCondition {
     let mut traits = Vec::new();
 
-    while let Some(TokenTree::Ident(ident)) = tokens.peek() {
-        traits.push(ident.to_string());
+    while let Some(TokenTree::Ident(name)) = tokens.peek() {
+        traits.push(name.to_string());
         tokens.next();
 
         if let Some(TokenTree::Punct(punct)) = tokens.peek() {
@@ -117,74 +132,47 @@ fn parse_trait(
         }
     }
 
-    println!("Parsed traits for generic {}: {:?}", param, traits);
-
     if traits.is_empty() {
         panic!("Expected at least one trait after ':'");
     }
 
-    ComplexCond::Simple(TypeOrTrait::Trait(param, traits))
-}
-
-fn parse_type(
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
-    param: String,
-) -> ComplexCond {
-    let mut type_name = String::new();
-
-    if let Some(TokenTree::Punct(punct)) = tokens.peek() {
-        if punct.as_char() == '&' {
-            tokens.next(); // Consume '&'
-            type_name.push('&');
-        }
-    }
-
-    if let Some(TokenTree::Ident(ident)) = tokens.next() {
-        type_name.push_str(&ident.to_string());
-        println!("Parsed type for generic {}: {:?}", param, type_name);
-        ComplexCond::Simple(TypeOrTrait::Type(param, type_name))
-    } else {
-        panic!("Expected a type name after '='");
-    }
+    WhenCondition::Trait(ident, traits)
 }
 
 fn parse_aggr(
-    func_name: &String,
+    ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
-) -> ComplexCond {
+) -> WhenCondition {
     let mut args = Vec::new();
 
     while let Some(token) = tokens.next() {
         match token {
-            TokenTree::Group(inner_group) => {
-                let inner_tokens = &mut inner_group.stream().into_iter().peekable();
-                args.push(parse_tokens(inner_tokens));
-            }
-            TokenTree::Ident(_) | TokenTree::Punct(_) => {
-                if let TokenTree::Punct(punct) = &token {
-                    if punct.as_char() == ',' {
-                        // Skip commas
-                        continue;
-                    }
-                }
+            TokenTree::Ident(_) => {
                 let mut inline_tokens = std::iter::once(token).chain(tokens.by_ref()).peekable();
                 args.push(parse_tokens(&mut inline_tokens));
+            }
+            TokenTree::Punct(punct) => {
+                if punct.as_char() != ',' {
+                    panic!("Unexpected punctuation: '{}'", punct.to_string());
+                }
             }
             _ => panic!("Unexpected token in aggregation function: {:?}", token),
         }
     }
 
-    println!("Function: {}, Args: {:?}", func_name, args);
+    if args.is_empty() {
+        panic!("Expected at least one arg for `{}`", ident);
+    }
 
-    match func_name.as_str() {
-        "all" => ComplexCond::All(args),
-        "any" => ComplexCond::Any(args),
+    match ident.as_str() {
+        "all" => WhenCondition::All(args),
+        "any" => WhenCondition::Any(args),
         "not" => {
             if args.len() != 1 {
                 panic!("`not` must have exactly one argument");
             }
-            ComplexCond::Not(Box::new(args.into_iter().next().unwrap()))
+            WhenCondition::Not(Box::new(args.into_iter().next().unwrap()))
         }
-        _ => panic!("Unknown aggregation function: {}", func_name),
+        _ => panic!("Unknown aggregation function: {}", ident),
     }
 }
