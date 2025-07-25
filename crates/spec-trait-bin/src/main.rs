@@ -9,10 +9,21 @@ trait Foo<T> {
     fn foo(&self, x: T);
 }
 
+trait Bar {
+    fn bar(&self);
+}
+
 #[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, X = &String), not(U: TraitName1 + TraitName2))))]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
-        println!("Default Foo for ZST");
+        println!("Foo for ZST");
+    }
+}
+
+#[when(not(T: TraitName))]
+impl<T: 'static> Bar for T {
+    fn bar(&self) {
+        println!("Bar for T");
     }
 }
 
