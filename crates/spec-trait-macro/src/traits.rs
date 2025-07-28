@@ -10,8 +10,8 @@ pub struct TraitBody {
     raw: String,
 }
 
-pub fn parse(attr: TokenStream) -> TraitBody {
-    let bod = syn::parse::<ItemTrait>(attr.into()).expect("Failed to parse ItemTrait");
+pub fn parse(tokens: TokenStream) -> TraitBody {
+    let bod = syn::parse::<ItemTrait>(tokens.into()).expect("Failed to parse ItemTrait");
 
     let trait_name = &bod.ident;
     let trait_generics = &bod.generics;

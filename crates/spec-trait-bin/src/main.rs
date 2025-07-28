@@ -1,7 +1,7 @@
 // src/lib.rs
 extern crate spec_trait_macro;
 
-use spec_trait_macro::{specializable, when};
+use spec_trait_macro::{spec, specializable, when};
 
 struct ZST; // Zero Sized Type
 
@@ -15,10 +15,19 @@ trait Bar {
     fn bar(&self);
 }
 
+type MyString = String;
+
 #[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, X = &String), not(U: TraitName1 + TraitName2))))]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
         println!("Foo for ZST");
+    }
+}
+
+#[when(T = MyString)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo<MyString> for ZST");
     }
 }
 
@@ -31,4 +40,10 @@ impl<T: 'static> Bar for T {
 
 fn main() {
     println!("Hello, world! (from spec-trait-bin)");
+    spec! { zst.foo(1u8) }
+    spec! { zst.foo(1i32); i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString }
+    spec! {
+        zst.foo(1u8);
+        i32: Foo<i32> + Bar;
+    }
 }

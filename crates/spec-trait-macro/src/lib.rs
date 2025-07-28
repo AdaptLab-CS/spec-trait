@@ -1,3 +1,4 @@
+mod annotations;
 mod body;
 mod conditions;
 mod traits;
@@ -6,6 +7,23 @@ use proc_macro::TokenStream;
 
 const FOLDER_CACHE: &str = "/tmp";
 const FILE_CACHE: &str = "file_cache.cache";
+
+/**
+`attr` is ignored
+
+`item` is a trait definition:
+- `trait TraitName { ... }`
+- `trait TraitName<T> { ... }`
+*/
+#[proc_macro_attribute]
+pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let tr = traits::parse(item.clone());
+    println!("Parsed trait: {:?}", tr);
+
+    // TODO: write trait into `file_cache.cache`
+
+    item
+}
 
 // TODO: add support to other cases
 /**
@@ -38,18 +56,24 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /**
-`attr` is ignored
+`item` can be one of these forms:
+- `method_call`
+- `method_call; annotations`
 
-`item` is a trait definition:
-- `trait TraitName { ... }`
-- `trait TraitName<T> { ... }`
+`method_call` can be one of these forms:
+- `variable.function(args)`
+
+`annotations` is a `;` separated list, where each item can be one of these forms:
+- `TypeName: TraitName`
+- `TypeName: TraitName1 + TraitName2`
+- `TypeName = AliasName`
 */
-#[proc_macro_attribute]
-pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let tr = traits::parse(item.clone());
-    println!("Parsed trait: {:?}", tr);
+#[proc_macro]
+pub fn spec(item: TokenStream) -> TokenStream {
+    println!("***");
 
-    // TODO: write trait into `file_cache.cache`
+    let ann = annotations::parse(item);
+    println!("Parsed annotation: {:?}", ann);
 
-    item
+    TokenStream::new()
 }
