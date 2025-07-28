@@ -42,8 +42,6 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 */
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
-    println!("***");
-
     let cond = conditions::parse(attr);
     println!("Parsed condition: {:?}", cond);
 
@@ -70,10 +68,10 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
 */
 #[proc_macro]
 pub fn spec(item: TokenStream) -> TokenStream {
-    println!("***");
-
     let ann = annotations::parse(item);
     println!("Parsed annotation: {:?}", ann);
+
+    // TODO: read from `file_cache.cache` and apply the specialization
 
     TokenStream::new()
 }
