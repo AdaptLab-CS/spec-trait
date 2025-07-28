@@ -1,7 +1,8 @@
+mod body;
 mod conditions;
+mod traits;
 
 use proc_macro::TokenStream;
-use syn::{ItemImpl, parse_macro_input};
 
 const FOLDER_CACHE: &str = "/tmp";
 const FILE_CACHE: &str = "file_cache.cache";
@@ -26,20 +27,29 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     println!("***");
 
     let cond = conditions::parse(attr);
-    println!("parsed condition: {:?}", cond);
+    println!("Parsed condition: {:?}", cond);
 
-    let bod = parse_macro_input!(item as ItemImpl);
-    let impl_generics = &bod.generics;
-    let impl_trait = &bod.trait_;
-    let impl_type = &bod.self_ty;
-    println!("parsed body: {}", quote::quote! { #bod });
-    println!("generics: {}", quote::quote! { #impl_generics });
-    if let Some((_, path, _)) = impl_trait {
-        println!("trait: {}", quote::quote! { #path });
-    }
-    println!("type: {}", quote::quote! { #impl_type });
+    let body = body::parse(item);
+    println!("Parsed body: {:?}", body);
 
     // TODO: Leggi `file_cache.cache` (usando serde) e verifica se le condizioni sono soddisfatte
 
     TokenStream::new()
+}
+
+/**
+`attr` is ignored
+
+`item` is a trait definition:
+- `trait TraitName { ... }`
+- `trait TraitName<T> { ... }`
+*/
+#[proc_macro_attribute]
+pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let tr = traits::parse(item.clone());
+    println!("Parsed trait: {:?}", tr);
+
+    // TODO: write trait into `file_cache.cache`
+
+    item
 }

@@ -1,14 +1,16 @@
 // src/lib.rs
 extern crate spec_trait_macro;
 
-use spec_trait_macro::when;
+use spec_trait_macro::{specializable, when};
 
 struct ZST; // Zero Sized Type
 
+#[specializable]
 trait Foo<T> {
     fn foo(&self, x: T);
 }
 
+#[specializable]
 trait Bar {
     fn bar(&self);
 }
