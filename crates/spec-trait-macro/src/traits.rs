@@ -1,8 +1,9 @@
 use proc_macro::TokenStream;
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use syn::ItemTrait;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct TraitBody {
     name: String,
     generics: String,
