@@ -2,12 +2,10 @@ mod annotations;
 mod body;
 mod cache;
 mod conditions;
+mod env;
 mod traits;
 
-use cache::{FILE_CACHE, FOLDER_CACHE};
 use proc_macro::TokenStream;
-use std::fs;
-use std::path::Path;
 
 /**
 `attr` is ignored
@@ -21,26 +19,7 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let tr = traits::parse(item.clone());
     println!("Parsed trait: {:?}", tr);
 
-    let dest_path = Path::new(&FOLDER_CACHE).join(&FILE_CACHE);
-    let file_cache = fs::read(&dest_path).expect("Failed to read file cache");
-
-    let mut cache: serde_json::Value =
-        serde_json::from_slice(&file_cache).expect("Failed to parse file cache");
-
-    cache["traits"] = if cache["traits"].is_null() {
-        serde_json::Value::Array(vec![])
-    } else {
-        cache["traits"].take()
-    };
-
-    cache["traits"]
-        .as_array_mut()
-        .unwrap()
-        .push(serde_json::json!(tr));
-
-    let serialized = serde_json::to_string(&cache).expect("Failed to serialize cache");
-
-    fs::write(&dest_path, serialized).expect("Failed to write file cache");
+    cache::add_trait(tr);
 
     item
 }
