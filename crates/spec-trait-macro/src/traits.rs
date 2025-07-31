@@ -1,14 +1,15 @@
 use proc_macro::TokenStream;
+use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use syn::ItemTrait;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TraitBody {
-    name: String,
-    generics: String,
-    fns: Vec<String>,
-    raw: String,
+    pub name: String,
+    pub generics: String,
+    pub fns: Vec<String>,
+    pub raw: String,
 }
 
 pub fn parse(tokens: TokenStream) -> TraitBody {
@@ -32,4 +33,13 @@ pub fn parse(tokens: TokenStream) -> TraitBody {
         fns,
         raw: raw_str,
     }
+}
+
+pub fn generate_trait_name(old_name: &String) -> String {
+    let random_suffix: String = rand::rng()
+        .sample_iter(&Alphanumeric)
+        .take(8)
+        .map(char::from)
+        .collect();
+    format!("{}_{}", *old_name, random_suffix)
 }

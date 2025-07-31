@@ -1,9 +1,8 @@
 use crate::conditions::WhenCondition;
-use crate::env::{FILE_CACHE, FOLDER_CACHE};
+use crate::env::get_cache_path;
 use crate::traits::TraitBody;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Impl {
@@ -17,26 +16,42 @@ pub struct Cache {
     pub impls: Vec<Impl>,
 }
 
-fn get_path() -> PathBuf {
-    Path::new(&FOLDER_CACHE).join(&FILE_CACHE)
-}
-
-fn get_cache(path: &Path) -> Cache {
-    let file_cache = fs::read(&path).expect("Failed to read file cache");
-
+pub fn read_cache() -> Cache {
+    let path = get_cache_path();
+    let file_cache = fs::read(&path).expect("Failed to read from cache");
     serde_json::from_slice(&file_cache).unwrap_or_else(|_| Cache {
         traits: Vec::new(),
         impls: Vec::new(),
     })
 }
 
+pub fn write_cache(cache: &Cache) {
+    let path = get_cache_path();
+    let serialized = serde_json::to_string(cache).expect("Failed to serialize cache");
+    fs::write(&path, serialized).expect("Failed to write into cache");
+}
+
 pub fn add_trait(tr: TraitBody) {
-    let path = get_path();
-    let mut cache = get_cache(&path);
-
+    let mut cache = read_cache();
     cache.traits.push(tr);
+    write_cache(&cache);
+}
 
-    let serialized = serde_json::to_string(&cache).expect("Failed to serialize cache");
+pub fn add_impl(imp: Impl) {
+    let mut cache = read_cache();
+    cache.impls.push(imp);
+    write_cache(&cache);
+}
 
-    fs::write(&path, serialized).expect("Failed to write file cache");
+pub fn get_trait(trait_name: &String) -> Option<TraitBody> {
+    let cache = read_cache();
+    cache.traits.into_iter().find(|tr| tr.name == *trait_name)
+}
+
+pub fn get_impl(trait_name: &String) -> Option<Impl> {
+    let cache = read_cache();
+    cache
+        .impls
+        .into_iter()
+        .find(|imp| imp.trait_name == *trait_name)
 }

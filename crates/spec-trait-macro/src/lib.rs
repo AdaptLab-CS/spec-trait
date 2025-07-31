@@ -5,6 +5,7 @@ mod conditions;
 mod env;
 mod traits;
 
+use cache::Impl;
 use proc_macro::TokenStream;
 
 /**
@@ -17,10 +18,7 @@ use proc_macro::TokenStream;
 #[proc_macro_attribute]
 pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let tr = traits::parse(item.clone());
-    println!("Parsed trait: {:?}", tr);
-
     cache::add_trait(tr);
-
     item
 }
 
@@ -42,14 +40,21 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cond = conditions::parse(attr);
-    println!("Parsed condition: {:?}", cond);
+    let impl_body = body::parse(item);
 
-    let body = body::parse(item);
-    println!("Parsed body: {:?}", body);
+    let trait_name = &impl_body.trait_;
+    let trait_body = cache::get_trait(trait_name).expect("Trait not found in cache");
 
-    // TODO: Leggi `file_cache.cache` (usando serde) e verifica se le condizioni sono soddisfatte
+    let (new_trait_name, spec) = body::create_spec(&impl_body, &trait_body);
 
-    TokenStream::new()
+    cache::add_impl(Impl {
+        condition: cond,
+        trait_name: new_trait_name,
+    });
+
+    println!("spec: {}", spec.to_string());
+
+    spec
 }
 
 /**
