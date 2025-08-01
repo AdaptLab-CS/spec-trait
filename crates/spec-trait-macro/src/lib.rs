@@ -42,19 +42,23 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cond = conditions::parse(attr);
     let impl_body = body::parse(item);
 
-    let trait_name = &impl_body.trait_;
-    let trait_body = cache::get_trait(trait_name).expect("Trait not found in cache");
+    let trait_body = cache::get_trait(&impl_body.trait_).expect("Trait not found in cache");
+    let new_trait_name = traits::generate_trait_name(&trait_body.name);
 
-    let (new_trait_name, spec) = body::create_spec(&impl_body, &trait_body);
+    let trait_token_stream = traits::create_spec(&trait_body, &new_trait_name);
+    let body_token_stream = body::create_spec(&impl_body, &new_trait_name);
+
+    let combined = quote::quote! {
+        #trait_token_stream
+        #body_token_stream
+    };
 
     cache::add_impl(Impl {
         condition: cond,
         trait_name: new_trait_name,
     });
 
-    println!("spec: {}", spec.to_string());
-
-    spec
+    combined.into()
 }
 
 /**
