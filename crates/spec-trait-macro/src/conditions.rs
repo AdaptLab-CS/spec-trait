@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::iter::Peekable;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum WhenCondition {
     Type(String /* parameter */, String /* type */),
     Trait(String /* parameter */, Vec<String> /* traits */),
@@ -148,5 +148,93 @@ fn parse_aggr(
             WhenCondition::Not(Box::new(args.into_iter().next().unwrap()))
         }
         _ => panic!("Unknown aggregation function: {}", ident),
+    }
+}
+
+pub fn normalize(condition: &WhenCondition) -> WhenCondition {
+    let mut current = to_dnf(condition);
+    let mut next = to_dnf(&current);
+
+    while next != current {
+        current = next;
+        next = to_dnf(&current);
+    }
+
+    current
+}
+
+fn to_dnf(condition: &WhenCondition) -> WhenCondition {
+    match condition {
+        WhenCondition::All(inner) => all_to_dnf(inner),
+        WhenCondition::Any(inner) => any_to_dnf(inner),
+        WhenCondition::Not(inner) => not_to_dnf(inner),
+        WhenCondition::Type(_, _) => (*condition).clone(),
+        WhenCondition::Trait(_, _) => (*condition).clone(),
+    }
+}
+
+fn all_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
+    // outer vec = or, inner vec = and
+    let mut dnf = vec![vec![]];
+
+    for cond in conditions {
+        let cond_dnf = match to_dnf(cond) {
+            WhenCondition::Any(inner) => inner,
+            other => vec![other],
+        };
+
+        // A and (B or C) -> (A and B) or (A and C)
+        dnf = dnf
+            .into_iter()
+            .flat_map(|existing| {
+                cond_dnf
+                    .iter()
+                    .map(move |c| [existing.clone(), vec![c.clone()]].concat())
+            })
+            .collect();
+    }
+
+    WhenCondition::Any(
+        dnf.into_iter()
+            .map(|conjunction| WhenCondition::All(conjunction))
+            .collect(),
+    )
+}
+
+fn any_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
+    WhenCondition::Any(
+        conditions
+            .iter()
+            .map(to_dnf)
+            .flat_map(|cond| match cond {
+                // A or (B or C) -> A or B or C
+                WhenCondition::Any(inner) => inner,
+                // A or B -> A or B
+                other => vec![other],
+            })
+            .collect(),
+    )
+}
+
+fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
+    match condition {
+        // not(A and B) -> not(A) or not(B)
+        WhenCondition::All(inner) => to_dnf(&WhenCondition::Any(
+            inner
+                .iter()
+                .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
+                .collect(),
+        )),
+        // not(A or B) -> not(A) and not(B)
+        WhenCondition::Any(inner) => to_dnf(&WhenCondition::All(
+            inner
+                .iter()
+                .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
+                .collect(),
+        )),
+        // not(not(A)) -> A
+        WhenCondition::Not(inner) => to_dnf(inner),
+        // not(A) -> not(A)
+        _ => WhenCondition::Not(Box::new(to_dnf(condition))),
     }
 }

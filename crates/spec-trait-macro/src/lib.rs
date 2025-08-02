@@ -43,6 +43,8 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cond = conditions::parse(attr);
     let impl_body = body::parse(item);
 
+    let normalized_cond = conditions::normalize(&cond);
+
     let trait_body = cache::get_trait(&impl_body.trait_).expect("Trait not found in cache");
     let new_trait_name = traits::generate_trait_name(&trait_body.name);
 
@@ -55,7 +57,7 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     cache::add_impl(Impl {
-        condition: cond,
+        condition: normalized_cond,
         trait_name: new_trait_name,
     });
 
