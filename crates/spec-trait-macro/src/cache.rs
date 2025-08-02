@@ -47,11 +47,3 @@ pub fn get_trait(trait_name: &String) -> Option<TraitBody> {
     let cache = read_cache();
     cache.traits.into_iter().find(|tr| tr.name == *trait_name)
 }
-
-pub fn get_impl(trait_name: &String) -> Option<Impl> {
-    let cache = read_cache();
-    cache
-        .impls
-        .into_iter()
-        .find(|imp| imp.trait_name == *trait_name)
-}

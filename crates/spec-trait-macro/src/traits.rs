@@ -1,3 +1,4 @@
+use crate::conversions::{str_to_generics, str_to_trait, strs_to_trait_fns};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use rand::{Rng, distr::Alphanumeric};
@@ -46,13 +47,9 @@ pub fn generate_trait_name(old_name: &String) -> String {
 }
 
 pub fn create_spec(trait_body: &TraitBody, spec_trait_name: &str) -> TokenStream2 {
-    let name = syn::parse_str::<syn::Path>(spec_trait_name).unwrap();
-    let generics = syn::parse_str::<syn::Generics>(&trait_body.generics).unwrap();
-    let fns: Vec<syn::TraitItem> = trait_body
-        .fns
-        .iter()
-        .map(|f| syn::parse_str::<syn::TraitItem>(f).unwrap())
-        .collect();
+    let name = str_to_trait(&spec_trait_name);
+    let generics = str_to_generics(&trait_body.generics);
+    let fns = strs_to_trait_fns(&trait_body.fns);
 
     quote::quote! {
         trait #name #generics {

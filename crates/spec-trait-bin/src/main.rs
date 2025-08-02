@@ -15,6 +15,12 @@ trait Bar {
     fn bar(&self);
 }
 
+#[specializable]
+trait FooWithMultipleFns<T> {
+    fn foo1(&self, x: T);
+    fn foo2(&self, x: T);
+}
+
 type MyString = String;
 
 #[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, X = &String), not(U: TraitName1 + TraitName2))))]
@@ -35,6 +41,17 @@ impl<T> Foo<T> for ZST {
 impl<T: 'static> Bar for T {
     fn bar(&self) {
         println!("Bar for T");
+    }
+}
+
+#[when(T: TraitName2)]
+impl<T> FooWithMultipleFns<T> for ZST {
+    fn foo1(&self, x: T) {
+        println!("FooWithMultipleFns::foo1 for ZST");
+    }
+
+    fn foo2(&self, x: T) {
+        println!("FooWithMultipleFns::foo2 for ZST");
     }
 }
 

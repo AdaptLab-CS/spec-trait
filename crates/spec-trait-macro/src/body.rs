@@ -1,3 +1,4 @@
+use crate::conversions::{str_to_generics, str_to_trait, str_to_type, strs_to_impl_fns};
 use core::panic;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -52,17 +53,13 @@ pub fn parse(tokens: TokenStream) -> ImplBody {
 }
 
 pub fn create_spec(impl_body: &ImplBody, spec_trait_name: &str) -> TokenStream2 {
-    let generics = syn::parse_str::<syn::Generics>(&impl_body.generics).unwrap();
+    let generics = str_to_generics(&impl_body.generics);
     let trait_with_generics = impl_body
         .trait_with_generics
         .replace(&impl_body.trait_, spec_trait_name);
-    let trait_ = syn::parse_str::<syn::Path>(&trait_with_generics).unwrap();
-    let type_ = syn::parse_str::<syn::Type>(&impl_body.ty).unwrap();
-    let fns: Vec<syn::ImplItem> = impl_body
-        .fns
-        .iter()
-        .map(|f| syn::parse_str::<syn::ImplItem>(f).unwrap())
-        .collect();
+    let trait_ = str_to_trait(&trait_with_generics);
+    let type_ = str_to_type(&impl_body.ty);
+    let fns = strs_to_impl_fns(&impl_body.fns);
 
     quote::quote! {
         impl #generics #trait_ for #type_ {
