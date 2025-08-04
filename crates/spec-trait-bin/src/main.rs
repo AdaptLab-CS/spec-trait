@@ -1,7 +1,7 @@
 // src/lib.rs
 extern crate spec_trait_macro;
 
-use spec_trait_macro::{spec, specializable, when};
+use spec_trait_macro::{spec, spec_default, specializable, when};
 
 struct ZST; // Zero Sized Type
 
@@ -22,6 +22,13 @@ trait FooWithMultipleFns<T> {
 }
 
 type MyString = String;
+
+#[spec_default]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Default Foo for ZST");
+    }
+}
 
 #[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, X = &String), not(U: TraitName1 + TraitName2))))]
 impl<T> Foo<T> for ZST {

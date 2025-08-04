@@ -6,8 +6,11 @@ mod conversions;
 mod env;
 mod traits;
 
+use body::ImplBody;
 use cache::Impl;
 use proc_macro::TokenStream;
+
+use crate::conditions::WhenCondition;
 
 /**
 `attr` is ignored
@@ -21,6 +24,19 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let tr = traits::parse(item.clone());
     cache::add_trait(tr);
     item
+}
+
+/**
+`attr` is ignored
+
+`item` can be one of these forms:
+- `impl<T> TraitName<T> for TypeName { ... }`
+- `impl<T> TraitName for TypeName<T> { ... }`
+*/
+#[proc_macro_attribute]
+pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let impl_body = body::parse(item);
+    handle_specialization(None, impl_body)
 }
 
 // TODO: add support to other cases
@@ -41,10 +57,12 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cond = conditions::parse(attr);
-    let impl_body = body::parse(item);
-
     let normalized_cond = conditions::normalize(&cond);
+    let impl_body = body::parse(item);
+    handle_specialization(Some(normalized_cond), impl_body)
+}
 
+fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) -> TokenStream {
     let trait_body = cache::get_trait(&impl_body.trait_).expect("Trait not found in cache");
     let new_trait_name = traits::generate_trait_name(&trait_body.name);
 
@@ -57,8 +75,9 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     cache::add_impl(Impl {
-        condition: normalized_cond,
+        condition: condition,
         trait_name: new_trait_name,
+        type_name: impl_body.ty.clone(),
     });
 
     combined.into()

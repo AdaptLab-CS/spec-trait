@@ -6,8 +6,9 @@ use std::fs;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Impl {
-    pub condition: WhenCondition,
+    pub condition: Option<WhenCondition>,
     pub trait_name: String,
+    pub type_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
