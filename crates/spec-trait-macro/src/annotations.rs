@@ -1,3 +1,4 @@
+use crate::cache::Impl;
 use core::panic;
 use proc_macro::{TokenStream, TokenTree};
 use std::{fmt::Debug, iter::Peekable};
@@ -10,11 +11,11 @@ pub enum Annotation {
 
 #[derive(Debug)]
 pub struct AnnotationBody {
-    var: String,
-    fn_: String,
-    args: Vec<String>,
-    raw_call: String,
-    annotations: Vec<Annotation>,
+    pub var: String,
+    pub fn_: String,
+    pub args: Vec<String>,
+    pub raw_call: String,
+    pub annotations: Vec<Annotation>,
 }
 
 pub fn parse(attr: TokenStream) -> AnnotationBody {
@@ -87,4 +88,8 @@ fn parse_annotation(segment: &str) -> Annotation {
     } else {
         panic!("Invalid annotation format: {}", segment);
     }
+}
+
+pub fn get_most_specific_impl(ann: &AnnotationBody, impls: &Vec<Impl>) -> Impl {
+    panic!("Not implemented yet");
 }

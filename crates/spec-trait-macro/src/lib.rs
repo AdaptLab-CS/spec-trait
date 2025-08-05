@@ -8,9 +8,8 @@ mod traits;
 
 use body::ImplBody;
 use cache::Impl;
+use conditions::WhenCondition;
 use proc_macro::TokenStream;
-
-use crate::conditions::WhenCondition;
 
 /**
 `attr` is ignored
@@ -63,7 +62,7 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) -> TokenStream {
-    let trait_body = cache::get_trait(&impl_body.trait_).expect("Trait not found in cache");
+    let trait_body = cache::get_trait_by_name(&impl_body.trait_).expect("Trait not found in cache");
     let new_trait_name = traits::generate_trait_name(&trait_body.name);
 
     let trait_token_stream = traits::create_spec(&trait_body, &new_trait_name);
@@ -76,8 +75,9 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 
     cache::add_impl(Impl {
         condition: condition,
-        trait_name: new_trait_name,
-        type_name: impl_body.ty.clone(),
+        trait_name: trait_body.name.clone(),
+        spec_trait_name: new_trait_name,
+        type_name: impl_body.type_.clone(),
     });
 
     combined.into()
@@ -99,9 +99,16 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 #[proc_macro]
 pub fn spec(item: TokenStream) -> TokenStream {
     let ann = annotations::parse(item);
-    println!("Parsed annotation: {:?}", ann);
 
-    // TODO: read from `file_cache.cache` and apply the specialization
+    // TODO: get dynamically from annotations
+    let var_type = "ZST";
+    let args_types = vec!["i32"];
+
+    let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
+    let impls = cache::get_impls_by_type_and_traits(&var_type, &traits);
+
+    let applicable_impl = annotations::get_most_specific_impl(&ann, &impls);
+    println!("most specific impl: {:?}", applicable_impl);
 
     TokenStream::new()
 }

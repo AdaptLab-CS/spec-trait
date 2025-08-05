@@ -1,4 +1,3 @@
-// src/lib.rs
 extern crate spec_trait_macro;
 
 use spec_trait_macro::{spec, spec_default, specializable, when};
@@ -18,7 +17,7 @@ trait Bar {
 #[specializable]
 trait FooWithMultipleFns<T> {
     fn foo1(&self, x: T);
-    fn foo2(&self, x: T);
+    fn foo2(&self, x: T, y: T);
 }
 
 type MyString = String;
@@ -78,17 +77,18 @@ impl<T> FooWithMultipleFns<T> for ZST {
         println!("FooWithMultipleFns<TraitName2>::foo1 for ZST");
     }
 
-    fn foo2(&self, x: T) {
+    fn foo2(&self, x: T, y: T) {
         println!("FooWithMultipleFns<TraitName2>::foo2 for ZST");
     }
 }
 
 fn main() {
     println!("Hello, world! (from spec-trait-bin)");
-    spec! { zst.foo(1u8) }
-    spec! { zst.foo(1i32); i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString }
+    spec! { zst.foo(1u8) };
+    spec! { zst.foo(1i32); i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString };
     spec! {
         zst.foo(1u8);
         i32: Foo<i32> + Bar;
-    }
+    };
+    spec! { zst.foo2(1u8, 2u8) };
 }

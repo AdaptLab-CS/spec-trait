@@ -10,9 +10,9 @@ pub struct ImplBody {
     pub generics: String,
     pub trait_: String,
     pub trait_with_generics: String,
-    pub ty: String,
+    pub type_: String,
     pub fns: Vec<String>,
-    pub raw: String,
+    pub _raw: String,
 }
 
 pub fn parse(tokens: TokenStream) -> ImplBody {
@@ -46,9 +46,9 @@ pub fn parse(tokens: TokenStream) -> ImplBody {
         generics: generics_str,
         trait_,
         trait_with_generics: trait_str,
-        ty: ty_str,
+        type_: ty_str,
         fns,
-        raw: raw_str,
+        _raw: raw_str,
     }
 }
 
@@ -58,7 +58,7 @@ pub fn create_spec(impl_body: &ImplBody, spec_trait_name: &str) -> TokenStream2 
         .trait_with_generics
         .replace(&impl_body.trait_, spec_trait_name);
     let trait_ = str_to_trait(&trait_with_generics);
-    let type_ = str_to_type(&impl_body.ty);
+    let type_ = str_to_type(&impl_body.type_);
     let fns = strs_to_impl_fns(&impl_body.fns);
 
     quote::quote! {

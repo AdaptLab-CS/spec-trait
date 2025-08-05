@@ -4,14 +4,14 @@ use proc_macro2::TokenStream as TokenStream2;
 use rand::{Rng, distr::Alphanumeric};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use syn::ItemTrait;
+use syn::{FnArg, ItemTrait, TraitItem};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TraitBody {
     pub name: String,
     pub generics: String,
     pub fns: Vec<String>,
-    pub raw: String,
+    pub _raw: String,
 }
 
 pub fn parse(tokens: TokenStream) -> TraitBody {
@@ -33,7 +33,7 @@ pub fn parse(tokens: TokenStream) -> TraitBody {
         name: name_str,
         generics: generics_str,
         fns,
-        raw: raw_str,
+        _raw: raw_str,
     }
 }
 
@@ -56,4 +56,30 @@ pub fn create_spec(trait_body: &TraitBody, spec_trait_name: &str) -> TokenStream
             #(#fns)*
         }
     }
+}
+
+pub fn filter_by_fn(trait_body: &TraitBody, fn_name: &str, args_len: usize) -> Vec<String> {
+    let fns = strs_to_trait_fns(&trait_body.fns);
+    fns.iter()
+        .filter_map(|f| match f {
+            TraitItem::Fn(fn_) => {
+                let name = fn_.sig.ident.to_string();
+                let args = fn_
+                    .sig
+                    .inputs
+                    .iter()
+                    .filter(|arg| match *arg {
+                        FnArg::Receiver(_) => false,
+                        FnArg::Typed(_) => true,
+                    })
+                    .count();
+                if name == fn_name && args == args_len {
+                    Some(name)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        })
+        .collect()
 }
