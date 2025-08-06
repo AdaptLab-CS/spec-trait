@@ -6,8 +6,8 @@ use std::iter::Peekable;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum WhenCondition {
-    Type(String /* parameter */, String /* type */),
-    Trait(String /* parameter */, Vec<String> /* traits */),
+    Type(String /* generic */, String /* type */),
+    Trait(String /* generic */, Vec<String> /* traits */),
     All(Vec<WhenCondition>),
     Any(Vec<WhenCondition>),
     Not(Box<WhenCondition>),

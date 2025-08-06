@@ -1,4 +1,3 @@
-use crate::cache::Impl;
 use core::panic;
 use proc_macro::{TokenStream, TokenTree};
 use std::{fmt::Debug, iter::Peekable};
@@ -90,6 +89,21 @@ fn parse_annotation(segment: &str) -> Annotation {
     }
 }
 
-pub fn get_most_specific_impl(ann: &AnnotationBody, impls: &Vec<Impl>) -> Impl {
-    panic!("Not implemented yet");
+pub fn get_type_aliases(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
+    ann.iter()
+        .filter_map(|a| match a {
+            Annotation::Alias(t, alias) if t == type_ => Some(alias.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+pub fn get_type_traits(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
+    ann.iter()
+        .filter_map(|a| match a {
+            Annotation::Trait(t, traits) if t == type_ => Some(traits.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect()
 }

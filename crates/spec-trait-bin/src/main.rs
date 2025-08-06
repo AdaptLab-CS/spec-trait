@@ -29,7 +29,7 @@ impl<T> Foo<T> for ZST {
     }
 }
 
-#[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, X = &String), not(U: TraitName1 + TraitName2))))]
+#[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, T = &String), not(U: TraitName1 + TraitName2))))]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
         println!("Foo for ZST");
@@ -63,11 +63,28 @@ impl<T> Foo<T> for ZST {
         println!("Foo<MyString> for ZST");
     }
 }
+#[when(all(T: Bar, T = i32))]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo<MyString> for ZST");
+    }
+}
 
 #[when(not(T: TraitName))]
 impl<T: 'static> Bar for T {
     fn bar(&self) {
         println!("Bar for T");
+    }
+}
+
+#[spec_default]
+impl<T> FooWithMultipleFns<T> for ZST {
+    fn foo1(&self, x: T) {
+        println!("Default FooWithMultipleFns::foo1 for ZST");
+    }
+
+    fn foo2(&self, x: T, y: T) {
+        println!("Default FooWithMultipleFns::foo2 for ZST");
     }
 }
 

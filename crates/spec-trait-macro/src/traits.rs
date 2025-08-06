@@ -37,6 +37,7 @@ pub fn parse(tokens: TokenStream) -> TraitBody {
     }
 }
 
+// TODO: append conditions hash instead of random string
 pub fn generate_trait_name(old_name: &String) -> String {
     let random_suffix: String = rand::rng()
         .sample_iter(&Alphanumeric)

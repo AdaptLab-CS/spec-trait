@@ -1,14 +1,15 @@
 mod annotations;
-mod body;
 mod cache;
 mod conditions;
 mod conversions;
 mod env;
+mod impls;
+mod spec;
 mod traits;
 
-use body::ImplBody;
 use cache::Impl;
 use conditions::WhenCondition;
+use impls::ImplBody;
 use proc_macro::TokenStream;
 
 /**
@@ -34,7 +35,7 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 */
 #[proc_macro_attribute]
 pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let impl_body = body::parse(item);
+    let impl_body = impls::parse(item);
     handle_specialization(None, impl_body)
 }
 
@@ -57,7 +58,7 @@ pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     let cond = conditions::parse(attr);
     let normalized_cond = conditions::normalize(&cond);
-    let impl_body = body::parse(item);
+    let impl_body = impls::parse(item);
     handle_specialization(Some(normalized_cond), impl_body)
 }
 
@@ -66,7 +67,7 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
     let new_trait_name = traits::generate_trait_name(&trait_body.name);
 
     let trait_token_stream = traits::create_spec(&trait_body, &new_trait_name);
-    let body_token_stream = body::create_spec(&impl_body, &new_trait_name);
+    let body_token_stream = impls::create_spec(&impl_body, &new_trait_name);
 
     let combined = quote::quote! {
         #trait_token_stream
@@ -107,7 +108,7 @@ pub fn spec(item: TokenStream) -> TokenStream {
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
     let impls = cache::get_impls_by_type_and_traits(&var_type, &traits);
 
-    let applicable_impl = annotations::get_most_specific_impl(&ann, &impls);
+    let applicable_impl = spec::get_most_specific_impl(&impls, &traits, &ann);
     println!("most specific impl: {:?}", applicable_impl);
 
     TokenStream::new()
