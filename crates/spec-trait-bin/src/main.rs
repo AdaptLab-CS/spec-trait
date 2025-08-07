@@ -101,7 +101,8 @@ impl<T> FooWithMultipleFns<T> for ZST {
 
 fn main() {
     println!("Hello, world! (from spec-trait-bin)");
-    spec! { zst.foo(1u8) };
+    let zst = ZST;
+    spec! { zst.foo(1) };
     spec! { zst.foo(1i32); i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString };
     spec! {
         zst.foo(1u8);

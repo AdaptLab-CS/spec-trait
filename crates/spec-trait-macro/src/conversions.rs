@@ -1,4 +1,4 @@
-use syn::{Generics, ImplItem, Path, TraitItem, Type, parse_str};
+use syn::{Expr, Generics, ImplItem, Path, TraitItem, Type, parse_str};
 
 pub fn str_to_generics(str: &str) -> Generics {
     parse_str::<Generics>(str).expect("Failed to parse generics")
@@ -26,4 +26,8 @@ pub fn strs_to_impl_fns(strs: &Vec<String>) -> Vec<ImplItem> {
 
 pub fn strs_to_trait_fns(strs: &Vec<String>) -> Vec<TraitItem> {
     strs.iter().map(|f| str_to_trait_item(f)).collect()
+}
+
+pub fn str_to_expr(str: &str) -> Expr {
+    parse_str::<Expr>(str).expect("Failed to parse expr")
 }

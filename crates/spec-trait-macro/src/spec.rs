@@ -1,7 +1,10 @@
 use crate::annotations::{Annotation, AnnotationBody, get_type_aliases, get_type_traits};
 use crate::cache::Impl;
 use crate::conditions::WhenCondition;
+use crate::conversions::{str_to_expr, str_to_generics, str_to_trait, str_to_type};
 use crate::traits::TraitBody;
+use proc_macro::TokenStream;
+use std::cmp::Ordering;
 
 struct VarInfo {
     concrete_type: String,
@@ -21,15 +24,32 @@ pub fn get_most_specific_impl(
 ) -> Impl {
     let fn_info = get_fn_info(&ann);
 
-    let filtered_impls = impls.iter().filter_map(|impl_| match &impl_.condition {
-        Some(condition) => {
-            let (satisfied, c) = satisfies_condition(condition, &fn_info.args, &vec![]);
-            if satisfied { Some((impl_, c)) } else { None }
-        }
-        None => Some((impl_, vec![])),
-    });
+    let mut filtered_impls: Vec<_> = impls
+        .iter()
+        .filter_map(|impl_| match &impl_.condition {
+            Some(condition) => {
+                let (satisfied, c) = satisfies_condition(condition, &fn_info.args, &vec![]);
+                if satisfied { Some((impl_, c)) } else { None }
+            }
+            None => Some((impl_, vec![])),
+        })
+        .collect();
 
-    panic!("Not implemented yet");
+    filtered_impls.sort_by(|(_, a), (_, b)| compare_constraints(&a, &b));
+
+    let most_specific = filtered_impls.last();
+
+    if let Some(second_most_specific) = filtered_impls.get(filtered_impls.len() - 2) {
+        let cmp = compare_constraints(&most_specific.unwrap().1, &second_most_specific.1);
+        if cmp == Ordering::Equal {
+            panic!("Ambiguous implementation: multiple implementations are equally specific");
+        }
+    }
+
+    return (*most_specific
+        .unwrap_or_else(|| panic!("No valid implementation found"))
+        .0)
+        .clone();
 }
 
 fn get_fn_info(ann: &AnnotationBody) -> FnInfo {
@@ -54,6 +74,57 @@ fn get_var_info(type_: &str, ann: &AnnotationBody) -> VarInfo {
         aliases: types,
         traits,
     }
+}
+
+fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Ordering {
+    let a_type = a.iter().any(|c| matches!(c, WhenCondition::Type(_, _)));
+    let b_type = b.iter().any(|c| matches!(c, WhenCondition::Type(_, _)));
+    let a_trait = a
+        .iter()
+        .filter(|c| matches!(c, WhenCondition::Trait(_, _)))
+        .count();
+    let b_trait = b
+        .iter()
+        .filter(|c| matches!(c, WhenCondition::Trait(_, _)))
+        .count();
+    let a_not_type = a.iter().any(
+        |c| matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Type(_, _))),
+    );
+    let b_not_type = b.iter().any(
+        |c| matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Type(_, _))),
+    );
+    let a_not_trait = a.iter().any(
+        |c| matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Trait(_, _))),
+    );
+    let b_not_trait = b.iter().any(
+        |c| matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Trait(_, _))),
+    );
+
+    if a_type && !b_type {
+        return Ordering::Greater;
+    } else if !a_type && b_type {
+        return Ordering::Less;
+    }
+
+    if a_trait > b_trait {
+        return Ordering::Greater;
+    } else if a_trait < b_trait {
+        return Ordering::Less;
+    }
+
+    if a_not_type && !b_not_type {
+        return Ordering::Greater;
+    } else if !a_not_type && b_not_type {
+        return Ordering::Less;
+    }
+
+    if a_not_trait && !b_not_trait {
+        return Ordering::Greater;
+    } else if !a_not_trait && b_not_trait {
+        return Ordering::Less;
+    }
+
+    Ordering::Equal
 }
 
 fn get_concrete_type(type_or_alias: &str, var: &Vec<VarInfo>) -> String {
@@ -169,7 +240,7 @@ fn satisfies_condition(
                 if s {
                     satisfied = true;
                     new_constraints = nc;
-                    break;
+                    break; // TODO: return the most specific condition instead
                 }
             }
             (satisfied, new_constraints)
@@ -184,4 +255,28 @@ fn satisfies_condition(
             (!satisfied, new_constraints)
         }
     }
+}
+
+pub fn create_spec(impl_: &Impl, ann: &AnnotationBody) -> TokenStream {
+    // TODO: get dynamically from annotations
+    let generics_types = vec!["i32"];
+
+    let type_ = str_to_type(&impl_.type_name);
+    let trait_ = str_to_trait(&impl_.spec_trait_name);
+    let generics = generics_types
+        .iter()
+        .map(|t| str_to_type(t))
+        .collect::<Vec<_>>();
+    let fn_ = str_to_expr(&ann.fn_);
+    let var = str_to_expr(&ann.var);
+    let args = ann
+        .args
+        .iter()
+        .map(|arg| str_to_expr(arg))
+        .collect::<Vec<_>>();
+
+    quote::quote! {
+        <#type_ as #trait_<#(#generics),*>>::#fn_(&#var, #(#args),*)
+    }
+    .into()
 }

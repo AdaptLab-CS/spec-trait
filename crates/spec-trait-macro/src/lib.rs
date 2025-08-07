@@ -103,13 +103,14 @@ pub fn spec(item: TokenStream) -> TokenStream {
 
     // TODO: get dynamically from annotations
     let var_type = "ZST";
-    let args_types = vec!["i32"];
 
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
     let impls = cache::get_impls_by_type_and_traits(&var_type, &traits);
 
-    let applicable_impl = spec::get_most_specific_impl(&impls, &traits, &ann);
-    println!("most specific impl: {:?}", applicable_impl);
+    let impl_ = spec::get_most_specific_impl(&impls, &traits, &ann);
+    println!("most specific impl: {:?}", impl_);
 
-    TokenStream::new()
+    let res = spec::create_spec(&impl_, &ann);
+    println!("spec result: {}", res.to_string());
+    res
 }

@@ -4,7 +4,7 @@ use crate::traits::{self, TraitBody};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Impl {
     pub condition: Option<WhenCondition>,
     pub trait_name: String,
