@@ -6,7 +6,7 @@ pub fn get_for_impl(
     impl_: &Impl,
     traits: &Vec<TraitBody>,
     constraints: &Vec<WhenCondition>,
-) -> Vec<String> {
+) -> String {
     let trait_ = traits
         .iter()
         .find(|tr| tr.name == impl_.trait_name)
@@ -37,5 +37,9 @@ pub fn get_for_impl(
         })
         .collect::<Vec<String>>();
 
-    generics_types
+    if generics_types.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", generics_types.join(", "))
+    }
 }

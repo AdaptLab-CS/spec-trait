@@ -1,7 +1,7 @@
 use crate::annotations::{Annotation, AnnotationBody, get_type_aliases, get_type_traits};
 use crate::cache::Impl;
 use crate::conditions::WhenCondition;
-use crate::conversions::{str_to_expr, str_to_trait, str_to_type};
+use crate::conversions::{str_to_expr, str_to_generics, str_to_trait, str_to_type};
 use crate::traits::TraitBody;
 use proc_macro2::TokenStream as TokenStream2;
 use std::cmp::Ordering;
@@ -172,7 +172,7 @@ fn satisfies_condition(
                 generic.clone(),
                 get_concrete_type(type_, var),
             ));
-                
+
             if get_concrete_type(&var_type, var) != get_concrete_type(type_, var)
                 || constraints.iter().any(|c| match c {
                     // generic parameter is forbidden to be assigned to this type
@@ -281,26 +281,23 @@ fn satisfies_condition(
     }
 }
 
-pub fn create_spec(
-    impl_: &Impl,
-    generics_types: &Vec<String>,
-    ann: &AnnotationBody,
-) -> TokenStream2 {
+pub fn create_spec(impl_: &Impl, generics_types: &String, ann: &AnnotationBody) -> TokenStream2 {
     let type_ = str_to_type(&impl_.type_name);
     let trait_ = str_to_trait(&impl_.spec_trait_name);
-    let generics = generics_types
-        .iter()
-        .map(|t| str_to_type(t))
-        .collect::<Vec<_>>();
+    let generics = str_to_generics(generics_types);
     let fn_ = str_to_expr(&ann.fn_);
-    let var = str_to_expr(&ann.var);
+    let var = str_to_expr((&("&".to_owned() + &ann.var)).as_str());
     let args = ann
         .args
         .iter()
         .map(|arg| str_to_expr(arg))
         .collect::<Vec<_>>();
 
+    let all_args = std::iter::once(var.clone())
+        .chain(args.iter().cloned())
+        .collect::<Vec<_>>();
+
     quote::quote! {
-        <#type_ as #trait_<#(#generics),*>>::#fn_(&#var, #(#args),*)
+        <#type_ as #trait_ #generics>::#fn_(#(#all_args),*)
     }
 }
