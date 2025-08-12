@@ -1,11 +1,12 @@
 use crate::annotations::{Annotation, AnnotationBody, get_type_aliases, get_type_traits};
 use crate::cache::Impl;
 use crate::conditions::WhenCondition;
-use crate::conversions::{str_to_expr, str_to_generics, str_to_trait, str_to_type};
+use crate::conversions::{str_to_expr, str_to_trait, str_to_type};
 use crate::traits::TraitBody;
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 use std::cmp::Ordering;
 
+#[derive(Debug, Clone)]
 struct VarInfo {
     concrete_type: String,
     aliases: Vec<String>,
@@ -21,7 +22,7 @@ pub fn get_most_specific_impl(
     impls: &Vec<Impl>,
     traits: &Vec<TraitBody>,
     ann: &AnnotationBody,
-) -> Impl {
+) -> (Impl, Vec<WhenCondition>) {
     let fn_info = get_fn_info(&ann);
 
     let mut filtered_impls: Vec<_> = impls
@@ -29,9 +30,13 @@ pub fn get_most_specific_impl(
         .filter_map(|impl_| match &impl_.condition {
             Some(condition) => {
                 let (satisfied, c) = satisfies_condition(condition, &fn_info.args, &vec![]);
-                if satisfied { Some((impl_, c)) } else { None }
+                if satisfied {
+                    Some((impl_.clone(), c))
+                } else {
+                    None
+                }
             }
-            None => Some((impl_, vec![])),
+            None => Some((impl_.clone(), vec![])),
         })
         .collect();
 
@@ -46,10 +51,9 @@ pub fn get_most_specific_impl(
         }
     }
 
-    return (*most_specific
-        .unwrap_or_else(|| panic!("No valid implementation found"))
-        .0)
-        .clone();
+    let (impl_ref, conditions) =
+        most_specific.unwrap_or_else(|| panic!("No valid implementation found"));
+    return (impl_ref.clone(), conditions.clone());
 }
 
 fn get_fn_info(ann: &AnnotationBody) -> FnInfo {
@@ -73,6 +77,7 @@ fn get_var_info(type_: &str, ann: &AnnotationBody) -> VarInfo {
         concrete_type: type_.to_string(),
         aliases: types,
         traits,
+        // TODO: add trait definition generic or type
     }
 }
 
@@ -157,65 +162,80 @@ fn satisfies_condition(
     var: &Vec<VarInfo>,
     constraints: &Vec<WhenCondition>, // only type, trait, not
 ) -> (bool, Vec<WhenCondition>) {
+    // TODO: get from annotations
+    let var_type = "i32";
+
     match cond {
         WhenCondition::Type(generic, type_) => {
-            if constraints.iter().any(|c| match c {
-                // generic parameter is forbidden to be assigned to this type
-                WhenCondition::Not(inner) => match &**inner {
-                    WhenCondition::Type(g, t) if *g == *generic => var.iter().any(|v| {
-                        v.concrete_type == *t
-                            && (v.aliases.iter().any(|alias| *alias == *type_)
-                                || v.concrete_type == *type_)
+            let mut new_constraints = constraints.clone();
+            new_constraints.push(WhenCondition::Type(
+                generic.clone(),
+                get_concrete_type(type_, var),
+            ));
+                
+            if get_concrete_type(&var_type, var) != get_concrete_type(type_, var)
+                || constraints.iter().any(|c| match c {
+                    // generic parameter is forbidden to be assigned to this type
+                    WhenCondition::Not(inner) => match &**inner {
+                        WhenCondition::Type(g, t) if *g == *generic => var.iter().any(|v| {
+                            v.concrete_type == *t
+                                && (v.aliases.iter().any(|alias| *alias == *type_)
+                                    || v.concrete_type == *type_)
+                        }),
+                        _ => false,
+                    },
+                    // generic parameter is already assigned to another type
+                    WhenCondition::Type(g, t) if *g == *generic => {
+                        get_concrete_type(type_, var) != get_concrete_type(&t, var)
+                    }
+                    // generic parameter should implement a trait that the type does not implement
+                    WhenCondition::Trait(g, t) if *g == *generic => t.iter().any(|trait_| {
+                        !get_type_traits(
+                            &get_concrete_type(type_, var),
+                            &var_info_to_annotations(var),
+                        )
+                        .contains(trait_)
                     }),
                     _ => false,
-                },
-                // generic parameter is already assigned to another type
-                WhenCondition::Type(g, t) if *g == *generic => {
-                    get_concrete_type(type_, var) != get_concrete_type(&t, var)
-                }
-                // generic parameter should implement a trait that the type does not implement
-                WhenCondition::Trait(g, t) if *g == *generic => t.iter().any(|trait_| {
-                    !get_type_traits(
-                        &get_concrete_type(type_, var),
-                        &var_info_to_annotations(var),
-                    )
-                    .contains(trait_)
-                }),
-                _ => false,
-            }) {
-                (false, constraints.clone())
+                })
+            {
+                (false, new_constraints)
             } else {
-                let mut new_constraints = constraints.clone();
-                new_constraints.push(WhenCondition::Type(
-                    generic.clone(),
-                    get_concrete_type(type_, var),
-                ));
                 (true, new_constraints)
             }
         }
         WhenCondition::Trait(generic, traits) => {
-            if constraints.iter().any(|c| match c {
-                // generic parameter is forbidden to be implement one of the traits
-                WhenCondition::Not(inner) => match &**inner {
-                    WhenCondition::Trait(g, t) if *g == *generic => {
-                        traits.iter().any(|trait_| t.contains(trait_))
+            let mut new_constraints = constraints.clone();
+            new_constraints.push(cond.clone());
+
+            let var_traits = get_type_traits(
+                &get_concrete_type(&var_type, var),
+                &var_info_to_annotations(var),
+            );
+            if traits.iter().any(|trait_| !var_traits.contains(trait_))
+                || constraints.iter().any(|c| match c {
+                    // generic parameter is forbidden to be implement one of the traits
+                    WhenCondition::Not(inner) => match &**inner {
+                        WhenCondition::Trait(g, t) if *g == *generic => {
+                            traits.iter().any(|trait_| t.contains(trait_))
+                        }
+                        _ => false,
+                    },
+                    // generic parameter is already assigned to a type that does not implement one of the traits
+                    WhenCondition::Type(g, type_) if *g == *generic => {
+                        traits.iter().any(|trait_| {
+                            !get_type_traits(
+                                &get_concrete_type(type_, var),
+                                &var_info_to_annotations(var),
+                            )
+                            .contains(trait_)
+                        })
                     }
                     _ => false,
-                },
-                // generic parameter is already assigned to a type that does not implement one of the traits
-                WhenCondition::Type(g, type_) if *g == *generic => traits.iter().any(|trait_| {
-                    !get_type_traits(
-                        &get_concrete_type(type_, var),
-                        &var_info_to_annotations(var),
-                    )
-                    .contains(trait_)
-                }),
-                _ => false,
-            }) {
-                (false, constraints.clone())
+                })
+            {
+                (false, new_constraints)
             } else {
-                let mut new_constraints = constraints.clone();
-                new_constraints.push(cond.clone());
                 (true, new_constraints)
             }
         }
@@ -239,8 +259,12 @@ fn satisfies_condition(
                 let (s, nc) = satisfies_condition(c, var, constraints);
                 if s {
                     satisfied = true;
-                    new_constraints = nc;
-                    break; // TODO: return the most specific condition instead
+                    let cmp = compare_constraints(&nc, &new_constraints);
+                    new_constraints = if cmp == Ordering::Greater {
+                        nc
+                    } else {
+                        new_constraints
+                    };
                 }
             }
             (satisfied, new_constraints)
@@ -257,10 +281,11 @@ fn satisfies_condition(
     }
 }
 
-pub fn create_spec(impl_: &Impl, ann: &AnnotationBody) -> TokenStream {
-    // TODO: get dynamically from annotations
-    let generics_types = vec!["i32"];
-
+pub fn create_spec(
+    impl_: &Impl,
+    generics_types: &Vec<String>,
+    ann: &AnnotationBody,
+) -> TokenStream2 {
     let type_ = str_to_type(&impl_.type_name);
     let trait_ = str_to_trait(&impl_.spec_trait_name);
     let generics = generics_types
@@ -278,5 +303,4 @@ pub fn create_spec(impl_: &Impl, ann: &AnnotationBody) -> TokenStream {
     quote::quote! {
         <#type_ as #trait_<#(#generics),*>>::#fn_(&#var, #(#args),*)
     }
-    .into()
 }

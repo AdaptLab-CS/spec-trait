@@ -66,7 +66,7 @@ impl<T> Foo<T> for ZST {
 #[when(all(T: Bar, T = i32))]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
-        println!("Foo<MyString> for ZST");
+        println!("Foo<i32> for ZST");
     }
 }
 
@@ -103,10 +103,11 @@ fn main() {
     println!("Hello, world! (from spec-trait-bin)");
     let zst = ZST;
     spec! { zst.foo(1) };
+    spec! { zst.foo(1); i32: Bar };
     spec! { zst.foo(1i32); i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString };
-    spec! {
-        zst.foo(1u8);
-        i32: Foo<i32> + Bar;
-    };
-    spec! { zst.foo2(1u8, 2u8) };
+    // spec! {
+    //     zst.foo(1u8);
+    //     i32: Foo<i32> + Bar;
+    // };
+    // spec! { zst.foo2(1u8, 2u8) };
 }

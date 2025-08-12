@@ -3,6 +3,7 @@ mod cache;
 mod conditions;
 mod conversions;
 mod env;
+mod generics;
 mod impls;
 mod spec;
 mod traits;
@@ -107,10 +108,10 @@ pub fn spec(item: TokenStream) -> TokenStream {
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
     let impls = cache::get_impls_by_type_and_traits(&var_type, &traits);
 
-    let impl_ = spec::get_most_specific_impl(&impls, &traits, &ann);
-    println!("most specific impl: {:?}", impl_);
+    let (impl_, constraints) = spec::get_most_specific_impl(&impls, &traits, &ann);
 
-    let res = spec::create_spec(&impl_, &ann);
-    println!("spec result: {}", res.to_string());
-    res
+    let generics = generics::get_for_impl(&impl_, &traits, &constraints);
+
+    let res = spec::create_spec(&impl_, &generics, &ann);
+    res.into()
 }
