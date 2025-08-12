@@ -13,6 +13,7 @@ proc-macro2 = "1.0"
 
 
 [build-dependencies]
+chrono = "0.4"
 
 [lib]
 proc-macro = true
