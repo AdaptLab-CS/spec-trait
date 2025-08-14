@@ -1,6 +1,6 @@
 use core::panic;
-use proc_macro::{TokenStream, TokenTree};
-use std::{fmt::Debug, iter::Peekable};
+use proc_macro::{ TokenStream, TokenTree };
+use std::{ fmt::Debug, iter::Peekable };
 
 #[derive(Debug)]
 pub enum Annotation {
@@ -13,7 +13,8 @@ pub struct AnnotationBody {
     pub var: String,
     pub fn_: String,
     pub args: Vec<String>,
-    pub raw_call: String,
+    pub var_type: String,
+    pub args_types: Vec<String>,
     pub annotations: Vec<Annotation>,
 }
 
@@ -23,41 +24,59 @@ pub fn parse(attr: TokenStream) -> AnnotationBody {
 }
 
 fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> AnnotationBody {
-    let mut call = String::new();
-    let mut annotations = Vec::new();
-    let mut current_segment = String::new();
+    let mut segments = Vec::new();
+    let mut current = String::new();
 
     while let Some(token) = tokens.next() {
         match token {
-            TokenTree::Punct(punct) if punct.as_char() == ';' => {
-                if call.is_empty() {
-                    call = current_segment.trim().to_string();
-                } else {
-                    annotations.push(parse_annotation(&current_segment));
-                }
-                current_segment.clear();
+            TokenTree::Punct(ref punct) if punct.as_char() == ';' => {
+                segments.push(current.trim().to_string());
+                current.clear();
             }
-            _ => {
-                current_segment.push_str(&token.to_string());
-            }
+            _ => current.push_str(&token.to_string()),
         }
     }
-
-    if !current_segment.is_empty() {
-        if call.is_empty() {
-            call = current_segment.trim().to_string();
-        } else {
-            annotations.push(parse_annotation(&current_segment));
-        }
+    if !current.trim().is_empty() {
+        segments.push(current.trim().to_string());
     }
 
+    let call = segments.get(0).unwrap_or_else(|| panic!("Method call not found"));
     let (var, fn_, args) = parse_call(&call);
+
+    let var_type = segments
+        .get(1)
+        .unwrap_or_else(|| panic!("Variable type not found"))
+        .clone();
+
+    let args_types = segments
+        .get(2)
+        .map(|s| {
+            let s = s.trim();
+            if s.starts_with('[') && s.ends_with(']') {
+                s[1..s.len() - 1]
+                    .split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            } else {
+                vec![]
+            }
+        })
+        .unwrap_or_default();
+
+    let annotations = segments
+        .iter()
+        .skip(3)
+        .filter(|s| !s.is_empty())
+        .map(|s| parse_annotation(s))
+        .collect();
 
     AnnotationBody {
         var,
         fn_,
         args,
-        raw_call: call,
+        var_type,
+        args_types,
         annotations,
     }
 }
@@ -80,7 +99,10 @@ fn parse_call(call: &str) -> (String, String, Vec<String>) {
 
 fn parse_annotation(segment: &str) -> Annotation {
     if let Some((param, traits)) = segment.split_once(':') {
-        let traits = traits.split('+').map(|s| s.trim().to_string()).collect();
+        let traits = traits
+            .split('+')
+            .map(|s| s.trim().to_string())
+            .collect();
         Annotation::Trait(param.trim().to_string(), traits)
     } else if let Some((param, ty)) = segment.split_once('=') {
         Annotation::Alias(param.trim().to_string(), ty.trim().to_string())
@@ -91,18 +113,22 @@ fn parse_annotation(segment: &str) -> Annotation {
 
 pub fn get_type_aliases(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
     ann.iter()
-        .filter_map(|a| match a {
-            Annotation::Alias(t, alias) if t == type_ => Some(alias.clone()),
-            _ => None,
+        .filter_map(|a| {
+            match a {
+                Annotation::Alias(t, alias) if t == type_ => Some(alias.clone()),
+                _ => None,
+            }
         })
         .collect()
 }
 
 pub fn get_type_traits(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
     ann.iter()
-        .filter_map(|a| match a {
-            Annotation::Trait(t, traits) if t == type_ => Some(traits.clone()),
-            _ => None,
+        .filter_map(|a| {
+            match a {
+                Annotation::Trait(t, traits) if t == type_ => Some(traits.clone()),
+                _ => None,
+            }
         })
         .flatten()
         .collect()

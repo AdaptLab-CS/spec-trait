@@ -87,13 +87,17 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 
 /**
 `item` can be one of these forms:
-- `method_call`
-- `method_call; annotations`
+- `method_call; variable_type; [args_types]`
+- `method_call; variable_type; [args_types]; annotations`
 
 `method_call` can be one of these forms:
 - `variable.function(args)`
 
-`annotations` is a `;` separated list, where each item can be one of these forms:
+`variable_type` is the type of the variable in the `method_call`.
+
+`args_types` is a list of types for the arguments in the `method_call`.
+
+`annotations` is a semi-colon separated list, where each item can be one of these forms:
 - `TypeName: TraitName`
 - `TypeName: TraitName1 + TraitName2`
 - `TypeName = AliasName`
@@ -102,11 +106,8 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 pub fn spec(item: TokenStream) -> TokenStream {
     let ann = annotations::parse(item);
 
-    // TODO: get dynamically from annotations
-    let var_type = "ZST";
-
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
-    let impls = cache::get_impls_by_type_and_traits(&var_type, &traits);
+    let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits);
 
     let (impl_, constraints) = spec::get_most_specific_impl(&impls, &traits, &ann);
 

@@ -1,6 +1,6 @@
 extern crate spec_trait_macro;
 
-use spec_trait_macro::{spec, spec_default, specializable, when};
+use spec_trait_macro::{ spec, spec_default, specializable, when };
 
 struct ZST; // Zero Sized Type
 
@@ -102,12 +102,17 @@ impl<T> FooWithMultipleFns<T> for ZST {
 fn main() {
     println!("Hello, world! (from spec-trait-bin)");
     let zst = ZST;
-    spec! { zst.foo(1) };
-    spec! { zst.foo(1); i32: Bar };
-    spec! { zst.foo(1i32); i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString };
-    // spec! {
-    //     zst.foo(1u8);
-    //     i32: Foo<i32> + Bar;
-    // };
-    // spec! { zst.foo2(1u8, 2u8) };
+    spec! {
+        zst.foo(1);
+        ZST;
+        [i32];
+    }
+    spec! { zst.foo(1); ZST; [i32]; i32: Bar }
+    spec! { zst.foo(1i32); ZST; [i32]; i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString }
+    spec! { zst.foo(1u8); ZST; [u8]; i32: Foo<i32> + Bar }
+    spec! {
+        zst.foo2(1u8, 2u8);
+        ZST;
+        [u8, u8]
+    }
 }

@@ -1,7 +1,7 @@
 use crate::conditions::WhenCondition;
 use crate::env::get_cache_path;
-use crate::traits::{self, TraitBody};
-use serde::{Deserialize, Serialize};
+use crate::traits::{ find_fn, TraitBody };
+use serde::{ Deserialize, Serialize };
 use std::fs;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -52,27 +52,19 @@ pub fn get_trait_by_name(trait_name: &str) -> Option<TraitBody> {
 
 pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
     let cache = read_cache();
-    cache
-        .traits
+    cache.traits
         .into_iter()
-        .filter(|tr| traits::filter_by_fn(tr, fn_name, args_len).len() > 0)
-        .collect()
-}
-
-pub fn get_impls_by_type(type_name: &str) -> Vec<Impl> {
-    let cache = read_cache();
-    cache
-        .impls
-        .into_iter()
-        .filter(|imp| imp.type_name == type_name)
+        .filter(|tr| find_fn(tr, fn_name, args_len).is_some())
         .collect()
 }
 
 pub fn get_impls_by_type_and_traits(type_name: &str, traits: &Vec<TraitBody>) -> Vec<Impl> {
     let cache = read_cache();
-    let traits_names: Vec<&str> = traits.iter().map(|tr| tr.name.as_str()).collect();
-    cache
-        .impls
+    let traits_names: Vec<&str> = traits
+        .iter()
+        .map(|tr| tr.name.as_str())
+        .collect();
+    cache.impls
         .into_iter()
         .filter(|imp| imp.type_name == type_name && traits_names.contains(&imp.trait_name.as_str()))
         .collect()
