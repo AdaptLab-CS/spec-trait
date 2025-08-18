@@ -9,18 +9,16 @@ trait Foo<T> {
     fn foo(&self, x: T);
 }
 
-#[specializable]
-trait Bar {
-    fn bar(&self);
-}
+type MyType = u8;
 
 #[specializable]
-trait FooWithMultipleFns<T> {
-    fn foo1(&self, x: T);
-    fn foo2(&self, x: T, y: T);
-}
+trait Bar {}
+#[specializable]
+trait FooBar {}
 
-type MyString = String;
+impl Bar for i32 {}
+impl Bar for i64 {}
+impl FooBar for i64 {}
 
 #[spec_default]
 impl<T> Foo<T> for ZST {
@@ -29,90 +27,32 @@ impl<T> Foo<T> for ZST {
     }
 }
 
-#[when(not(all(T = TypeName, any(T: TraitName, U: TraitName, T = &String), not(U: TraitName1 + TraitName2))))]
+#[when(T = MyType)]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
-        println!("Foo for ZST");
+        println!("Foo impl ZST where T is MyType");
     }
 }
 
-#[when(all(any(T = String, T = i32), any(T: TraitName1, T: TraitName2)))]
-impl<T: 'static> Bar for T {
-    fn bar(&self) {
-        println!("Bar for T");
-    }
-}
-
-#[when(any(all(T = String, T = i32), all(T: TraitName1, T: TraitName2)))]
-impl<T: 'static> Bar for T {
-    fn bar(&self) {
-        println!("Bar for T");
-    }
-}
-
-#[when(not(T: TraitName))]
-impl<T: 'static> Bar for T {
-    fn bar(&self) {
-        println!("Bar for T");
-    }
-}
-
-#[when(T = MyString)]
+#[when(T: Bar)]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
-        println!("Foo<MyString> for ZST");
+        println!("Foo impl ZST where T implements Bar");
     }
 }
-#[when(all(T: Bar, T = i32))]
+
+#[when(T: Bar + FooBar)]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
-        println!("Foo<i32> for ZST");
-    }
-}
-
-#[when(not(T: TraitName))]
-impl<T: 'static> Bar for T {
-    fn bar(&self) {
-        println!("Bar for T");
-    }
-}
-
-#[spec_default]
-impl<T> FooWithMultipleFns<T> for ZST {
-    fn foo1(&self, x: T) {
-        println!("Default FooWithMultipleFns::foo1 for ZST");
-    }
-
-    fn foo2(&self, x: T, y: T) {
-        println!("Default FooWithMultipleFns::foo2 for ZST");
-    }
-}
-
-#[when(T: TraitName2)]
-impl<T> FooWithMultipleFns<T> for ZST {
-    fn foo1(&self, x: T) {
-        println!("FooWithMultipleFns<TraitName2>::foo1 for ZST");
-    }
-
-    fn foo2(&self, x: T, y: T) {
-        println!("FooWithMultipleFns<TraitName2>::foo2 for ZST");
+        println!("Foo impl ZST where T implements Bar and FooBar");
     }
 }
 
 fn main() {
     println!("Hello, world! (from spec-trait-bin)");
     let zst = ZST;
-    spec! {
-        zst.foo(1);
-        ZST;
-        [i32];
-    }
-    spec! { zst.foo(1); ZST; [i32]; i32: Bar }
-    spec! { zst.foo(1i32); ZST; [i32]; i32: Foo<i32> + Bar; String = MyString; &i32: Bar, &String = &MyString }
-    spec! { zst.foo(1u8); ZST; [u8]; i32: Foo<i32> + Bar }
-    spec! {
-        zst.foo2(1u8, 2u8);
-        ZST;
-        [u8, u8]
-    }
+    spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType; i32: Bar; i64: Bar + FooBar }
+    spec! { zst.foo(1i32); ZST; [i32]; u8 = MyType; i32: Bar; i64: Bar + FooBar }
+    spec! { zst.foo(1i64); ZST; [i64]; u8 = MyType; i32: Bar; i64: Bar + FooBar }
+    spec! { zst.foo(1i8); ZST; [i8]; u8 = MyType; i32: Bar; i64: Bar + FooBar }
 }

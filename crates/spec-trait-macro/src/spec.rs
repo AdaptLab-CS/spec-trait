@@ -100,12 +100,16 @@ fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Orderi
     let b_type = b.iter().any(|c| matches!(c, WhenCondition::Type(_, _)));
     let a_trait = a
         .iter()
-        .filter(|c| matches!(c, WhenCondition::Trait(_, _)))
-        .count();
+        .filter_map(|c| {
+            if let WhenCondition::Trait(_, traits) = c { Some(traits.len()) } else { None }
+        })
+        .sum::<usize>();
     let b_trait = b
         .iter()
-        .filter(|c| matches!(c, WhenCondition::Trait(_, _)))
-        .count();
+        .filter_map(|c| {
+            if let WhenCondition::Trait(_, traits) = c { Some(traits.len()) } else { None }
+        })
+        .sum::<usize>();
     let a_not_type = a
         .iter()
         .any(
@@ -120,16 +124,32 @@ fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Orderi
         );
     let a_not_trait = a
         .iter()
-        .any(
-            |c|
-                matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Trait(_, _)))
-        );
+        .filter_map(|c| {
+            if let WhenCondition::Not(inner) = c {
+                if let WhenCondition::Trait(_, traits) = &**inner {
+                    Some(traits.len())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .sum::<usize>();
     let b_not_trait = b
         .iter()
-        .any(
-            |c|
-                matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Trait(_, _)))
-        );
+        .filter_map(|c| {
+            if let WhenCondition::Not(inner) = c {
+                if let WhenCondition::Trait(_, traits) = &**inner {
+                    Some(traits.len())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .sum::<usize>();
 
     if a_type && !b_type {
         return Ordering::Greater;
@@ -149,9 +169,9 @@ fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Orderi
         return Ordering::Less;
     }
 
-    if a_not_trait && !b_not_trait {
+    if a_not_trait > b_not_trait {
         return Ordering::Greater;
-    } else if !a_not_trait && b_not_trait {
+    } else if a_not_trait < b_not_trait {
         return Ordering::Less;
     }
 

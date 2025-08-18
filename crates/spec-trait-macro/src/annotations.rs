@@ -48,21 +48,38 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
         .unwrap_or_else(|| panic!("Variable type not found"))
         .clone();
 
-    let args_types = segments
+    assert!(
+        !var_type.contains(':') && !var_type.contains('='),
+        "Invalid variable type format: {}",
+        var_type
+    );
+
+    let args_types: Vec<_> = segments
         .get(2)
         .map(|s| {
             let s = s.trim();
             if s.starts_with('[') && s.ends_with(']') {
                 s[1..s.len() - 1]
                     .split(',')
-                    .map(|x| x.trim().to_string())
+                    .map(|x| {
+                        let x = x.trim();
+                        if x.contains(':') || x.contains('=') {
+                            panic!("Invalid argument type format: {}", x);
+                        }
+                        x.to_string()
+                    })
                     .filter(|x| !x.is_empty())
                     .collect()
             } else {
-                vec![]
+                panic!("Invalid arguments types format: {}", s);
             }
         })
         .unwrap_or_default();
+
+    assert!(
+        args.len() == args_types.len(),
+        "Number of arguments does not match number of argument types"
+    );
 
     let annotations = segments
         .iter()
