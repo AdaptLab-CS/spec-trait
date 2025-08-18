@@ -67,7 +67,7 @@ pub fn get_most_specific_impl(
 }
 
 fn get_fn_info(ann: &AnnotationBody, trait_: &TraitBody) -> FnInfo {
-    let trait_fn = find_fn(trait_, &ann.fn_, ann.args_types.len()).unwrap_or_else(||
+    let trait_fn = find_fn(trait_, &ann.fn_, ann.args.len()).unwrap_or_else(||
         panic!("Function {} not found in trait {}", ann.fn_, trait_.name)
     );
 
@@ -112,16 +112,18 @@ fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Orderi
         .sum::<usize>();
     let a_not_type = a
         .iter()
-        .any(
+        .filter(
             |c|
                 matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Type(_, _)))
-        );
+        )
+        .count();
     let b_not_type = b
         .iter()
-        .any(
+        .filter(
             |c|
                 matches!(c, WhenCondition::Not(inner) if matches!(&**inner, WhenCondition::Type(_, _)))
-        );
+        )
+        .count();
     let a_not_trait = a
         .iter()
         .filter_map(|c| {
@@ -163,9 +165,9 @@ fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Orderi
         return Ordering::Less;
     }
 
-    if a_not_type && !b_not_type {
+    if a_not_type > b_not_type {
         return Ordering::Greater;
-    } else if !a_not_type && b_not_type {
+    } else if a_not_type < b_not_type {
         return Ordering::Less;
     }
 

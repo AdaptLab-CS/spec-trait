@@ -78,7 +78,9 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
 
     assert!(
         args.len() == args_types.len(),
-        "Number of arguments does not match number of argument types"
+        "Number of arguments: {} does not match number of argument types: {}",
+        args.len(),
+        args_types.len()
     );
 
     let annotations = segments
@@ -104,6 +106,7 @@ fn parse_call(call: &str) -> (String, String, Vec<String>) {
             .trim_end_matches(')')
             .split(',')
             .map(|arg| arg.trim().to_string())
+            .filter(|arg| !arg.is_empty())
             .collect();
 
         if let Some((var, fn_)) = var_fn.split_once('.') {
