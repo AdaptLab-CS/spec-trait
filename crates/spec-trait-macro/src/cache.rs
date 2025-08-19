@@ -58,12 +58,12 @@ pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
         .collect()
 }
 
-pub fn get_impls_by_type_and_traits(type_name: &str, traits: &Vec<TraitBody>) -> Vec<Impl> {
+pub fn get_impls_by_type_and_traits(type_name: &str, traits: &[TraitBody]) -> Vec<Impl> {
     let cache = read_cache();
-    let traits_names: Vec<&str> = traits
+    let traits_names = traits
         .iter()
         .map(|tr| tr.name.as_str())
-        .collect();
+        .collect::<Vec<_>>();
     cache.impls
         .into_iter()
         .filter(|imp| imp.type_name == type_name && traits_names.contains(&imp.trait_name.as_str()))

@@ -1,6 +1,6 @@
 use core::panic;
-use proc_macro::{TokenStream, TokenTree};
-use serde::{Deserialize, Serialize};
+use proc_macro::{ TokenStream, TokenTree };
+use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
 use std::iter::Peekable;
 
@@ -39,7 +39,7 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> WhenC
 
 fn handle_aggr(
     ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
 ) -> WhenCondition {
     if let Some(TokenTree::Group(group)) = tokens.next() {
         let group_tokens = &mut group.stream().into_iter().peekable();
@@ -51,7 +51,7 @@ fn handle_aggr(
 
 fn handle_type_or_trait(
     ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
 ) -> WhenCondition {
     if let Some(TokenTree::Punct(punct)) = tokens.next() {
         match punct.as_char() {
@@ -66,7 +66,7 @@ fn handle_type_or_trait(
 
 fn parse_type(
     ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
 ) -> WhenCondition {
     let mut type_name = String::new();
 
@@ -87,7 +87,7 @@ fn parse_type(
 
 fn parse_trait(
     ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
 ) -> WhenCondition {
     let mut traits = Vec::new();
 
@@ -115,7 +115,7 @@ fn parse_trait(
 
 fn parse_aggr(
     ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>,
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
 ) -> WhenCondition {
     let mut args = Vec::new();
 
@@ -187,51 +187,53 @@ fn all_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
         dnf = dnf
             .into_iter()
             .flat_map(|existing| {
-                cond_dnf
-                    .iter()
-                    .map(move |c| [existing.clone(), vec![c.clone()]].concat())
+                cond_dnf.iter().map(move |c| [existing.clone(), vec![c.clone()]].concat())
             })
             .collect();
     }
 
-    WhenCondition::Any(
-        dnf.into_iter()
-            .map(|conjunction| WhenCondition::All(conjunction))
-            .collect(),
-    )
+    WhenCondition::Any(dnf.into_iter().map(WhenCondition::All).collect())
 }
 
-fn any_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
+fn any_to_dnf(conditions: &[WhenCondition]) -> WhenCondition {
     WhenCondition::Any(
         conditions
             .iter()
             .map(to_dnf)
-            .flat_map(|cond| match cond {
-                // A or (B or C) -> A or B or C
-                WhenCondition::Any(inner) => inner,
-                // A or B -> A or B
-                other => vec![other],
+            .flat_map(|cond| {
+                match cond {
+                    // A or (B or C) -> A or B or C
+                    WhenCondition::Any(inner) => inner,
+                    // A or B -> A or B
+                    other => vec![other],
+                }
             })
-            .collect(),
+            .collect()
     )
 }
 
 fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
     match condition {
         // not(A and B) -> not(A) or not(B)
-        WhenCondition::All(inner) => to_dnf(&WhenCondition::Any(
-            inner
-                .iter()
-                .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
-                .collect(),
-        )),
+        WhenCondition::All(inner) =>
+            to_dnf(
+                &WhenCondition::Any(
+                    inner
+                        .iter()
+                        .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
+                        .collect()
+                )
+            ),
         // not(A or B) -> not(A) and not(B)
-        WhenCondition::Any(inner) => to_dnf(&WhenCondition::All(
-            inner
-                .iter()
-                .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
-                .collect(),
-        )),
+        WhenCondition::Any(inner) =>
+            to_dnf(
+                &WhenCondition::All(
+                    inner
+                        .iter()
+                        .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
+                        .collect()
+                )
+            ),
         // not(not(A)) -> A
         WhenCondition::Not(inner) => to_dnf(inner),
         // not(A) -> not(A)

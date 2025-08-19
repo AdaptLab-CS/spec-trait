@@ -22,11 +22,11 @@ struct FnInfo {
 }
 
 pub fn get_most_specific_impl(
-    impls: &Vec<Impl>,
-    traits: &Vec<TraitBody>,
+    impls: &[Impl],
+    traits: &[TraitBody],
     ann: &AnnotationBody
 ) -> (Impl, Vec<WhenCondition>) {
-    let mut filtered_impls: Vec<_> = impls
+    let mut filtered_impls = impls
         .iter()
         .filter_map(|impl_| {
             let trait_ = traits
@@ -34,7 +34,7 @@ pub fn get_most_specific_impl(
                 .find(|tr| tr.name == impl_.trait_name)
                 .unwrap_or_else(|| panic!("Trait {} not found", impl_.trait_name));
 
-            let fn_info = get_fn_info(&ann, trait_);
+            let fn_info = get_fn_info(ann, trait_);
 
             match &impl_.condition {
                 Some(condition) => {
@@ -48,9 +48,9 @@ pub fn get_most_specific_impl(
                 None => Some((impl_.clone(), vec![])),
             }
         })
-        .collect();
+        .collect::<Vec<_>>();
 
-    filtered_impls.sort_by(|(_, a), (_, b)| compare_constraints(&a, &b));
+    filtered_impls.sort_by(|(_, a), (_, b)| compare_constraints(a, b));
 
     let most_specific = filtered_impls.last();
 
@@ -63,7 +63,7 @@ pub fn get_most_specific_impl(
     let (impl_ref, conditions) = most_specific.unwrap_or_else(||
         panic!("No valid implementation found")
     );
-    return (impl_ref.clone(), conditions.clone());
+    (impl_ref.clone(), conditions.clone())
 }
 
 fn get_fn_info(ann: &AnnotationBody, trait_: &TraitBody) -> FnInfo {
@@ -79,7 +79,7 @@ fn get_fn_info(ann: &AnnotationBody, trait_: &TraitBody) -> FnInfo {
         args: ann.args_types
             .iter()
             .enumerate()
-            .map(|(i, arg)| get_var_info(&arg, &args_types_definition[i], ann))
+            .map(|(i, arg)| get_var_info(arg, &args_types_definition[i], ann))
             .collect(),
     }
 }
@@ -95,7 +95,7 @@ fn get_var_info(type_: &str, type_definition: &str, ann: &AnnotationBody) -> Var
     }
 }
 
-fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Ordering {
+fn compare_constraints(a: &[WhenCondition], b: &[WhenCondition]) -> Ordering {
     let a_type = a.iter().any(|c| matches!(c, WhenCondition::Type(_, _)));
     let b_type = b.iter().any(|c| matches!(c, WhenCondition::Type(_, _)));
     let a_trait = a
@@ -180,7 +180,7 @@ fn compare_constraints(a: &Vec<WhenCondition>, b: &Vec<WhenCondition>) -> Orderi
     Ordering::Equal
 }
 
-fn get_concrete_type(type_or_alias: &str, var: &Vec<VarInfo>) -> String {
+fn get_concrete_type(type_or_alias: &str, var: &[VarInfo]) -> String {
     if let Some(alias) = var.iter().find(|v| v.aliases.contains(&type_or_alias.to_string())) {
         alias.concrete_type.clone()
     } else {
@@ -188,7 +188,7 @@ fn get_concrete_type(type_or_alias: &str, var: &Vec<VarInfo>) -> String {
     }
 }
 
-fn var_info_to_annotations(var: &Vec<VarInfo>) -> Vec<Annotation> {
+fn var_info_to_annotations(var: &[VarInfo]) -> Vec<Annotation> {
     var.iter()
         .flat_map(|v| {
             v.aliases
@@ -238,7 +238,7 @@ fn satisfies_condition(
                             }
                         // generic parameter is already assigned to another type
                         WhenCondition::Type(g, t) if *g == *generic => {
-                            get_concrete_type(type_, &fn_.args) != get_concrete_type(&t, &fn_.args)
+                            get_concrete_type(type_, &fn_.args) != get_concrete_type(t, &fn_.args)
                         }
                         // generic parameter should implement a trait that the type does not implement
                         WhenCondition::Trait(g, t) if *g == *generic =>
@@ -325,9 +325,8 @@ fn satisfies_condition(
             (satisfied, new_constraints)
         }
         WhenCondition::Not(inner) => {
-            let mut new_constraints;
             let (satisfied, nc) = satisfies_condition(inner, fn_, constraints);
-            new_constraints = nc
+            let new_constraints = nc
                 .iter()
                 .map(|c| WhenCondition::Not(Box::new(c.clone())))
                 .collect();
@@ -336,12 +335,12 @@ fn satisfies_condition(
     }
 }
 
-pub fn create_spec(impl_: &Impl, generics_types: &String, ann: &AnnotationBody) -> TokenStream2 {
+pub fn create_spec(impl_: &Impl, generics_types: &str, ann: &AnnotationBody) -> TokenStream2 {
     let type_ = str_to_type(&impl_.type_name);
     let trait_ = str_to_trait(&impl_.spec_trait_name);
     let generics = str_to_generics(generics_types);
     let fn_ = str_to_expr(&ann.fn_);
-    let var = str_to_expr((&("&".to_owned() + &ann.var)).as_str());
+    let var = str_to_expr(("&".to_owned() + &ann.var).as_str());
     let args = ann.args
         .iter()
         .map(|arg| str_to_expr(arg))

@@ -16,7 +16,7 @@ pub struct ImplBody {
 }
 
 pub fn parse(tokens: TokenStream) -> ImplBody {
-    let bod = syn::parse::<ItemImpl>(tokens.into()).expect("Failed to parse ItemImpl");
+    let bod = syn::parse::<ItemImpl>(tokens).expect("Failed to parse ItemImpl");
 
     let impl_generics = &bod.generics;
     let impl_trait = &bod.trait_;

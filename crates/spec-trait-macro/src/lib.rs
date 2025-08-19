@@ -76,7 +76,7 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
     };
 
     cache::add_impl(Impl {
-        condition: condition,
+        condition,
         trait_name: trait_body.name.clone(),
         spec_trait_name: new_trait_name,
         type_name: impl_body.type_.clone(),

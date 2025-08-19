@@ -27,7 +27,7 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
     let mut segments = Vec::new();
     let mut current = String::new();
 
-    while let Some(token) = tokens.next() {
+    for token in tokens.by_ref() {
         match token {
             TokenTree::Punct(ref punct) if punct.as_char() == ';' => {
                 segments.push(current.trim().to_string());
@@ -40,8 +40,8 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
         segments.push(current.trim().to_string());
     }
 
-    let call = segments.get(0).unwrap_or_else(|| panic!("Method call not found"));
-    let (var, fn_, args) = parse_call(&call);
+    let call = segments.first().unwrap_or_else(|| panic!("Method call not found"));
+    let (var, fn_, args) = parse_call(call);
 
     let var_type = segments
         .get(1)
@@ -54,7 +54,7 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
         var_type
     );
 
-    let args_types: Vec<_> = segments
+    let args_types = segments
         .get(2)
         .map(|s| {
             let s = s.trim();
@@ -69,7 +69,7 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
                         x.to_string()
                     })
                     .filter(|x| !x.is_empty())
-                    .collect()
+                    .collect::<Vec<_>>()
             } else {
                 panic!("Invalid arguments types format: {}", s);
             }
@@ -131,7 +131,7 @@ fn parse_annotation(segment: &str) -> Annotation {
     }
 }
 
-pub fn get_type_aliases(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
+pub fn get_type_aliases(type_: &str, ann: &[Annotation]) -> Vec<String> {
     ann.iter()
         .filter_map(|a| {
             match a {
@@ -142,7 +142,7 @@ pub fn get_type_aliases(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
         .collect()
 }
 
-pub fn get_type_traits(type_: &str, ann: &Vec<Annotation>) -> Vec<String> {
+pub fn get_type_traits(type_: &str, ann: &[Annotation]) -> Vec<String> {
     ann.iter()
         .filter_map(|a| {
             match a {

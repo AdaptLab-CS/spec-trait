@@ -4,7 +4,7 @@ use proc_macro2::TokenStream as TokenStream2;
 use rand::{ Rng, distr::Alphanumeric };
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
-use syn::{ FnArg, ItemTrait, TraitItem, TraitItemFn, Type };
+use syn::{ FnArg, ItemTrait, TraitItem, TraitItemFn };
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TraitBody {
@@ -15,7 +15,7 @@ pub struct TraitBody {
 }
 
 pub fn parse(tokens: TokenStream) -> TraitBody {
-    let bod = syn::parse::<ItemTrait>(tokens.into()).expect("Failed to parse ItemTrait");
+    let bod = syn::parse::<ItemTrait>(tokens).expect("Failed to parse ItemTrait");
 
     let trait_name = &bod.ident;
     let trait_generics = &bod.generics;
@@ -39,17 +39,17 @@ pub fn parse(tokens: TokenStream) -> TraitBody {
 
 // TODO: append conditions hash instead of random string
 pub fn generate_trait_name(old_name: &String) -> String {
-    let random_suffix: String = rand
+    let random_suffix = rand
         ::rng()
         .sample_iter(&Alphanumeric)
         .take(8)
         .map(char::from)
-        .collect();
+        .collect::<String>();
     format!("{}_{}", *old_name, random_suffix)
 }
 
 pub fn create_spec(trait_body: &TraitBody, spec_trait_name: &str) -> TokenStream2 {
-    let name = str_to_trait(&spec_trait_name);
+    let name = str_to_trait(spec_trait_name);
     let generics = str_to_generics(&trait_body.generics);
     let fns = strs_to_trait_fns(&trait_body.fns);
 
