@@ -1,51 +1,43 @@
-use crate::conversions::{ str_to_generics, str_to_trait, strs_to_trait_fns };
+use crate::conversions::{
+    str_to_generics,
+    str_to_trait,
+    strs_to_trait_fns,
+    to_string,
+    tokens_to_trait,
+};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use rand::{ Rng, distr::Alphanumeric };
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
-use syn::{ FnArg, ItemTrait, TraitItem, TraitItemFn };
+use syn::{ FnArg, TraitItem, TraitItemFn };
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TraitBody {
     pub name: String,
     pub generics: String,
     pub fns: Vec<String>,
-    pub _raw: String,
 }
 
 pub fn parse(tokens: TokenStream) -> TraitBody {
-    let bod = syn::parse::<ItemTrait>(tokens).expect("Failed to parse ItemTrait");
+    let bod = tokens_to_trait(tokens);
 
-    let trait_name = &bod.ident;
-    let trait_generics = &bod.generics;
-    let trait_items = &bod.items;
+    let name = bod.ident.to_string();
+    let generics = to_string(&bod.generics);
+    let fns = bod.items.iter().map(to_string).collect();
 
-    let raw_str = (quote::quote! { #bod }).to_string();
-    let name_str = trait_name.to_string();
-    let generics_str = (quote::quote! { #trait_generics }).to_string();
-    let fns = trait_items
-        .iter()
-        .map(|item| (quote::quote! { #item }).to_string())
-        .collect();
-
-    TraitBody {
-        name: name_str,
-        generics: generics_str,
-        fns,
-        _raw: raw_str,
-    }
+    TraitBody { name, generics, fns }
 }
 
-// TODO: append conditions hash instead of random string
-pub fn generate_trait_name(old_name: &String) -> String {
+// TODO: append conditions hash instead of random string?
+pub fn generate_trait_name(old_name: &str) -> String {
     let random_suffix = rand
         ::rng()
         .sample_iter(&Alphanumeric)
         .take(8)
         .map(char::from)
         .collect::<String>();
-    format!("{}_{}", *old_name, random_suffix)
+    format!("{}_{}", old_name, random_suffix)
 }
 
 pub fn create_spec(trait_body: &TraitBody, spec_trait_name: &str) -> TokenStream2 {

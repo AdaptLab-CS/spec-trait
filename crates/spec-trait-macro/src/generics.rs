@@ -1,4 +1,4 @@
-use crate::WhenCondition;
+use crate::conditions::WhenCondition;
 use crate::cache::Impl;
 use crate::traits::TraitBody;
 
@@ -6,36 +6,33 @@ pub fn get_for_impl(impl_: &Impl, traits: &[TraitBody], constraints: &[WhenCondi
     let trait_ = traits
         .iter()
         .find(|tr| tr.name == impl_.trait_name)
-        .unwrap();
+        .expect("Trait not found");
 
-    let generics = trait_.generics
-        .replace("<", "")
-        .replace(">", "")
+    let generics_without_angle_brackets = &trait_.generics[1..trait_.generics.len() - 1];
+    let types = generics_without_angle_brackets
         .split(',')
-        .map(|s| s.trim().to_string())
+        .filter_map(|g| get_type(g.trim(), constraints))
         .collect::<Vec<_>>();
 
-    let generics_types = generics
-        .iter()
-        .map(|g| {
-            if
-                let Some(cond) = constraints
-                    .iter()
-                    .find(|c| matches!(c, WhenCondition::Type(generic, _) if *generic == *g))
-            {
-                match cond {
-                    WhenCondition::Type(_, type_) => type_.clone(),
-                    _ => panic!("Expected a type condition"),
-                }
-            } else {
-                "_".to_string()
-            }
-        })
-        .collect::<Vec<_>>();
-
-    if generics_types.is_empty() {
+    if types.is_empty() {
         String::new()
     } else {
-        format!("<{}>", generics_types.join(", "))
+        format!("<{}>", types.join(", "))
     }
+}
+
+fn get_type(generic: &str, constraints: &[WhenCondition]) -> Option<String> {
+    if generic.is_empty() {
+        return None;
+    }
+
+    constraints
+        .iter()
+        .find_map(|c| {
+            match c {
+                WhenCondition::Type(g, type_) if generic == *g => Some(type_.clone()),
+                _ => None,
+            }
+        })
+        .or(Some("_".to_string()))
 }

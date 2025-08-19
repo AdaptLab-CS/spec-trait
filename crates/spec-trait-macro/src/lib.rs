@@ -65,10 +65,10 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) -> TokenStream {
     let trait_body = cache::get_trait_by_name(&impl_body.trait_).expect("Trait not found in cache");
-    let new_trait_name = traits::generate_trait_name(&trait_body.name);
+    let spec_trait_name = traits::generate_trait_name(&trait_body.name);
 
-    let trait_token_stream = traits::create_spec(&trait_body, &new_trait_name);
-    let body_token_stream = impls::create_spec(&impl_body, &new_trait_name);
+    let trait_token_stream = traits::create_spec(&trait_body, &spec_trait_name);
+    let body_token_stream = impls::create_spec(&impl_body, &spec_trait_name);
 
     let combined = quote::quote! {
         #trait_token_stream
@@ -78,7 +78,7 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
     cache::add_impl(Impl {
         condition,
         trait_name: trait_body.name.clone(),
-        spec_trait_name: new_trait_name,
+        spec_trait_name,
         type_name: impl_body.type_.clone(),
     });
 

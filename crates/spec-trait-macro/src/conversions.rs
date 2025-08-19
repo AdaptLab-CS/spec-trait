@@ -1,37 +1,50 @@
-use syn::{ Expr, Generics, ImplItem, Path, TraitItem, Type, parse_str };
+use proc_macro::TokenStream;
+use syn::{ Expr, Generics, ImplItem, ItemImpl, ItemTrait, Path, TraitItem, Type };
+use quote::ToTokens;
 
 pub fn str_to_generics(str: &str) -> Generics {
-    parse_str::<Generics>(str).expect("Failed to parse generics")
+    syn::parse_str::<Generics>(str).expect("Failed to parse generics")
 }
 
 pub fn str_to_trait(str: &str) -> Path {
-    parse_str::<Path>(str).expect("Failed to parse path")
+    syn::parse_str::<Path>(str).expect("Failed to parse path")
 }
 
 pub fn str_to_type(str: &str) -> Type {
-    parse_str::<Type>(str).expect("Failed to parse type")
-}
-
-pub fn str_to_impl_item(str: &str) -> ImplItem {
-    parse_str::<ImplItem>(str).expect("Failed to parse impl item")
-}
-
-pub fn str_to_trait_item(str: &str) -> TraitItem {
-    parse_str::<TraitItem>(str).expect("Failed to parse trait item")
+    syn::parse_str::<Type>(str).expect("Failed to parse type")
 }
 
 pub fn strs_to_impl_fns(strs: &[String]) -> Vec<ImplItem> {
     strs.iter()
-        .map(|f| str_to_impl_item(f))
+        .map(|f| syn::parse_str::<ImplItem>(f).expect("Failed to parse impl item"))
         .collect()
 }
 
 pub fn strs_to_trait_fns(strs: &[String]) -> Vec<TraitItem> {
     strs.iter()
-        .map(|f| str_to_trait_item(f))
+        .map(|f| syn::parse_str::<TraitItem>(f).expect("Failed to parse trait item"))
         .collect()
 }
 
 pub fn str_to_expr(str: &str) -> Expr {
-    parse_str::<Expr>(str).expect("Failed to parse expr")
+    syn::parse_str::<Expr>(str).expect("Failed to parse expr")
+}
+
+pub fn tokens_to_trait(tokens: TokenStream) -> ItemTrait {
+    syn::parse::<ItemTrait>(tokens).expect("Failed to parse ItemTrait")
+}
+
+pub fn tokens_to_impl(tokens: TokenStream) -> ItemImpl {
+    syn::parse::<ItemImpl>(tokens).expect("Failed to parse ItemImpl")
+}
+
+pub fn to_string<T: ToTokens>(item: &T) -> String {
+    (quote::quote! { #item }).to_string()
+}
+
+pub fn trait_to_string<T, U>(trait_: &Option<(T, Path, U)>) -> String {
+    trait_
+        .as_ref()
+        .map(|(_, path, _)| to_string(path))
+        .expect("Failed to parse path")
 }

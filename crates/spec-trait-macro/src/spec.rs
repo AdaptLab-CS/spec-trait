@@ -60,9 +60,7 @@ pub fn get_most_specific_impl(
         }
     }
 
-    let (impl_ref, conditions) = most_specific.unwrap_or_else(||
-        panic!("No valid implementation found")
-    );
+    let (impl_ref, conditions) = most_specific.expect("No valid implementation found");
     (impl_ref.clone(), conditions.clone())
 }
 

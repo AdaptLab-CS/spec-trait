@@ -40,13 +40,10 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> Annot
         segments.push(current.trim().to_string());
     }
 
-    let call = segments.first().unwrap_or_else(|| panic!("Method call not found"));
+    let call = segments.first().expect("Method call not found");
     let (var, fn_, args) = parse_call(call);
 
-    let var_type = segments
-        .get(1)
-        .unwrap_or_else(|| panic!("Variable type not found"))
-        .clone();
+    let var_type = segments.get(1).expect("Variable type not found").clone();
 
     assert!(
         !var_type.contains(':') && !var_type.contains('='),
