@@ -30,9 +30,8 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /**
 `attr` is ignored
 
-`item` can be one of these forms:
+`item` is an implementation of a trait for a type:
 - `impl<T> TraitName<T> for TypeName { ... }`
-- `impl<T> TraitName for TypeName<T> { ... }`
 */
 #[proc_macro_attribute]
 pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -40,9 +39,9 @@ pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
     handle_specialization(None, impl_body)
 }
 
-// TODO: add support to other cases
+// TODO: add support to other cases (e.g. Vec<_>, &[_], (_,_), etc.)
 /**
-`attr` can be one of these forms:
+`attr` is a condition in one of these forms:
 - `T: TraitName`
 - `T: TraitName1 + TraitName2`
 - `T = TypeName`
@@ -51,7 +50,7 @@ pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
 - `any(attr1, attr2, ...)`
 - `not(attr)`
 
-`item` can be one of these forms:
+`item` is an implementation of a trait for a type:
 - `impl<T> TraitName<T> for TypeName { ... }`
 - `impl<T> TraitName for TypeName<T> { ... }`
 */
@@ -95,7 +94,7 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 
 `variable_type` is the type of the variable in the `method_call`.
 
-`args_types` is a list of types for the arguments in the `method_call`.
+`args_types` is a colon separated list of types for the arguments in the `method_call`.
 
 `annotations` is a semi-colon separated list, where each item can be one of these forms:
 - `TypeName: TraitName`
