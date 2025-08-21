@@ -1,4 +1,22 @@
 [workspace]
-members = ["crates/spec-trait-bin", "crates/spec-trait-macro"]
+members = [
+  "crates/spec-trait-bin",
+  "crates/spec-trait-macro",
+  "crates/spec-trait-order",
+]
 
 resolver = "2"
+
+[package]
+name = "spec-trait"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies] # These are the dependencies for both binaries and tests (dev-dependencies) 
+spec-trait-macro = { path = "crates/spec-trait-macro" }
+spec-trait-order = { path = "crates/spec-trait-order" }
+
+[[bin]] # --bin spec-trait-bin
+name = "spec-trait-bin"
+path = "crates/spec-trait-bin/src/main.rs"
+test = false

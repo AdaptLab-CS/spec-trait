@@ -19,6 +19,16 @@ use proc_macro::TokenStream;
 `item` is a trait definition:
 - `trait TraitName { ... }`
 - `trait TraitName<T> { ... }`
+
+# Examples
+```no_run
+use spec_trait_macro::specializable;
+
+#[specializable]
+trait MyTrait<T> {
+    fn my_method(&self, arg: T);
+}
+```
 */
 #[proc_macro_attribute]
 pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -32,6 +42,18 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 `item` is an implementation of a trait for a type:
 - `impl<T> TraitName<T> for TypeName { ... }`
+
+# Examples
+```no_run
+use spec_trait_macro::spec_default;
+
+#[spec_default]
+impl<T> MyTrait<T> for MyType {
+    fn my_method(&self, arg: T) {
+        println!("Default MyTrait for MyType");
+    }
+}
+```
 */
 #[proc_macro_attribute]
 pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -53,6 +75,25 @@ pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
 `item` is an implementation of a trait for a type:
 - `impl<T> TraitName<T> for TypeName { ... }`
 - `impl<T> TraitName for TypeName<T> { ... }`
+
+# Examples
+```no_run
+use spec_trait_macro::when;
+
+#[when(T: Foo + Bar)]
+impl<T> MyTrait<T> for MyType {
+    fn my_method(&self, arg: T) {
+        println!("MyTrait for MyType where T implements Foo and Bar");
+    }
+}
+
+#[when(not(T = i32))]
+impl<T> MyTrait<T> for MyType {
+    fn my_method(&self, arg: T) {
+        println!("MyTrait for MyType where T is not i32");
+    }
+}
+```
 */
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -100,6 +141,16 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 - `TypeName: TraitName`
 - `TypeName: TraitName1 + TraitName2`
 - `TypeName = AliasName`
+
+# Examples
+```no_run
+use spec_trait_macro::spec;
+
+let x = MyType;
+...
+spec! { x.my_method(1u8); MyType; [u8] };
+spec! { x.my_method("str", 1); MyType; [&str, i32], i32 = MyAlias  };
+```
 */
 #[proc_macro]
 pub fn spec(item: TokenStream) -> TokenStream {
