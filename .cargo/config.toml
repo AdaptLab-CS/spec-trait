@@ -1,0 +1,3 @@
+[alias]
+# cannot use "test" (built-in)
+tests = "test --workspace --exclude spec-trait-bin"

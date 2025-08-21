@@ -1,13 +1,20 @@
+mod env;
+
 use proc_macro2::TokenStream;
 use quote::quote;
-
-pub fn add(a: i32, b: i32) -> i32 {
-    a + b
-}
+use chrono::Local;
+use std::fs;
 
 /// It is assumed to be used in `build.rs` or similar context.
 pub fn handle_order() {
-    let s: &str = "
+    println!("cargo:warning=Running spec-trait-order/build.rs at {}", Local::now().to_rfc3339());
+    println!("cargo:rerun-if-changed={}", env::get_cache_path().to_string_lossy());
+    println!("cargo:rerun-if-changed=.."); // TODO: remove after development
+
+    fs::write(env::get_cache_path(), "{}").expect("Failed to write file cache");
+
+    let s: &str =
+        "
 #[when(T: MyType)]
 impl<T, U> Foo2<T, U> for ZST {
     fn foo(&self, x: T, y: U) {
@@ -21,7 +28,6 @@ impl<T, U> Foo2<T, U> for ZST {
     println!("cargo:warning=parsed: {:?}", s);
     println!("cargo:warning=TS: {:?}", ts);
 
-    
     // Qui facciamo un dump su file di ciò che abbiamo collezionato. Something like:
     // ```
     // {
@@ -33,5 +39,4 @@ impl<T, U> Foo2<T, U> for ZST {
     //  crate2: { ... }
     // }
     // ```
-
 }

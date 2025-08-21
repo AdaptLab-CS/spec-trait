@@ -21,7 +21,7 @@ use proc_macro::TokenStream;
 - `trait TraitName<T> { ... }`
 
 # Examples
-```no_run
+```ignore
 use spec_trait_macro::specializable;
 
 #[specializable]
@@ -44,7 +44,7 @@ pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
 - `impl<T> TraitName<T> for TypeName { ... }`
 
 # Examples
-```no_run
+```ignore
 use spec_trait_macro::spec_default;
 
 #[spec_default]
@@ -77,7 +77,7 @@ pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
 - `impl<T> TraitName for TypeName<T> { ... }`
 
 # Examples
-```no_run
+```ignore
 use spec_trait_macro::when;
 
 #[when(T: Foo + Bar)]
@@ -143,7 +143,7 @@ fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) 
 - `TypeName = AliasName`
 
 # Examples
-```no_run
+```ignore
 use spec_trait_macro::spec;
 
 let x = MyType;

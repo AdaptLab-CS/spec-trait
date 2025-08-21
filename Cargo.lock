@@ -280,6 +280,7 @@ name = "spec-trait-bin"
 version = "0.1.0"
 dependencies = [
  "spec-trait-macro",
+ "spec-trait-order",
 ]
 
 [[package]]
@@ -299,6 +300,7 @@ dependencies = [
 name = "spec-trait-order"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "proc-macro2",
  "quote",
  "syn",

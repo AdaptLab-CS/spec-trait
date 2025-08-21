@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 spec-trait-macro = { path = "../spec-trait-macro" }
+
+[build-dependencies]
+spec-trait-order = { path = "../spec-trait-order" }
