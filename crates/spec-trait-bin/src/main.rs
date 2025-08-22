@@ -1,5 +1,3 @@
-extern crate spec_trait_macro;
-
 use spec_trait_macro::{ spec, spec_default, specializable, when };
 
 struct ZST;
