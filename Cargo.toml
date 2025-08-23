@@ -1,9 +1,5 @@
 [workspace]
-members = [
-  "crates/spec-trait-bin",
-  "crates/spec-trait-macro",
-  "crates/spec-trait-order",
-]
+members = ["crates/*"]
 default-members = ["crates/spec-trait-bin"]
 
 

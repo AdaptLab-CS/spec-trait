@@ -1,5 +1,5 @@
 mod env;
-mod file;
+mod crates;
 
 use chrono::Local;
 use std::fs;
@@ -11,11 +11,14 @@ pub fn handle_order() {
     println!("cargo:rerun-if-changed={}", env::get_cache_path().to_string_lossy());
     println!("cargo:rerun-if-changed=.."); // TODO: remove after development
 
-    let rs_files = file::get_rs_files(Path::new("."));
-    println!("cargo:warning=Found {} .rs files", rs_files.len());
+    let dir = Path::new(".");
 
-    let file_items = rs_files.iter().map(AsRef::as_ref).flat_map(file::parse).collect::<Vec<_>>();
-    println!("cargo:warning=Found {} items in .rs files", file_items.len());
+    let crates = crates::get_crates(&dir);
+    println!("cargo:warning=Found {} crates", crates.len());
+    println!("cargo:warning=Crates: {:?}", crates);
+
+    // let file_items = crates.iter().map(AsRef::as_ref).flat_map(crates::parse).collect::<Vec<_>>();
+    // println!("cargo:warning=Found {} items in .rs files", file_items.len());
 
     fs::write(env::get_cache_path(), "{}").expect("Failed to write file cache");
     // Qui facciamo un dump su file di ciò che abbiamo collezionato. Something like:
