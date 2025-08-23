@@ -1,8 +1,13 @@
 use crate::annotations::{ Annotation, AnnotationBody, get_type_aliases, get_type_traits };
-use crate::cache::Impl;
-use crate::conditions::WhenCondition;
-use crate::conversions::{ str_to_expr, str_to_generics, str_to_trait, str_to_type };
-use crate::traits::{ find_fn, get_param_types, TraitBody };
+use spec_trait_utils::conversions::{
+    str_to_expr,
+    str_to_generics,
+    str_to_trait_name,
+    str_to_type_name,
+};
+use spec_trait_utils::traits::{ find_fn, get_param_types, TraitBody };
+use spec_trait_utils::conditions::WhenCondition;
+use spec_trait_utils::impls::ImplBody;
 use proc_macro2::TokenStream as TokenStream2;
 use std::cmp::Ordering;
 
@@ -22,10 +27,10 @@ struct FnInfo {
 }
 
 pub fn get_most_specific_impl(
-    impls: &[Impl],
+    impls: &[ImplBody],
     traits: &[TraitBody],
     ann: &AnnotationBody
-) -> (Impl, Vec<WhenCondition>) {
+) -> (ImplBody, Vec<WhenCondition>) {
     let mut filtered_impls = impls
         .iter()
         .filter_map(|impl_| {
@@ -333,9 +338,9 @@ fn satisfies_condition(
     }
 }
 
-pub fn create_spec(impl_: &Impl, generics_types: &str, ann: &AnnotationBody) -> TokenStream2 {
-    let type_ = str_to_type(&impl_.type_name);
-    let trait_ = str_to_trait(&impl_.spec_trait_name);
+pub fn create_spec(impl_: &ImplBody, generics_types: &str, ann: &AnnotationBody) -> TokenStream2 {
+    let type_ = str_to_type_name(&impl_.type_name);
+    let trait_ = str_to_trait_name(&impl_.spec_trait_name);
     let generics = str_to_generics(generics_types);
     let fn_ = str_to_expr(&ann.fn_);
     let var = str_to_expr(("&".to_owned() + &ann.var).as_str());

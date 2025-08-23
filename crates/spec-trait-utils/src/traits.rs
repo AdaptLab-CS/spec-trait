@@ -1,13 +1,11 @@
 use crate::conversions::{
     str_to_generics,
-    str_to_trait,
+    str_to_trait_name,
     strs_to_trait_fns,
     to_string,
     tokens_to_trait,
 };
-use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
-use rand::{ Rng, distr::Alphanumeric };
+use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
 use syn::{ FnArg, TraitItem, TraitItemFn };
@@ -29,19 +27,8 @@ pub fn parse(tokens: TokenStream) -> TraitBody {
     TraitBody { name, generics, fns }
 }
 
-// TODO: append conditions hash instead of random string?
-pub fn generate_trait_name(old_name: &str) -> String {
-    let random_suffix = rand
-        ::rng()
-        .sample_iter(&Alphanumeric)
-        .take(8)
-        .map(char::from)
-        .collect::<String>();
-    format!("{}_{}", old_name, random_suffix)
-}
-
-pub fn create_spec(trait_body: &TraitBody, spec_trait_name: &str) -> TokenStream2 {
-    let name = str_to_trait(spec_trait_name);
+pub fn create_spec(trait_body: &TraitBody, spec_trait_name: &str) -> TokenStream {
+    let name = str_to_trait_name(spec_trait_name);
     let generics = str_to_generics(&trait_body.generics);
     let fns = strs_to_trait_fns(&trait_body.fns);
 

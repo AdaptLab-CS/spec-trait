@@ -1,21 +1,13 @@
-use crate::conditions::WhenCondition;
-use crate::env::get_cache_path;
 use crate::traits::{ find_fn, TraitBody };
+use crate::impls::ImplBody;
+use crate::env::get_cache_path;
 use serde::{ Deserialize, Serialize };
 use std::fs;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Impl {
-    pub condition: Option<WhenCondition>,
-    pub trait_name: String,
-    pub spec_trait_name: String,
-    pub type_name: String,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Cache {
     pub traits: Vec<TraitBody>,
-    pub impls: Vec<Impl>,
+    pub impls: Vec<ImplBody>,
 }
 
 pub fn read_cache() -> Cache {
@@ -39,7 +31,7 @@ pub fn add_trait(tr: TraitBody) {
     write_cache(&cache);
 }
 
-pub fn add_impl(imp: Impl) {
+pub fn add_impl(imp: ImplBody) {
     let mut cache = read_cache();
     cache.impls.push(imp);
     write_cache(&cache);
@@ -58,7 +50,7 @@ pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
         .collect()
 }
 
-pub fn get_impls_by_type_and_traits(type_name: &str, traits: &[TraitBody]) -> Vec<Impl> {
+pub fn get_impls_by_type_and_traits(type_name: &str, traits: &[TraitBody]) -> Vec<ImplBody> {
     let cache = read_cache();
     let traits_names = traits
         .iter()

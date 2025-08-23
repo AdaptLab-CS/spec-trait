@@ -365,6 +365,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "spec-trait-utils",
  "syn",
 ]
 
@@ -376,9 +377,21 @@ dependencies = [
  "glob",
  "proc-macro2",
  "quote",
+ "spec-trait-utils",
  "syn",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "spec-trait-utils"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+ "syn",
 ]
 
 [[package]]

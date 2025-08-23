@@ -1,16 +1,17 @@
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use syn::{ Expr, Generics, ImplItem, ItemImpl, ItemTrait, Path, TraitItem, Type };
 use quote::ToTokens;
+use std::hash::{ DefaultHasher, Hasher, Hash };
 
 pub fn str_to_generics(str: &str) -> Generics {
     syn::parse_str::<Generics>(str).expect("Failed to parse generics")
 }
 
-pub fn str_to_trait(str: &str) -> Path {
+pub fn str_to_trait_name(str: &str) -> Path {
     syn::parse_str::<Path>(str).expect("Failed to parse path")
 }
 
-pub fn str_to_type(str: &str) -> Type {
+pub fn str_to_type_name(str: &str) -> Type {
     syn::parse_str::<Type>(str).expect("Failed to parse type")
 }
 
@@ -31,11 +32,11 @@ pub fn str_to_expr(str: &str) -> Expr {
 }
 
 pub fn tokens_to_trait(tokens: TokenStream) -> ItemTrait {
-    syn::parse::<ItemTrait>(tokens).expect("Failed to parse ItemTrait")
+    syn::parse::<ItemTrait>(tokens.into()).expect("Failed to parse ItemTrait")
 }
 
 pub fn tokens_to_impl(tokens: TokenStream) -> ItemImpl {
-    syn::parse::<ItemImpl>(tokens).expect("Failed to parse ItemImpl")
+    syn::parse::<ItemImpl>(tokens.into()).expect("Failed to parse ItemImpl")
 }
 
 pub fn to_string<T: ToTokens>(item: &T) -> String {
@@ -47,4 +48,10 @@ pub fn trait_to_string<T, U>(trait_: &Option<(T, Path, U)>) -> String {
         .as_ref()
         .map(|(_, path, _)| to_string(path))
         .expect("Failed to parse path")
+}
+
+pub fn to_hash<T: Hash>(item: &T) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    item.hash(&mut hasher);
+    hasher.finish()
 }

@@ -1,17 +1,13 @@
 mod annotations;
-mod cache;
-mod conditions;
-mod conversions;
-mod env;
 mod generics;
-mod impls;
 mod spec;
-mod traits;
 
-use cache::Impl;
-use conditions::WhenCondition;
-use impls::ImplBody;
+use spec_trait_utils::conditions;
+use spec_trait_utils::cache;
+use spec_trait_utils::traits;
+use spec_trait_utils::impls::{ self, ImplBody };
 use proc_macro::TokenStream;
+use proc_macro2::TokenStream as TokenStream2;
 
 /**
 `attr` is ignored
@@ -32,7 +28,7 @@ trait MyTrait<T> {
 */
 #[proc_macro_attribute]
 pub fn specializable(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let tr = traits::parse(item.clone());
+    let tr = traits::parse(TokenStream2::from(item.clone()));
     cache::add_trait(tr);
     item
 }
@@ -57,8 +53,8 @@ impl<T> MyTrait<T> for MyType {
 */
 #[proc_macro_attribute]
 pub fn spec_default(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let impl_body = impls::parse(item);
-    handle_specialization(None, impl_body)
+    let impl_body = impls::parse(TokenStream2::from(item), &None);
+    handle_specialization(impl_body)
 }
 
 // TODO: add support to other cases (e.g. Vec<_>, &[_], (_,_), etc.)
@@ -97,30 +93,26 @@ impl<T> MyTrait<T> for MyType {
 */
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let cond = conditions::parse(attr);
+    let cond = conditions::parse(TokenStream2::from(attr));
     let normalized_cond = conditions::normalize(&cond);
-    let impl_body = impls::parse(item);
-    handle_specialization(Some(normalized_cond), impl_body)
+    let impl_body = impls::parse(TokenStream2::from(item), &Some(normalized_cond));
+    handle_specialization(impl_body)
 }
 
-fn handle_specialization(condition: Option<WhenCondition>, impl_body: ImplBody) -> TokenStream {
-    let trait_body = cache::get_trait_by_name(&impl_body.trait_).expect("Trait not found in cache");
-    let spec_trait_name = traits::generate_trait_name(&trait_body.name);
+fn handle_specialization(impl_body: ImplBody) -> TokenStream {
+    let trait_body = cache
+        ::get_trait_by_name(&impl_body.trait_name)
+        .expect("Trait not found in cache");
 
-    let trait_token_stream = traits::create_spec(&trait_body, &spec_trait_name);
-    let body_token_stream = impls::create_spec(&impl_body, &spec_trait_name);
+    let trait_token_stream = traits::create_spec(&trait_body, &impl_body.spec_trait_name);
+    let body_token_stream = impls::create_spec(&impl_body);
 
     let combined = quote::quote! {
         #trait_token_stream
         #body_token_stream
     };
 
-    cache::add_impl(Impl {
-        condition,
-        trait_name: trait_body.name.clone(),
-        spec_trait_name,
-        type_name: impl_body.type_.clone(),
-    });
+    cache::add_impl(impl_body);
 
     combined.into()
 }

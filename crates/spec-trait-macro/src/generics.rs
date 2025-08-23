@@ -1,8 +1,12 @@
-use crate::conditions::WhenCondition;
-use crate::cache::Impl;
 use crate::traits::TraitBody;
+use spec_trait_utils::conditions::WhenCondition;
+use spec_trait_utils::impls::ImplBody;
 
-pub fn get_for_impl(impl_: &Impl, traits: &[TraitBody], constraints: &[WhenCondition]) -> String {
+pub fn get_for_impl(
+    impl_: &ImplBody,
+    traits: &[TraitBody],
+    constraints: &[WhenCondition]
+) -> String {
     let trait_ = traits
         .iter()
         .find(|tr| tr.name == impl_.trait_name)

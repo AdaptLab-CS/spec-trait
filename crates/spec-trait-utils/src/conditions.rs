@@ -1,10 +1,10 @@
 use core::panic;
-use proc_macro::{ TokenStream, TokenTree };
+use proc_macro2::{ TokenStream, TokenTree };
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
 use std::iter::Peekable;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum WhenCondition {
     Type(String /* generic */, String /* type */),
     Trait(String /* generic */, Vec<String> /* traits */),
