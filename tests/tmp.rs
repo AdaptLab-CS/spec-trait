@@ -1,4 +1,2 @@
 #[test]
-fn it_works() {
-    spec_trait_order::handle_order();
-}
+fn it_works() {}

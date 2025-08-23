@@ -50,6 +50,7 @@ fn get_crates_from_workspace_members(value: &toml::Value, dir: &Path) -> Vec<Cra
     crates
 }
 
+// member_str can be something like "crates/my_crate", "crates/*", etc.
 fn handle_workspace_member_pattern(member_str: &str, dir: &Path) -> Vec<Crate> {
     let member_dir = dir.join(member_str);
 
@@ -57,8 +58,8 @@ fn handle_workspace_member_pattern(member_str: &str, dir: &Path) -> Vec<Crate> {
         return get_crates(&member_dir);
     }
 
-    let pattern = member_dir.to_str().expect("Invalid UTF-8 in path");
-    let paths = glob(&pattern).expect("Failed to read glob pattern");
+    let pattern = member_dir.to_str().expect("Invalid UTF-8 in member path");
+    let paths = glob(&pattern).expect("Failed to parse member pattern");
 
     paths
         .filter_map(Result::ok)
@@ -98,4 +99,139 @@ pub fn parse(path: &Path) -> Vec<Item> {
     let content = fs::read_to_string(path).expect("failed to read file");
     let file = syn::parse_file(&content).expect("failed to parse content");
     file.items // TODO: parse each item properly
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::{ create_dir_all, write };
+    use std::path::Path;
+    use tempfile::tempdir;
+    use super::*;
+
+    fn make_package(dir: &Path, name: &str, src_files: &[(&str, &str)]) {
+        create_dir_all(dir.join("src")).expect("create src");
+        let cargo = format!(r#"[package]
+name = "{}"
+version = "0.1.0"
+"#, name);
+        write(dir.join("Cargo.toml"), cargo).expect("write Cargo.toml");
+        for (fname, content) in src_files {
+            write(dir.join("src").join(fname), content).expect("write src file");
+        }
+    }
+
+    fn make_workspace(dir: &Path, members: &[&str]) {
+        let members_list = members
+            .iter()
+            .map(|m| format!(r#""{}""#, m))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let cargo = format!(r#"[workspace]
+members = [{}]
+"#, members_list);
+        write(dir.join("Cargo.toml"), cargo).expect("write Cargo.toml");
+    }
+
+    #[test]
+    // single package, no workspace
+    fn single_package() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        make_package(
+            root,
+            "foo",
+            &[
+                ("lib.rs", "pub fn main(){}"),
+                ("foo.rs", "pub fn foo(){}"),
+            ]
+        );
+
+        let crates = get_crates(root);
+
+        assert_eq!(crates.len(), 1);
+        assert_eq!(crates[0].name, "foo");
+        assert!(crates[0].path.ends_with(root));
+        assert!(crates[0].files.iter().any(|p| p.ends_with("lib.rs")));
+        assert!(crates[0].files.iter().any(|p| p.ends_with("foo.rs")));
+    }
+
+    #[test]
+    // workspace with members listed explicitly
+    fn workspace_members_list() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        make_workspace(root, &["foo", "bar"]);
+        make_package(&root.join("foo"), "foo", &[("lib.rs", "pub fn foo(){}")]);
+        make_package(&root.join("bar"), "bar", &[("lib.rs", "pub fn bar(){}")]);
+        make_package(&root.join("baz"), "baz", &[("lib.rs", "pub fn baz(){}")]);
+
+        let crates = get_crates(root);
+
+        let names = crates
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(crates.len(), 2);
+        assert!(names.contains(&"foo"));
+        assert!(names.contains(&"bar"));
+        assert!(!names.contains(&"baz"));
+    }
+
+    #[test]
+    // workspace with members listed via glob
+    fn workspace_members_glob() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        make_workspace(root, &["crates/*"]);
+        make_package(&root.join("crates").join("foo"), "foo", &[("lib.rs", "pub fn foo(){}")]);
+        make_package(&root.join("crates").join("bar"), "bar", &[("lib.rs", "pub fn bar(){}")]);
+
+        let crates = get_crates(root);
+
+        let names = crates
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(crates.len(), 2);
+        assert!(names.contains(&"foo"));
+        assert!(names.contains(&"bar"));
+    }
+
+    #[test]
+    // root package with workspace
+    fn root_package_with_workspace_members() {
+        let td = tempdir().unwrap();
+        let root = td.path();
+
+        make_package(&root, "root", &[("lib.rs", "pub fn main(){}")]);
+        make_package(&root.join("crates").join("foo"), "foo", &[("lib.rs", "pub fn foo(){}")]);
+        make_package(&root.join("crates").join("bar"), "bar", &[("lib.rs", "pub fn bar(){}")]);
+
+        let cargo =
+            "[package]
+name = \"root\"
+version = \"0.1.0\"
+
+[workspace]
+members = [\"crates/*\"]
+";
+        write(root.join("Cargo.toml"), cargo).expect("write Cargo.toml");
+
+        let crates = get_crates(root);
+
+        let names = crates
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(crates.len(), 3);
+        assert!(names.contains(&"root"));
+        assert!(names.contains(&"foo"));
+        assert!(names.contains(&"bar"));
+    }
 }

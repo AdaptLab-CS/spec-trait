@@ -9,13 +9,12 @@ use std::path::Path;
 pub fn handle_order() {
     println!("cargo:warning=Running spec-trait-order/build.rs at {}", Local::now().to_rfc3339());
     println!("cargo:rerun-if-changed={}", env::get_cache_path().to_string_lossy());
-    println!("cargo:rerun-if-changed=.."); // TODO: remove after development
+    println!("cargo:rerun-if-changed=."); // TODO: remove after development
 
     let dir = Path::new(".");
 
     let crates = crates::get_crates(&dir);
-    println!("cargo:warning=Found {} crates", crates.len());
-    println!("cargo:warning=Crates: {:?}", crates);
+    println!("cargo:warning=Found {} crates: {:?}", crates.len(), crates);
 
     // let file_items = crates.iter().map(AsRef::as_ref).flat_map(crates::parse).collect::<Vec<_>>();
     // println!("cargo:warning=Found {} items in .rs files", file_items.len());
