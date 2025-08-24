@@ -17,6 +17,13 @@ pub fn handle_order() {
     let crates = crates::get_crates(&dir);
     println!("cargo:warning=Found {} crates: {:?}", crates.len(), crates);
 
+    for crate_ in crates {
+        for file in crate_.files {
+            let file_content = files::parse(&file);
+            println!("cargo:warning=File_content of {}: {:?}", file.display(), file_content);
+        }
+    }
+
     // let file_items = crates.iter().map(AsRef::as_ref).flat_map(crates::parse).collect::<Vec<_>>();
     // println!("cargo:warning=Found {} items in .rs files", file_items.len());
 

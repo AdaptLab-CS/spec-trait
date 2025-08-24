@@ -11,6 +11,7 @@ use crate::conversions::{
 use crate::conditions::WhenCondition;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
+use syn::{ ItemImpl, Attribute };
 use std::fmt::Debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -70,4 +71,11 @@ pub fn create_spec(impl_body: &ImplBody) -> TokenStream {
             #(#fns)*
         }
     }
+}
+
+pub fn break_attr(impl_: &ItemImpl) -> (ItemImpl, Vec<Attribute>) {
+    let attrs = impl_.attrs.clone();
+    let mut impl_no_attrs = impl_.clone();
+    impl_no_attrs.attrs.clear();
+    (impl_no_attrs, attrs)
 }

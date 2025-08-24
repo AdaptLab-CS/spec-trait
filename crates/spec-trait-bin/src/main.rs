@@ -1,12 +1,10 @@
-use spec_trait_macro::{ spec, spec_default, specializable, when };
+use spec_trait_macro::{ spec, spec_default, when };
 
 struct ZST;
 struct ZST2;
 
-#[specializable]
 trait Foo<T> { fn foo(&self, x: T); }
 
-#[specializable]
 trait Foo2<T, U> {
     fn foo(&self, x: T, y: U);
 }

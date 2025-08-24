@@ -32,11 +32,11 @@ pub fn str_to_expr(str: &str) -> Expr {
 }
 
 pub fn tokens_to_trait(tokens: TokenStream) -> ItemTrait {
-    syn::parse::<ItemTrait>(tokens.into()).expect("Failed to parse ItemTrait")
+    syn::parse_str::<ItemTrait>(&tokens.to_string()).expect("Failed to parse ItemTrait")
 }
 
 pub fn tokens_to_impl(tokens: TokenStream) -> ItemImpl {
-    syn::parse::<ItemImpl>(tokens.into()).expect("Failed to parse ItemImpl")
+    syn::parse_str::<ItemImpl>(&tokens.to_string()).expect("Failed to parse ItemImpl")
 }
 
 pub fn to_string<T: ToTokens>(item: &T) -> String {

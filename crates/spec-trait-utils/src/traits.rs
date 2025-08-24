@@ -8,7 +8,7 @@ use crate::conversions::{
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
-use syn::{ FnArg, TraitItem, TraitItemFn };
+use syn::{ Attribute, FnArg, ItemTrait, TraitItem, TraitItemFn };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TraitBody {
@@ -78,4 +78,11 @@ pub fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
             }
         })
         .collect()
+}
+
+pub fn break_attr(trait_: &ItemTrait) -> (ItemTrait, Vec<Attribute>) {
+    let attrs = trait_.attrs.clone();
+    let mut trait_no_attrs = trait_.clone();
+    trait_no_attrs.attrs.clear();
+    (trait_no_attrs, attrs)
 }
