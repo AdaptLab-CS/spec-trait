@@ -1,4 +1,4 @@
-use spec_trait_macro::{ spec, spec_default, when };
+use spec_trait_macro::{ spec, when };
 
 struct ZST;
 struct ZST2;
@@ -20,7 +20,6 @@ impl FooBar for i64 {}
 
 // ZST - Foo
 
-#[spec_default]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
         println!("Default Foo for ZST");
@@ -50,7 +49,6 @@ impl<T> Foo<T> for ZST {
 
 // ZST - Foo2
 
-#[spec_default]
 impl<T, U> Foo2<T, U> for ZST {
     fn foo(&self, x: T, y: U) {
         println!("Default Foo2 for ZST");
@@ -67,7 +65,6 @@ impl<T, U> Foo2<T, U> for ZST {
 
 // ZST2 - Foo
 
-#[spec_default]
 impl<T> Foo<T> for ZST2 {
     fn foo(&self, x: T) {
         println!("Default Foo for ZST2");

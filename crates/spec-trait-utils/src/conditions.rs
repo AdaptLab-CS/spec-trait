@@ -13,9 +13,10 @@ pub enum WhenCondition {
     Not(Box<WhenCondition>),
 }
 
+/** parses the condition from the TokenStream and normalizes it */
 pub fn parse(attr: TokenStream) -> WhenCondition {
     let mut tokens = attr.into_iter().peekable();
-    parse_tokens(&mut tokens)
+    normalize(&parse_tokens(&mut tokens))
 }
 
 fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> WhenCondition {
@@ -151,7 +152,7 @@ fn parse_aggr(
     }
 }
 
-pub fn normalize(condition: &WhenCondition) -> WhenCondition {
+fn normalize(condition: &WhenCondition) -> WhenCondition {
     let mut current = to_dnf(condition);
     let mut next = to_dnf(&current);
 

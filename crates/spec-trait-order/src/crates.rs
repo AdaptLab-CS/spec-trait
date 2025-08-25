@@ -1,12 +1,15 @@
+use crate::files;
 use std::path::{ Path, PathBuf };
 use std::fs;
 use glob::glob;
+use spec_trait_utils::cache::CrateCache;
 
 #[derive(Debug)]
 pub struct Crate {
     pub name: String,
     pub path: PathBuf,
     pub files: Vec<PathBuf>,
+    pub content: CrateCache,
 }
 
 // Get all crates in the given directory, considering both single-package and workspace setups
@@ -25,14 +28,25 @@ pub fn get_crates(dir: &Path) -> Vec<Crate> {
 fn get_crate_from_package(value: &toml::Value, dir: &Path) -> Option<Crate> {
     if let Some(package) = value.get("package") {
         if let Some(name) = package.get("name").and_then(|n| n.as_str()) {
+            let files = get_crate_rs_files(dir);
+            let content = get_crate_content_from_files(&files);
             return Some(Crate {
                 name: name.to_string(),
                 path: dir.to_path_buf(),
-                files: get_crate_rs_files(dir),
+                files,
+                content,
             });
         }
     }
     None
+}
+
+fn get_crate_content_from_files(files: &[PathBuf]) -> CrateCache {
+    let crate_files_content = files
+        .iter()
+        .map(|f| files::parse(&f))
+        .collect::<Vec<_>>();
+    files::flatten_contents(&crate_files_content)
 }
 
 fn get_crates_from_workspace_members(value: &toml::Value, dir: &Path) -> Vec<Crate> {

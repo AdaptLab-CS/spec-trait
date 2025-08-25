@@ -56,7 +56,11 @@ fn get_spec_trait_name(
     trait_name: &str,
     type_name: &str
 ) -> String {
-    format!("{}_{}_{}", trait_name, type_name, to_hash(condition))
+    if let Some(c) = condition {
+        format!("{}_{}_{}", trait_name, type_name, to_hash(&c)) // TODO: check if we need the type_name here
+    } else {
+        trait_name.to_string()
+    }
 }
 
 pub fn create_spec(impl_body: &ImplBody) -> TokenStream {

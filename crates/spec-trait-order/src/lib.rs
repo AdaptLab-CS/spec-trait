@@ -2,7 +2,7 @@ mod crates;
 mod files;
 
 use chrono::Local;
-use std::fs;
+use spec_trait_utils::cache;
 use std::path::Path;
 use spec_trait_utils::env::get_cache_path;
 
@@ -13,30 +13,10 @@ pub fn handle_order() {
     println!("cargo:rerun-if-changed=."); // TODO: remove after development
 
     let dir = Path::new(".");
-
     let crates = crates::get_crates(&dir);
-    println!("cargo:warning=Found {} crates: {:?}", crates.len(), crates);
 
+    cache::reset();
     for crate_ in crates {
-        for file in crate_.files {
-            let file_content = files::parse(&file);
-            println!("cargo:warning=File_content of {}: {:?}", file.display(), file_content);
-        }
+        cache::add_crate(&crate_.name, crate_.content);
     }
-
-    // let file_items = crates.iter().map(AsRef::as_ref).flat_map(crates::parse).collect::<Vec<_>>();
-    // println!("cargo:warning=Found {} items in .rs files", file_items.len());
-
-    fs::write(get_cache_path(), "{}").expect("Failed to write file cache");
-    // Qui facciamo un dump su file di ciò che abbiamo collezionato. Something like:
-    // ```
-    // {
-    //  crate1: {
-    //   specializable: [ ... ]
-    //   default_and_when: [ ... ] // Consideriamo di dividerli
-    //   spec!: [ ... ] // For fl-macro, probably not needed
-    //  },
-    //  crate2: { ... }
-    // }
-    // ```
 }
