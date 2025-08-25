@@ -7,12 +7,11 @@ use spec_trait_utils::cache::CrateCache;
 #[derive(Debug)]
 pub struct Crate {
     pub name: String,
-    pub path: PathBuf,
-    pub files: Vec<PathBuf>,
     pub content: CrateCache,
+    #[cfg(test)] pub files: Vec<PathBuf>,
 }
 
-// Get all crates in the given directory, considering both single-package and workspace setups
+/// Get all crates in the given directory, considering both single-package and workspace setups
 pub fn get_crates(dir: &Path) -> Vec<Crate> {
     let cargo_toml_path = dir.join("Cargo.toml");
     let cargo_toml_content = fs
@@ -22,53 +21,43 @@ pub fn get_crates(dir: &Path) -> Vec<Crate> {
 
     let crate_from_package = get_crate_from_package(&cargo_toml_value, dir);
     let crates_from_workspace_members = get_crates_from_workspace_members(&cargo_toml_value, dir);
-    crate_from_package.into_iter().chain(crates_from_workspace_members.into_iter()).collect()
+    crate_from_package.into_iter().chain(crates_from_workspace_members).collect()
 }
 
 fn get_crate_from_package(value: &toml::Value, dir: &Path) -> Option<Crate> {
-    if let Some(package) = value.get("package") {
-        if let Some(name) = package.get("name").and_then(|n| n.as_str()) {
-            let files = get_crate_rs_files(dir);
-            let content = get_crate_content_from_files(&files);
-            return Some(Crate {
-                name: name.to_string(),
-                path: dir.to_path_buf(),
-                files,
-                content,
-            });
-        }
-    }
-    None
-}
+    let package = value.get("package")?;
+    let name = package.get("name")?.as_str()?;
 
-fn get_crate_content_from_files(files: &[PathBuf]) -> CrateCache {
-    let crate_files_content = files
-        .iter()
-        .map(|f| files::parse(&f))
-        .collect::<Vec<_>>();
-    files::flatten_contents(&crate_files_content)
+    let src_path = dir.join("src");
+    let files = get_dir_rs_files(&src_path);
+    let content = files::parse_all(&files);
+
+    Some(Crate {
+        name: name.to_string(),
+        content,
+        #[cfg(test)] files,
+    })
 }
 
 fn get_crates_from_workspace_members(value: &toml::Value, dir: &Path) -> Vec<Crate> {
-    let mut crates = vec![];
-    if let Some(workspace) = value.get("workspace") {
-        if let Some(members) = workspace.get("members").and_then(|m| m.as_array()) {
-            for member in members {
-                if let Some(member_str) = member.as_str() {
-                    let member_crates = handle_workspace_member_pattern(member_str, dir);
-                    crates.extend(member_crates);
-                }
-            }
-        }
-    }
-    crates
+    let members = value
+        .get("workspace")
+        .and_then(|workspace| workspace.get("members"))
+        .and_then(|m| m.as_array().cloned())
+        .unwrap_or_default();
+
+    members
+        .iter()
+        .filter_map(|member| member.as_str())
+        .flat_map(|member_str| handle_workspace_member_pattern(member_str, dir))
+        .collect()
 }
 
-// member_str can be something like "crates/my_crate", "crates/*", etc.
+/// member_str can be something like "crates/my_crate", "crates/*", etc.
 fn handle_workspace_member_pattern(member_str: &str, dir: &Path) -> Vec<Crate> {
     let member_dir = dir.join(member_str);
     let pattern = member_dir.to_str().expect("Invalid UTF-8 in member path");
-    let paths = glob(&pattern).expect("Failed to parse member pattern");
+    let paths = glob(pattern).expect("Failed to parse member pattern");
 
     paths
         .filter_map(Result::ok)
@@ -76,24 +65,17 @@ fn handle_workspace_member_pattern(member_str: &str, dir: &Path) -> Vec<Crate> {
         .collect()
 }
 
-// get all .rs files in the src directory of the crate located at dir
-fn get_crate_rs_files(dir: &Path) -> Vec<PathBuf> {
-    let src_path = dir.join("src");
-    handle_dir(&src_path)
-}
-
-// recursively find all .rs files in the given directory and subdirectories
-fn handle_dir(dir: &Path) -> Vec<PathBuf> {
+/// recursively find all .rs files in the given directory and subdirectories
+fn get_dir_rs_files(dir: &Path) -> Vec<PathBuf> {
     let entries = fs::read_dir(dir).expect("Failed to read directory");
     entries
         .filter_map(Result::ok)
         .flat_map(|entry| {
             let path = entry.path();
-            let extension = path.extension().and_then(|s| s.to_str());
-            let is_rs = extension == Some("rs");
+            let is_rs = path.extension().and_then(|s| s.to_str()) == Some("rs");
 
             if path.is_dir() {
-                handle_dir(&path)
+                get_dir_rs_files(&path)
             } else if path.is_file() && is_rs {
                 vec![path]
             } else {
@@ -153,7 +135,6 @@ members = [{}]
 
         assert_eq!(crates.len(), 1);
         assert_eq!(crates[0].name, "foo");
-        assert!(crates[0].path.ends_with(root));
         assert!(crates[0].files.iter().any(|p| p.ends_with("lib.rs")));
         assert!(crates[0].files.iter().any(|p| p.ends_with("foo.rs")));
     }

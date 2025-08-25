@@ -373,7 +373,6 @@ dependencies = [
 name = "spec-trait-order"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "glob",
  "proc-macro2",
  "quote",
