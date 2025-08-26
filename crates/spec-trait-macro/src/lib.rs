@@ -2,10 +2,9 @@ mod annotations;
 mod generics;
 mod spec;
 
-use spec_trait_utils::conditions;
+use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::cache;
-use spec_trait_utils::traits;
-use spec_trait_utils::impls;
+use spec_trait_utils::impls::ImplBody;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 
@@ -45,15 +44,21 @@ impl<T> MyTrait<T> for MyType {
 */
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let cond = conditions::parse(TokenStream2::from(attr));
-    let impl_body = impls::parse(TokenStream2::from(item), &Some(cond)); // TODO: get from cache
+    let cond = WhenCondition::try_from(TokenStream2::from(attr)).expect(
+        "Failed to parse TokenStream into WhenCondition"
+    );
+    let impl_body = ImplBody::try_from((TokenStream2::from(item), Some(cond))).expect(
+        "Failed to parse TokenStream into ImplBody"
+    );
 
-    let trait_body = cache
+    let mut trait_body = cache
         ::get_trait_by_name(&impl_body.trait_name)
         .expect("Trait not found in cache");
 
-    let trait_token_stream = traits::create_spec(&trait_body, &impl_body.spec_trait_name);
-    let impl_token_stream = impls::create_spec(&impl_body);
+    trait_body.name = impl_body.spec_trait_name.clone();
+
+    let trait_token_stream = TokenStream2::from(&trait_body);
+    let impl_token_stream = TokenStream2::from(&impl_body);
 
     let combined = quote::quote! {
         #trait_token_stream

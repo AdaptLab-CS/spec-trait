@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::fs;
 
-use spec_trait_utils::conditions::{ self, WhenCondition };
+use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::{ self, ImplBody };
 use spec_trait_utils::traits::{ self, TraitBody };
 use spec_trait_utils::cache::CrateCache;
@@ -42,8 +42,8 @@ fn get_traits(items: &[Item]) -> Vec<TraitBody> {
         })
         .map(|trait_| {
             let (trait_no_attrs, _) = traits::break_attr(trait_);
-            let token_stream = quote! { #trait_no_attrs };
-            traits::parse(token_stream)
+            let tokens = quote! { #trait_no_attrs };
+            TraitBody::try_from(tokens).expect("Failed to parse TokenStream into TraitBody")
         })
         .collect()
 }
@@ -61,7 +61,9 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
             let (impl_no_attrs, impl_attrs) = impls::break_attr(impl_);
             let tokens = quote! { #impl_no_attrs };
             let condition = get_condition(&impl_attrs);
-            impls::parse(tokens, &condition)
+            ImplBody::try_from((tokens, condition)).expect(
+                "Failed to parse TokenStream into ImplBody"
+            )
         })
         .collect()
 }
@@ -69,13 +71,13 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
 fn get_condition(attrs: &[Attribute]) -> Option<WhenCondition> {
     attrs
         .iter()
-        .find(|attr| attr.path().is_ident("when"))
+        .find(|attr| attr.path().is_ident("when")) // TODO: handle use spec_trait_macro::{ when as ... }
         .and_then(|attr| {
             match attr.clone().meta {
                 Meta::List(meta_list) => {
                     let params = meta_list.tokens;
                     let tokens = quote! { #params };
-                    Some(conditions::parse(tokens))
+                    WhenCondition::try_from(tokens).ok()
                 }
                 _ => None,
             }

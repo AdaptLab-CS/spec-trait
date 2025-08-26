@@ -1,4 +1,3 @@
-use core::panic;
 use proc_macro2::{ TokenStream, TokenTree };
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
@@ -13,13 +12,19 @@ pub enum WhenCondition {
     Not(Box<WhenCondition>),
 }
 
-/** parses the condition from the TokenStream and normalizes it */
-pub fn parse(attr: TokenStream) -> WhenCondition {
-    let mut tokens = attr.into_iter().peekable();
-    normalize(&parse_tokens(&mut tokens))
+impl TryFrom<TokenStream> for WhenCondition {
+    type Error = String;
+
+    fn try_from(tokens: TokenStream) -> Result<Self, Self::Error> {
+        let mut tokens = tokens.into_iter().peekable();
+        let parsed = parse_tokens(&mut tokens)?;
+        Ok(normalize(&parsed))
+    }
 }
 
-fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> WhenCondition {
+fn parse_tokens(
+    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
+) -> Result<WhenCondition, String> {
     if let Some(token) = tokens.next() {
         match token {
             TokenTree::Ident(ident) => {
@@ -31,44 +36,44 @@ fn parse_tokens(tokens: &mut Peekable<impl Iterator<Item = TokenTree>>) -> WhenC
                     handle_type_or_trait(ident_str, tokens)
                 }
             }
-            _ => panic!("Unexpected token: {:?}", token),
+            _ => Err(format!("Unexpected token: {:?}", token)),
         }
     } else {
-        panic!("Unexpected end of tokens");
+        Err("Unexpected end of tokens".to_owned())
     }
 }
 
 fn handle_aggr(
     ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> WhenCondition {
+) -> Result<WhenCondition, String> {
     if let Some(TokenTree::Group(group)) = tokens.next() {
         let group_tokens = &mut group.stream().into_iter().peekable();
         parse_aggr(ident, group_tokens)
     } else {
-        panic!("Expected a group after `{}`", ident);
+        Err(format!("Expected a group after `{}`", ident))
     }
 }
 
 fn handle_type_or_trait(
     ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> WhenCondition {
+) -> Result<WhenCondition, String> {
     if let Some(TokenTree::Punct(punct)) = tokens.next() {
         match punct.as_char() {
             ':' => parse_trait(ident, tokens),
             '=' => parse_type(ident, tokens),
-            _ => panic!("Unexpected punctuation: {}", punct),
+            _ => Err(format!("Unexpected punctuation: {}", punct)),
         }
     } else {
-        panic!("Expected ':' or '=' after identifier");
+        Err("Expected ':' or '=' after identifier".to_owned())
     }
 }
 
 fn parse_type(
     ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> WhenCondition {
+) -> Result<WhenCondition, String> {
     let mut type_name = String::new();
 
     if let Some(TokenTree::Punct(punct)) = tokens.peek() {
@@ -80,16 +85,16 @@ fn parse_type(
 
     if let Some(TokenTree::Ident(name)) = tokens.next() {
         type_name.push_str(&name.to_string());
-        WhenCondition::Type(ident, type_name)
+        Ok(WhenCondition::Type(ident, type_name))
     } else {
-        panic!("Expected a type name after '='");
+        Err("Expected a type name after '='".to_owned())
     }
 }
 
 fn parse_trait(
     ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> WhenCondition {
+) -> Result<WhenCondition, String> {
     let mut traits = Vec::new();
 
     while let Some(TokenTree::Ident(name)) = tokens.peek() {
@@ -108,47 +113,49 @@ fn parse_trait(
     }
 
     if traits.is_empty() {
-        panic!("Expected at least one trait after ':'");
+        return Err("Expected at least one trait after ':'".to_owned());
     }
 
-    WhenCondition::Trait(ident, traits)
+    Ok(WhenCondition::Trait(ident, traits))
 }
 
 fn parse_aggr(
     ident: String,
     tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> WhenCondition {
+) -> Result<WhenCondition, String> {
     let mut args = Vec::new();
 
     while let Some(token) = tokens.next() {
         match token {
             TokenTree::Ident(_) => {
                 let mut inline_tokens = std::iter::once(token).chain(tokens.by_ref()).peekable();
-                args.push(parse_tokens(&mut inline_tokens));
+                args.push(parse_tokens(&mut inline_tokens)?);
             }
             TokenTree::Punct(punct) => {
                 if punct.as_char() != ',' {
-                    panic!("Unexpected punctuation: '{}'", punct.to_string());
+                    return Err(format!("Unexpected punctuation: '{}'", punct.to_string()));
                 }
             }
-            _ => panic!("Unexpected token in aggregation function: {:?}", token),
+            _ => {
+                return Err(format!("Unexpected token in aggregation function: {:?}", token));
+            }
         }
     }
 
     if args.is_empty() {
-        panic!("Expected at least one arg for `{}`", ident);
+        return Err(format!("Expected at least one arg for `{}`", ident));
     }
 
     match ident.as_str() {
-        "all" => WhenCondition::All(args),
-        "any" => WhenCondition::Any(args),
+        "all" => Ok(WhenCondition::All(args)),
+        "any" => Ok(WhenCondition::Any(args)),
         "not" => {
             if args.len() != 1 {
-                panic!("`not` must have exactly one argument");
+                return Err("`not` must have exactly one argument".to_owned());
             }
-            WhenCondition::Not(Box::new(args.into_iter().next().unwrap()))
+            Ok(WhenCondition::Not(Box::new(args.into_iter().next().unwrap())))
         }
-        _ => panic!("Unknown aggregation function: {}", ident),
+        _ => Err(format!("Unknown aggregation function: {}", ident)),
     }
 }
 

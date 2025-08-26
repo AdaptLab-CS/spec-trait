@@ -1,5 +1,5 @@
 use proc_macro2::TokenStream;
-use syn::{ Expr, Generics, ImplItem, ItemImpl, ItemTrait, Path, TraitItem, Type };
+use syn::{ Expr, Generics, ImplItem, ItemImpl, ItemTrait, Path, TraitItem, Type, Result };
 use quote::ToTokens;
 use std::hash::{ DefaultHasher, Hasher, Hash };
 
@@ -31,12 +31,12 @@ pub fn str_to_expr(str: &str) -> Expr {
     syn::parse_str::<Expr>(str).expect("Failed to parse expr")
 }
 
-pub fn tokens_to_trait(tokens: TokenStream) -> ItemTrait {
-    syn::parse_str::<ItemTrait>(&tokens.to_string()).expect("Failed to parse ItemTrait")
+pub fn tokens_to_trait(tokens: TokenStream) -> Result<ItemTrait> {
+    syn::parse2::<ItemTrait>(tokens)
 }
 
-pub fn tokens_to_impl(tokens: TokenStream) -> ItemImpl {
-    syn::parse_str::<ItemImpl>(&tokens.to_string()).expect("Failed to parse ItemImpl")
+pub fn tokens_to_impl(tokens: TokenStream) -> Result<ItemImpl> {
+    syn::parse2::<ItemImpl>(tokens)
 }
 
 pub fn to_string<T: ToTokens>(item: &T) -> String {

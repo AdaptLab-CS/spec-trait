@@ -1,4 +1,4 @@
-use crate::traits::TraitBody;
+use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
 

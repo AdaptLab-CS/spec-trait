@@ -13,6 +13,7 @@ use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use syn::{ ItemImpl, Attribute };
 use std::fmt::Debug;
+use quote::quote;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImplBody {
@@ -25,25 +26,32 @@ pub struct ImplBody {
     pub fns: Vec<String>,
 }
 
-pub fn parse(tokens: TokenStream, condition: &Option<WhenCondition>) -> ImplBody {
-    let bod = tokens_to_impl(tokens);
+impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
+    type Error = syn::Error;
 
-    let impl_generics = to_string(&bod.generics);
-    let trait_with_generics = trait_to_string(&bod.trait_);
-    let trait_name = get_trait_name_without_generics(&trait_with_generics);
-    let trait_generics = trait_with_generics.replace(&trait_name, "");
-    let type_name = to_string(&bod.self_ty);
-    let fns = bod.items.iter().map(to_string).collect();
-    let spec_trait_name = get_spec_trait_name(condition, &trait_name, &type_name);
+    fn try_from((tokens, condition): (TokenStream, Option<WhenCondition>)) -> Result<
+        Self,
+        Self::Error
+    > {
+        let bod = tokens_to_impl(tokens)?;
 
-    ImplBody {
-        condition: condition.clone(),
-        impl_generics,
-        trait_name,
-        trait_generics,
-        spec_trait_name,
-        type_name,
-        fns,
+        let impl_generics = to_string(&bod.generics);
+        let trait_with_generics = trait_to_string(&bod.trait_);
+        let trait_name = get_trait_name_without_generics(&trait_with_generics);
+        let trait_generics = trait_with_generics.replace(&trait_name, "");
+        let type_name = to_string(&bod.self_ty);
+        let fns = bod.items.iter().map(to_string).collect();
+        let spec_trait_name = get_spec_trait_name(&condition, &trait_name, &type_name);
+
+        Ok(ImplBody {
+            condition,
+            impl_generics,
+            trait_name,
+            trait_generics,
+            spec_trait_name,
+            type_name,
+            fns,
+        })
     }
 }
 
@@ -56,27 +64,29 @@ fn get_spec_trait_name(
     trait_name: &str,
     type_name: &str
 ) -> String {
-    if let Some(c) = condition {
-        format!("{}_{}_{}", trait_name, type_name, to_hash(&c)) // TODO: check if we need the type_name here
-    } else {
-        trait_name.to_string()
+    match condition {
+        Some(c) => format!("{}_{}_{}", trait_name, type_name, to_hash(c)), // TODO: check if we need the type_name here
+        None => trait_name.to_owned(),
     }
 }
 
-pub fn create_spec(impl_body: &ImplBody) -> TokenStream {
-    let impl_generics = str_to_generics(&impl_body.impl_generics);
-    let trait_name = str_to_trait_name(&impl_body.spec_trait_name);
-    let trait_generics = str_to_generics(&impl_body.trait_generics);
-    let type_name = str_to_type_name(&impl_body.type_name);
-    let fns = strs_to_impl_fns(&impl_body.fns);
+impl From<&ImplBody> for TokenStream {
+    fn from(impl_body: &ImplBody) -> Self {
+        let impl_generics = str_to_generics(&impl_body.impl_generics);
+        let trait_name = str_to_trait_name(&impl_body.spec_trait_name);
+        let trait_generics = str_to_generics(&impl_body.trait_generics);
+        let type_name = str_to_type_name(&impl_body.type_name);
+        let fns = strs_to_impl_fns(&impl_body.fns);
 
-    quote::quote! {
+        quote! {
         impl #impl_generics #trait_name #trait_generics for #type_name {
             #(#fns)*
         }
     }
+    }
 }
 
+/// from an ItemImpl returns the ItemImpl without attributes and the attributes as a Vec
 pub fn break_attr(impl_: &ItemImpl) -> (ItemImpl, Vec<Attribute>) {
     let attrs = impl_.attrs.clone();
     let mut impl_no_attrs = impl_.clone();
