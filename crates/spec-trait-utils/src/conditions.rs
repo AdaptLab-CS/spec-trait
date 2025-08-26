@@ -1,7 +1,9 @@
-use proc_macro2::{ TokenStream, TokenTree };
+use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
-use std::iter::Peekable;
+use syn::{ Error, Type, Ident, Token };
+use syn::parse::{ Parse, ParseStream };
+use quote::quote;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
 pub enum WhenCondition {
@@ -13,162 +15,88 @@ pub enum WhenCondition {
 }
 
 impl TryFrom<TokenStream> for WhenCondition {
-    type Error = String;
+    type Error = syn::Error;
 
     fn try_from(tokens: TokenStream) -> Result<Self, Self::Error> {
-        let mut tokens = tokens.into_iter().peekable();
-        let parsed = parse_tokens(&mut tokens)?;
-        Ok(normalize(&parsed))
+        let parsed_condition = syn::parse2(tokens)?;
+        Ok(normalize(&parsed_condition))
     }
 }
 
-fn parse_tokens(
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> Result<WhenCondition, String> {
-    if let Some(token) = tokens.next() {
-        match token {
-            TokenTree::Ident(ident) => {
-                let ident_str = ident.to_string();
+impl Parse for WhenCondition {
+    fn parse(input: ParseStream) -> Result<Self, Error> {
+        let ident = input.parse::<Ident>()?;
+        let ident_str = ident.to_string();
 
-                if ident_str == "all" || ident_str == "any" || ident_str == "not" {
-                    handle_aggr(ident_str, tokens)
-                } else {
-                    handle_type_or_trait(ident_str, tokens)
-                }
-            }
-            _ => Err(format!("Unexpected token: {:?}", token)),
-        }
-    } else {
-        Err("Unexpected end of tokens".to_owned())
-    }
-}
-
-fn handle_aggr(
-    ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> Result<WhenCondition, String> {
-    if let Some(TokenTree::Group(group)) = tokens.next() {
-        let group_tokens = &mut group.stream().into_iter().peekable();
-        parse_aggr(ident, group_tokens)
-    } else {
-        Err(format!("Expected a group after `{}`", ident))
-    }
-}
-
-fn handle_type_or_trait(
-    ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> Result<WhenCondition, String> {
-    if let Some(TokenTree::Punct(punct)) = tokens.next() {
-        match punct.as_char() {
-            ':' => parse_trait(ident, tokens),
-            '=' => parse_type(ident, tokens),
-            _ => Err(format!("Unexpected punctuation: {}", punct)),
-        }
-    } else {
-        Err("Expected ':' or '=' after identifier".to_owned())
-    }
-}
-
-fn parse_type(
-    ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> Result<WhenCondition, String> {
-    let mut type_name = String::new();
-
-    if let Some(TokenTree::Punct(punct)) = tokens.peek() {
-        if punct.as_char() == '&' {
-            tokens.next();
-            type_name.push('&');
+        match ident_str.as_str() {
+            "all" | "any" | "not" => parse_aggregation(ident, input),
+            _ => parse_type_or_trait(ident, input),
         }
     }
+}
 
-    if let Some(TokenTree::Ident(name)) = tokens.next() {
-        type_name.push_str(&name.to_string());
-        Ok(WhenCondition::Type(ident, type_name))
+fn parse_type_or_trait(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
+    if input.peek(Token![=]) {
+        parse_type(ident, input)
+    } else if input.peek(Token![:]) {
+        parse_trait(ident, input)
     } else {
-        Err("Expected a type name after '='".to_owned())
+        Err(Error::new(ident.span(), "Expected ':' or '=' after identifier"))
     }
 }
 
-fn parse_trait(
-    ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> Result<WhenCondition, String> {
-    let mut traits = Vec::new();
+fn parse_type(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
+    input.parse::<Token![=]>()?; // consume the '=' token
+    let type_name = input.parse::<Type>()?;
+    Ok(WhenCondition::Type(ident.to_string(), quote!(#type_name).to_string()))
+}
 
-    while let Some(TokenTree::Ident(name)) = tokens.peek() {
-        traits.push(name.to_string());
-        tokens.next();
-
-        if let Some(TokenTree::Punct(punct)) = tokens.peek() {
-            if punct.as_char() == '+' {
-                tokens.next();
-            } else {
-                break;
-            }
-        } else {
-            break;
-        }
-    }
+fn parse_trait(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
+    input.parse::<Token![:]>()?; // consume the ':' token
+    let traits = input.parse_terminated(Ident::parse, Token![+])?;
 
     if traits.is_empty() {
-        return Err("Expected at least one trait after ':'".to_owned());
+        return Err(Error::new(ident.span(), "Expected at least one trait after ':'"));
     }
 
-    Ok(WhenCondition::Trait(ident, traits))
+    let traits = traits
+        .into_iter()
+        .map(|t| t.to_string())
+        .collect();
+    Ok(WhenCondition::Trait(ident.to_string(), traits))
 }
 
-fn parse_aggr(
-    ident: String,
-    tokens: &mut Peekable<impl Iterator<Item = TokenTree>>
-) -> Result<WhenCondition, String> {
-    let mut args = Vec::new();
+fn parse_aggregation(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
+    let content;
+    syn::parenthesized!(content in input); // consume the '(' and ')' token pair
 
-    while let Some(token) = tokens.next() {
-        match token {
-            TokenTree::Ident(_) => {
-                let mut inline_tokens = std::iter::once(token).chain(tokens.by_ref()).peekable();
-                args.push(parse_tokens(&mut inline_tokens)?);
-            }
-            TokenTree::Punct(punct) => {
-                if punct.as_char() != ',' {
-                    return Err(format!("Unexpected punctuation: '{}'", punct.to_string()));
-                }
-            }
-            _ => {
-                return Err(format!("Unexpected token in aggregation function: {:?}", token));
-            }
-        }
-    }
+    let conditions = content
+        .parse_terminated(WhenCondition::parse, Token![,])?
+        .into_iter()
+        .collect();
 
-    if args.is_empty() {
-        return Err(format!("Expected at least one arg for `{}`", ident));
-    }
-
-    match ident.as_str() {
-        "all" => Ok(WhenCondition::All(args)),
-        "any" => Ok(WhenCondition::Any(args)),
+    match ident.to_string().as_str() {
+        "all" => Ok(WhenCondition::All(conditions)),
+        "any" => Ok(WhenCondition::Any(conditions)),
         "not" => {
-            if args.len() != 1 {
-                return Err("`not` must have exactly one argument".to_owned());
+            if conditions.len() != 1 {
+                return Err(Error::new(ident.span(), "`not` must have exactly one argument"));
             }
-            Ok(WhenCondition::Not(Box::new(args.into_iter().next().unwrap())))
+            Ok(WhenCondition::Not(Box::new(conditions.into_iter().next().unwrap())))
         }
-        _ => Err(format!("Unknown aggregation function: {}", ident)),
+        _ => Err(Error::new(ident.span(), format!("Unknown aggregation function: {}", ident))),
     }
 }
 
 fn normalize(condition: &WhenCondition) -> WhenCondition {
-    let mut current = to_dnf(condition);
-    let mut next = to_dnf(&current);
-
-    while next != current {
+    let mut current = condition.clone();
+    loop {
+        let next = to_dnf(&current);
+        if next == current {
+            return current;
+        }
         current = next;
-        next = to_dnf(&current);
     }
-
-    current
 }
 
 fn to_dnf(condition: &WhenCondition) -> WhenCondition {
@@ -176,8 +104,8 @@ fn to_dnf(condition: &WhenCondition) -> WhenCondition {
         WhenCondition::All(inner) => all_to_dnf(inner),
         WhenCondition::Any(inner) => any_to_dnf(inner),
         WhenCondition::Not(inner) => not_to_dnf(inner),
-        WhenCondition::Type(_, _) => (*condition).clone(),
-        WhenCondition::Trait(_, _) => (*condition).clone(),
+        // type and trait conditions are already in dnf
+        _ => condition.clone(),
     }
 }
 
@@ -193,7 +121,7 @@ fn all_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
 
         // A and (B or C) -> (A and B) or (A and C)
         dnf = dnf
-            .into_iter()
+            .iter()
             .flat_map(|existing| {
                 cond_dnf.iter().map(move |c| [existing.clone(), vec![c.clone()]].concat())
             })
@@ -223,25 +151,15 @@ fn any_to_dnf(conditions: &[WhenCondition]) -> WhenCondition {
 fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
     match condition {
         // not(A and B) -> not(A) or not(B)
-        WhenCondition::All(inner) =>
-            to_dnf(
-                &WhenCondition::Any(
-                    inner
-                        .iter()
-                        .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
-                        .collect()
-                )
-            ),
+        WhenCondition::All(inner) => {
+            let negated = inner.iter().cloned().map(Box::new).map(WhenCondition::Not).collect();
+            to_dnf(&WhenCondition::Any(negated))
+        }
         // not(A or B) -> not(A) and not(B)
-        WhenCondition::Any(inner) =>
-            to_dnf(
-                &WhenCondition::All(
-                    inner
-                        .iter()
-                        .map(|cond| WhenCondition::Not(Box::new(cond.clone())))
-                        .collect()
-                )
-            ),
+        WhenCondition::Any(inner) => {
+            let negated = inner.iter().cloned().map(Box::new).map(WhenCondition::Not).collect();
+            to_dnf(&WhenCondition::All(negated))
+        }
         // not(not(A)) -> A
         WhenCondition::Not(inner) => to_dnf(inner),
         // not(A) -> not(A)
