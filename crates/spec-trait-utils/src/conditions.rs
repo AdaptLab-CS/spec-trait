@@ -1,11 +1,12 @@
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
+use std::collections::HashSet;
 use std::fmt::Debug;
-use syn::{ Error, Type, Ident, Token };
+use syn::{ Error, Type, Ident, Token, parenthesized };
 use syn::parse::{ Parse, ParseStream };
 use quote::quote;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WhenCondition {
     Type(String /* generic */, String /* type */),
     Trait(String /* generic */, Vec<String> /* traits */),
@@ -26,9 +27,8 @@ impl TryFrom<TokenStream> for WhenCondition {
 impl Parse for WhenCondition {
     fn parse(input: ParseStream) -> Result<Self, Error> {
         let ident = input.parse::<Ident>()?;
-        let ident_str = ident.to_string();
 
-        match ident_str.as_str() {
+        match ident.to_string().as_str() {
             "all" | "any" | "not" => parse_aggregation(ident, input),
             _ => parse_type_or_trait(ident, input),
         }
@@ -52,38 +52,51 @@ fn parse_type(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> 
 }
 
 fn parse_trait(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
-    input.parse::<Token![:]>()?; // consume the ':' token
-    let traits = input.parse_terminated(Ident::parse, Token![+])?;
+    input.parse::<Token![:]>()?; // Consume the ':' token
+
+    let mut traits = vec![];
+
+    while !input.is_empty() && !input.peek(Token![,]) {
+        traits.push(input.parse::<Ident>()?.to_string());
+
+        if input.peek(Token![+]) {
+            input.parse::<Token![+]>()?; // consume the '+' token
+        }
+    }
 
     if traits.is_empty() {
         return Err(Error::new(ident.span(), "Expected at least one trait after ':'"));
     }
 
-    let traits = traits
-        .into_iter()
-        .map(|t| t.to_string())
-        .collect();
     Ok(WhenCondition::Trait(ident.to_string(), traits))
 }
 
 fn parse_aggregation(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
     let content;
-    syn::parenthesized!(content in input); // consume the '(' and ')' token pair
+    parenthesized!(content in input); // consume the '(' and ')' token pair
 
-    let conditions = content
-        .parse_terminated(WhenCondition::parse, Token![,])?
-        .into_iter()
-        .collect();
+    let mut conditions = vec![];
+
+    while !content.is_empty() {
+        conditions.push(content.parse::<WhenCondition>()?);
+
+        if content.peek(Token![,]) {
+            content.parse::<Token![,]>()?; // consume the ',' token
+        }
+    }
+
+    if conditions.is_empty() {
+        return Err(Error::new(ident.span(), format!("`{}` requires at least one argument", ident)));
+    }
 
     match ident.to_string().as_str() {
         "all" => Ok(WhenCondition::All(conditions)),
         "any" => Ok(WhenCondition::Any(conditions)),
-        "not" => {
-            if conditions.len() != 1 {
-                return Err(Error::new(ident.span(), "`not` must have exactly one argument"));
+        "not" =>
+            match conditions.as_slice() {
+                [condition] => Ok(WhenCondition::Not(Box::new(condition.clone()))),
+                _ => Err(Error::new(ident.span(), "`not` must have exactly one argument")),
             }
-            Ok(WhenCondition::Not(Box::new(conditions.into_iter().next().unwrap())))
-        }
         _ => Err(Error::new(ident.span(), format!("Unknown aggregation function: {}", ident))),
     }
 }
@@ -128,24 +141,29 @@ fn all_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
             .collect();
     }
 
-    WhenCondition::Any(dnf.into_iter().map(WhenCondition::All).collect())
+    let dnf_conditions = dnf
+        .into_iter()
+        .map(|inner| flatten_and_deduplicate(inner, WhenCondition::All))
+        .collect::<Vec<_>>();
+
+    flatten_and_deduplicate(dnf_conditions, WhenCondition::Any)
 }
 
 fn any_to_dnf(conditions: &[WhenCondition]) -> WhenCondition {
-    WhenCondition::Any(
-        conditions
-            .iter()
-            .map(to_dnf)
-            .flat_map(|cond| {
-                match cond {
-                    // A or (B or C) -> A or B or C
-                    WhenCondition::Any(inner) => inner,
-                    // A or B -> A or B
-                    other => vec![other],
-                }
-            })
-            .collect()
-    )
+    let dnf = conditions
+        .iter()
+        .map(to_dnf)
+        .flat_map(|cond| {
+            match cond {
+                // A or (B or C) -> A or B or C
+                WhenCondition::Any(inner) => inner,
+                // A or B -> A or B
+                other => vec![other],
+            }
+        })
+        .collect::<Vec<_>>();
+
+    flatten_and_deduplicate(dnf, WhenCondition::Any)
 }
 
 fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
@@ -164,5 +182,147 @@ fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
         WhenCondition::Not(inner) => to_dnf(inner),
         // not(A) -> not(A)
         _ => WhenCondition::Not(Box::new(to_dnf(condition))),
+    }
+}
+
+// TODO: check deduplication with [all(A, B), all(B, A)]
+fn flatten_and_deduplicate(
+    conditions: Vec<WhenCondition>,
+    wrapper: fn(Vec<WhenCondition>) -> WhenCondition
+) -> WhenCondition {
+    // remove duplicates
+    let mut seen = HashSet::new();
+    let unique_conditions = conditions
+        .into_iter()
+        .filter(|cond| seen.insert(cond.clone()))
+        .collect::<Vec<_>>();
+
+    // flatten if there's only one condition
+    if unique_conditions.len() == 1 {
+        unique_conditions.first().cloned().unwrap()
+    } else {
+        wrapper(unique_conditions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_type_condition() {
+        let input = quote! { T = u32 };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(condition, WhenCondition::Type("T".into(), "u32".into()));
+    }
+
+    #[test]
+    fn parse_single_trait_condition() {
+        let input = quote! { T: Clone };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(condition, WhenCondition::Trait("T".into(), vec!["Clone".into()]));
+    }
+
+    #[test]
+    fn parse_multiple_trait_condition() {
+        let input = quote! { T: Clone + Debug };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(
+            condition,
+            WhenCondition::Trait("T".into(), vec!["Clone".into(), "Debug".into()])
+        );
+    }
+
+    #[test]
+    fn parse_all_condition() {
+        let input = quote! { all(T: Clone, U = u32) };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(
+            condition,
+            WhenCondition::All(
+                vec![
+                    WhenCondition::Trait("T".into(), vec!["Clone".into()]),
+                    WhenCondition::Type("U".into(), "u32".into())
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn parse_any_condition() {
+        let input = quote! { any(U = u32, T: Clone) };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(
+            condition,
+            WhenCondition::Any(
+                vec![
+                    WhenCondition::Type("U".into(), "u32".into()),
+                    WhenCondition::Trait("T".into(), vec!["Clone".into()])
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn parse_not_condition() {
+        let input = quote! { not(T: Clone) };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(
+            condition,
+            WhenCondition::Not(Box::new(WhenCondition::Trait("T".into(), vec!["Clone".into()])))
+        );
+    }
+
+    #[test]
+    fn flatten() {
+        let inputs = vec![
+            quote! { any(T = i32) },
+            quote! { any(any(T = i32)) },
+            quote! { all(T = i32) },
+            quote! { all(all(T = i32)) },
+            quote! { not(not(T = i32)) }
+        ];
+
+        for input in inputs {
+            let condition = WhenCondition::try_from(input).unwrap();
+            assert_eq!(condition, WhenCondition::Type("T".into(), "i32".into()));
+        }
+    }
+
+    #[test]
+    fn normalization() {
+        let input =
+            quote! { any(not(all(T = A, all(T = B, T = C), any(U = D, U = C), not(not(T = A)), all(T = D), any(U = D))), all(T = A, any(T = B, T = C), T = D)) };
+        let condition = WhenCondition::try_from(input).unwrap();
+        let expected = WhenCondition::Any(
+            vec![
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "B".into()))),
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "C".into()))),
+                WhenCondition::All(
+                    vec![
+                        WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "D".into()))),
+                        WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "C".into())))
+                    ]
+                ),
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "D".into()))),
+                WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "D".into()))),
+                WhenCondition::All(
+                    vec![
+                        WhenCondition::Type("T".into(), "A".into()),
+                        WhenCondition::Type("T".into(), "B".into()),
+                        WhenCondition::Type("T".into(), "D".into())
+                    ]
+                ),
+                WhenCondition::All(
+                    vec![
+                        WhenCondition::Type("T".into(), "A".into()),
+                        WhenCondition::Type("T".into(), "C".into()),
+                        WhenCondition::Type("T".into(), "D".into())
+                    ]
+                )
+            ]
+        );
+        assert_eq!(condition, expected);
     }
 }

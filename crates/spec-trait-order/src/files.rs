@@ -119,7 +119,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_all_files() {
+    fn parse_all_files() {
         let dir = tempdir().unwrap();
         let file1_path = dir.path().join("file1.rs");
         let file2_path = dir.path().join("file2.rs");
