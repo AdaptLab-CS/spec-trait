@@ -1,18 +1,85 @@
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use std::collections::HashSet;
-use std::fmt::Debug;
+use std::fmt::{ Debug, Display, Formatter, Result as FmtResult };
+use std::hash::{ Hash, Hasher };
 use syn::{ Error, Type, Ident, Token, parenthesized };
 use syn::parse::{ Parse, ParseStream };
 use quote::quote;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
     Type(String /* generic */, String /* type */),
     Trait(String /* generic */, Vec<String> /* traits */),
     All(Vec<WhenCondition>),
     Any(Vec<WhenCondition>),
     Not(Box<WhenCondition>),
+}
+
+impl Display for WhenCondition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        fn to_string(conditions: &[WhenCondition]) -> String {
+            conditions
+                .iter()
+                .map(|cond| cond.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
+        match self {
+            WhenCondition::Type(generic, ty) => write!(f, "{} = {}", generic, ty),
+            WhenCondition::Trait(generic, traits) =>
+                write!(f, "{}: {}", generic, traits.join(" + ")),
+            WhenCondition::All(conditions) => write!(f, "all({})", to_string(conditions)),
+            WhenCondition::Any(conditions) => write!(f, "any({})", to_string(conditions)),
+            WhenCondition::Not(condition) => write!(f, "not({})", condition),
+        }
+    }
+}
+
+impl Hash for WhenCondition {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            WhenCondition::Type(generic, ty) => {
+                generic.hash(state);
+                ty.hash(state);
+            }
+            WhenCondition::Trait(generic, traits) => {
+                generic.hash(state);
+                let mut sorted_traits: Vec<_> = traits.iter().collect();
+                sorted_traits.sort();
+                for trait_name in sorted_traits {
+                    trait_name.hash(state);
+                }
+            }
+            WhenCondition::All(conditions) | WhenCondition::Any(conditions) => {
+                let mut sorted_conditions: Vec<_> = conditions.iter().collect();
+                sorted_conditions.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                for condition in sorted_conditions {
+                    condition.hash(state);
+                }
+            }
+            WhenCondition::Not(condition) => {
+                condition.hash(state);
+            }
+        }
+    }
+}
+
+impl PartialEq for WhenCondition {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (WhenCondition::Type(g1, t1), WhenCondition::Type(g2, t2)) => g1 == g2 && t1 == t2,
+            (WhenCondition::Trait(g1, tr1), WhenCondition::Trait(g2, tr2)) => {
+                g1 == g2 && tr1.iter().collect::<HashSet<_>>() == tr2.iter().collect::<HashSet<_>>()
+            }
+            | (WhenCondition::All(c1), WhenCondition::All(c2))
+            | (WhenCondition::Any(c1), WhenCondition::Any(c2)) => {
+                c1.iter().collect::<HashSet<_>>() == c2.iter().collect::<HashSet<_>>()
+            }
+            (WhenCondition::Not(c1), WhenCondition::Not(c2)) => c1 == c2,
+            _ => false,
+        }
+    }
 }
 
 impl TryFrom<TokenStream> for WhenCondition {
@@ -185,23 +252,22 @@ fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
     }
 }
 
-// TODO: check deduplication with [all(A, B), all(B, A)]
 fn flatten_and_deduplicate(
     conditions: Vec<WhenCondition>,
     wrapper: fn(Vec<WhenCondition>) -> WhenCondition
 ) -> WhenCondition {
     // remove duplicates
     let mut seen = HashSet::new();
-    let unique_conditions = conditions
+    let unique = conditions
         .into_iter()
         .filter(|cond| seen.insert(cond.clone()))
         .collect::<Vec<_>>();
 
     // flatten if there's only one condition
-    if unique_conditions.len() == 1 {
-        unique_conditions.first().cloned().unwrap()
+    if unique.len() == 1 {
+        unique.first().cloned().unwrap()
     } else {
-        wrapper(unique_conditions)
+        wrapper(unique)
     }
 }
 
@@ -290,9 +356,56 @@ mod tests {
     }
 
     #[test]
+    fn deduplicate() {
+        let inputs = vec![
+            (
+                vec![
+                    WhenCondition::Type("T".into(), "A".into()),
+                    WhenCondition::Type("T".into(), "A".into())
+                ],
+                WhenCondition::Type("T".into(), "A".into()),
+            ),
+            (
+                vec![
+                    WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
+                    WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into())))
+                ],
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
+            ),
+            (
+                vec![
+                    WhenCondition::Any(
+                        vec![
+                            WhenCondition::Type("T".into(), "A".into()),
+                            WhenCondition::Type("T".into(), "B".into())
+                        ]
+                    ),
+                    WhenCondition::Any(
+                        vec![
+                            WhenCondition::Type("T".into(), "B".into()),
+                            WhenCondition::Type("T".into(), "A".into())
+                        ]
+                    )
+                ],
+                WhenCondition::Any(
+                    vec![
+                        WhenCondition::Type("T".into(), "A".into()),
+                        WhenCondition::Type("T".into(), "B".into())
+                    ]
+                ),
+            )
+        ];
+
+        for (input, expected) in inputs {
+            let unique = flatten_and_deduplicate(input, WhenCondition::Any);
+            assert_eq!(unique, expected);
+        }
+    }
+
+    #[test]
     fn normalization() {
         let input =
-            quote! { any(not(all(T = A, all(T = B, T = C), any(U = D, U = C), not(not(T = A)), all(T = D), any(U = D))), all(T = A, any(T = B, T = C), T = D)) };
+            quote! { any(not(all(T = A, all(T = B, T = C), any(U = D, U = C), not(not(T = A)), all(T = D), any(U = D))), all(T = A, any(T = B, T = C), T = D), any(all(T = A, T = B), all(T = B, T = A))) };
         let condition = WhenCondition::try_from(input).unwrap();
         let expected = WhenCondition::Any(
             vec![
@@ -319,6 +432,12 @@ mod tests {
                         WhenCondition::Type("T".into(), "A".into()),
                         WhenCondition::Type("T".into(), "C".into()),
                         WhenCondition::Type("T".into(), "D".into())
+                    ]
+                ),
+                WhenCondition::All(
+                    vec![
+                        WhenCondition::Type("T".into(), "A".into()),
+                        WhenCondition::Type("T".into(), "B".into())
                     ]
                 )
             ]
