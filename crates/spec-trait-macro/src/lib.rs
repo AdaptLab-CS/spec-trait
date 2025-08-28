@@ -7,6 +7,7 @@ use spec_trait_utils::cache;
 use spec_trait_utils::impls::ImplBody;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
+use annotations::AnnotationBody;
 
 // TODO: add support to other cases (e.g. Vec<_>, &[_], (_,_), etc.)
 /**
@@ -60,6 +61,8 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     let trait_token_stream = TokenStream2::from(&trait_body);
     let impl_token_stream = TokenStream2::from(&impl_body);
 
+    //TODO: infer generics from conditions (e.g. with condition "T = Type" generic "T" is replaced with type "Type")
+
     let combined = quote::quote! {
         #trait_token_stream
         #impl_token_stream
@@ -97,7 +100,9 @@ spec! { x.my_method("str", 1); MyType; [&str, i32], i32 = MyAlias  };
 */
 #[proc_macro]
 pub fn spec(item: TokenStream) -> TokenStream {
-    let ann = annotations::parse(item);
+    let ann = AnnotationBody::try_from(TokenStream2::from(item)).expect(
+        "Failed to parse TokenStream into AnnotationBody"
+    );
 
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
     let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits);

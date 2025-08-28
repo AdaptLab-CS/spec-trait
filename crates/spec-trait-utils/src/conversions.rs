@@ -4,39 +4,39 @@ use quote::ToTokens;
 use std::hash::{ DefaultHasher, Hasher, Hash };
 
 pub fn str_to_generics(str: &str) -> Generics {
-    syn::parse_str::<Generics>(str).expect("Failed to parse generics")
+    syn::parse_str(str).expect("Failed to parse generics")
 }
 
 pub fn str_to_trait_name(str: &str) -> Path {
-    syn::parse_str::<Path>(str).expect("Failed to parse path")
+    syn::parse_str(str).expect("Failed to parse path")
 }
 
 pub fn str_to_type_name(str: &str) -> Type {
-    syn::parse_str::<Type>(str).expect("Failed to parse type")
+    syn::parse_str(str).expect("Failed to parse type")
 }
 
 pub fn strs_to_impl_fns(strs: &[String]) -> Vec<ImplItem> {
     strs.iter()
-        .map(|f| syn::parse_str::<ImplItem>(f).expect("Failed to parse impl item"))
+        .map(|f| syn::parse_str(f).expect("Failed to parse impl item"))
         .collect()
 }
 
 pub fn strs_to_trait_fns(strs: &[String]) -> Vec<TraitItem> {
     strs.iter()
-        .map(|f| syn::parse_str::<TraitItem>(f).expect("Failed to parse trait item"))
+        .map(|f| syn::parse_str(f).expect("Failed to parse trait item"))
         .collect()
 }
 
 pub fn str_to_expr(str: &str) -> Expr {
-    syn::parse_str::<Expr>(str).expect("Failed to parse expr")
+    syn::parse_str(str).expect("Failed to parse expr")
 }
 
 pub fn tokens_to_trait(tokens: TokenStream) -> Result<ItemTrait> {
-    syn::parse2::<ItemTrait>(tokens)
+    syn::parse2(tokens)
 }
 
 pub fn tokens_to_impl(tokens: TokenStream) -> Result<ItemImpl> {
-    syn::parse2::<ItemImpl>(tokens)
+    syn::parse2(tokens)
 }
 
 pub fn to_string<T: ToTokens>(item: &T) -> String {
