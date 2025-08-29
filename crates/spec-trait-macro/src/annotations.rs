@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use spec_trait_utils::conversions::to_string;
+use spec_trait_utils::parsing::{ parse_type_or_trait, ParseTypeOrTrait };
 use std::fmt::Debug;
 use syn::parse::{ Parse, ParseStream };
-use syn::{ bracketed, parenthesized, Error, Expr, Ident, Token, token, Type };
-use quote::quote;
+use syn::{ bracketed, parenthesized, Error, Expr, Ident, Token, token };
 
 #[derive(Debug, PartialEq)]
 pub enum Annotation {
@@ -19,6 +19,23 @@ pub struct AnnotationBody {
     pub var_type: String,
     pub args_types: Vec<String>,
     pub annotations: Vec<Annotation>,
+}
+
+impl ParseTypeOrTrait for Annotation {
+    fn from_type(ident: String, type_name: String) -> Self {
+        Annotation::Alias(ident, type_name)
+    }
+
+    fn from_trait(ident: String, traits: Vec<String>) -> Self {
+        Annotation::Trait(ident, traits)
+    }
+}
+
+impl Parse for Annotation {
+    fn parse(input: ParseStream) -> Result<Self, Error> {
+        let ident: Ident = input.parse()?;
+        parse_type_or_trait(ident, input)
+    }
 }
 
 impl TryFrom<TokenStream> for AnnotationBody {
@@ -85,71 +102,26 @@ fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
         let content;
         bracketed!(content in input); // consume the '[' and ']' token pair
 
-        let args = content.parse_terminated(Ident::parse, Token![,])?;
-
-        if input.peek(Token![;]) {
-            input.parse::<Token![;]>()?; // consume the ';' token
-        }
-
-        args.into_iter()
-            .map(|s| s.to_string())
+        content
+            .parse_terminated(Ident::parse, Token![,])?
+            .into_iter()
+            .map(|ident| ident.to_string())
             .collect()
     } else {
         vec![]
     };
 
+    if input.peek(Token![;]) {
+        input.parse::<Token![;]>()?; // consume the ';' token
+    }
+
     Ok((var_type.to_string(), args_types))
 }
 
 fn parse_annotations(input: ParseStream) -> Result<Vec<Annotation>, Error> {
-    let mut annotations = vec![];
-
-    while !input.is_empty() {
-        let ident: Ident = input.parse()?;
-        annotations.push(parse_type_or_trait(ident, input)?);
-
-        if input.peek(Token![;]) {
-            input.parse::<Token![;]>()?; // consume the ';' token
-        }
-    }
-
-    Ok(annotations)
-}
-
-fn parse_type_or_trait(ident: Ident, input: ParseStream) -> Result<Annotation, Error> {
-    if input.peek(Token![=]) {
-        parse_type(ident, input)
-    } else if input.peek(Token![:]) {
-        parse_trait(ident, input)
-    } else {
-        Err(Error::new(ident.span(), "Expected ':' or '=' after identifier"))
-    }
-}
-
-fn parse_type(ident: Ident, input: ParseStream) -> Result<Annotation, Error> {
-    input.parse::<Token![=]>()?; // consume the '=' token
-    let type_name = input.parse::<Type>()?;
-    Ok(Annotation::Alias(ident.to_string(), quote!(#type_name).to_string()))
-}
-
-fn parse_trait(ident: Ident, input: ParseStream) -> Result<Annotation, Error> {
-    input.parse::<Token![:]>()?; // Consume the ':' token
-
-    let mut traits = vec![];
-
-    while !input.is_empty() && !input.peek(Token![;]) {
-        traits.push(input.parse::<Ident>()?.to_string());
-
-        if input.peek(Token![+]) {
-            input.parse::<Token![+]>()?; // consume the '+' token
-        }
-    }
-
-    if traits.is_empty() {
-        return Err(Error::new(ident.span(), "Expected at least one trait after ':'"));
-    }
-
-    Ok(Annotation::Trait(ident.to_string(), traits))
+    input
+        .parse_terminated(Annotation::parse, Token![;])
+        .map(|annotations| annotations.into_iter().collect())
 }
 
 pub fn get_type_aliases(type_: &str, ann: &[Annotation]) -> Vec<String> {
@@ -178,7 +150,7 @@ pub fn get_type_traits(type_: &str, ann: &[Annotation]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryFrom;
+    use quote::quote;
 
     #[test]
     fn single_argument() {

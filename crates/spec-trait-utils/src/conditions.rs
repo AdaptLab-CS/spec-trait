@@ -3,9 +3,9 @@ use serde::{ Deserialize, Serialize };
 use std::collections::HashSet;
 use std::fmt::{ Debug, Display, Formatter, Result as FmtResult };
 use std::hash::{ Hash, Hasher };
-use syn::{ Error, Type, Ident, Token, parenthesized };
+use syn::{ Error, Ident, Token, parenthesized };
 use syn::parse::{ Parse, ParseStream };
-use quote::quote;
+use crate::parsing::{ parse_type_or_trait, ParseTypeOrTrait };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
@@ -82,6 +82,16 @@ impl PartialEq for WhenCondition {
     }
 }
 
+impl ParseTypeOrTrait for WhenCondition {
+    fn from_type(ident: String, type_name: String) -> Self {
+        WhenCondition::Type(ident, type_name)
+    }
+
+    fn from_trait(ident: String, traits: Vec<String>) -> Self {
+        WhenCondition::Trait(ident, traits)
+    }
+}
+
 impl TryFrom<TokenStream> for WhenCondition {
     type Error = syn::Error;
 
@@ -100,42 +110,6 @@ impl Parse for WhenCondition {
             _ => parse_type_or_trait(ident, input),
         }
     }
-}
-
-fn parse_type_or_trait(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
-    if input.peek(Token![=]) {
-        parse_type(ident, input)
-    } else if input.peek(Token![:]) {
-        parse_trait(ident, input)
-    } else {
-        Err(Error::new(ident.span(), "Expected ':' or '=' after identifier"))
-    }
-}
-
-fn parse_type(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
-    input.parse::<Token![=]>()?; // consume the '=' token
-    let type_name = input.parse::<Type>()?;
-    Ok(WhenCondition::Type(ident.to_string(), quote!(#type_name).to_string()))
-}
-
-fn parse_trait(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
-    input.parse::<Token![:]>()?; // Consume the ':' token
-
-    let mut traits = vec![];
-
-    while !input.is_empty() && !input.peek(Token![,]) {
-        traits.push(input.parse::<Ident>()?.to_string());
-
-        if input.peek(Token![+]) {
-            input.parse::<Token![+]>()?; // consume the '+' token
-        }
-    }
-
-    if traits.is_empty() {
-        return Err(Error::new(ident.span(), "Expected at least one trait after ':'"));
-    }
-
-    Ok(WhenCondition::Trait(ident.to_string(), traits))
 }
 
 fn parse_aggregation(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
@@ -274,6 +248,7 @@ fn flatten_and_deduplicate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quote::quote;
 
     #[test]
     fn parse_type_condition() {
