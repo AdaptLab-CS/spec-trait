@@ -53,7 +53,7 @@ impl Hash for WhenCondition {
             }
             WhenCondition::All(conditions) | WhenCondition::Any(conditions) => {
                 let mut sorted_conditions: Vec<_> = conditions.iter().collect();
-                sorted_conditions.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                sorted_conditions.sort_by_key(|c| c.to_string());
                 for condition in sorted_conditions {
                     condition.hash(state);
                 }
@@ -112,6 +112,7 @@ impl Parse for WhenCondition {
     }
 }
 
+/// Parses an aggregation function (all, any, not) and its arguments
 fn parse_aggregation(ident: Ident, input: ParseStream) -> Result<WhenCondition, Error> {
     let content;
     parenthesized!(content in input); // consume the '(' and ')' token pair
