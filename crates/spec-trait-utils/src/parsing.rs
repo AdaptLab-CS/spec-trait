@@ -9,9 +9,9 @@ pub trait ParseTypeOrTrait {
 
 /**
     Parses either a type or a trait based on the next token in the input stream.
-
-    If the next token is '=', it parses a type, if it's ':', it parses a trait,
-    if neither token is found returns an error.
+    - If it's '=', it parses a type
+    - If it's ':', it parses a trait
+    - If neither token is found returns an error
  */
 pub fn parse_type_or_trait<T: ParseTypeOrTrait>(
     ident: Ident,

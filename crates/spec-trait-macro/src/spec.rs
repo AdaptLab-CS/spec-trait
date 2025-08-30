@@ -1,4 +1,4 @@
-use crate::annotations::{ Annotation, AnnotationBody, get_type_traits };
+use crate::annotations::{ AnnotationBody };
 use crate::generics::{ get_var_info_for_trait, VarInfo };
 use spec_trait_utils::conversions::{
     str_to_expr,
@@ -69,63 +69,6 @@ fn get_concrete_type(type_or_alias: &str, var: &[VarInfo]) -> String {
     }
 }
 
-fn var_info_to_annotations(var: &[VarInfo]) -> Vec<Annotation> {
-    var.iter()
-        .flat_map(|v| {
-            v.type_aliases
-                .iter()
-                .map(move |alias| Annotation::Alias(v.concrete_type.clone(), alias.clone()))
-        })
-        .chain(
-            std::iter::once(Annotation::Trait(var[0].concrete_type.clone(), var[0].traits.clone()))
-        )
-        .collect()
-}
-
-fn generic_not_present_or_type_not_match(type_: &str, generic: &str, var: &[VarInfo]) -> bool {
-    let var_ = var.iter().find(|v| v.type_definition == generic.to_string());
-
-    var_.is_none_or(|v| {
-        get_concrete_type(type_, &var) != get_concrete_type(&v.concrete_type, &var)
-    })
-}
-
-fn generic_not_present_or_trait_not_match(
-    traits: &Vec<String>,
-    generic: &str,
-    var: &[VarInfo]
-) -> bool {
-    let var_ = var.iter().find(|v| v.type_definition == generic.to_string());
-
-    var_.is_none_or(|v| traits.iter().any(|trait_| !v.traits.contains(trait_)))
-}
-
-fn type_forbidden(constraint: &Constraint, type_: &str, var: &[VarInfo]) -> bool {
-    constraint.not_types.contains(&get_concrete_type(type_, &var))
-}
-
-fn type_not_implementing_trait(
-    constraint: &Constraint,
-    type_: &Option<&str>,
-    var: &[VarInfo]
-) -> bool {
-    type_.is_some_and(|t|
-        constraint.traits
-            .iter()
-            .any(
-                |trait_|
-                    !get_type_traits(
-                        &get_concrete_type(t, &var),
-                        &var_info_to_annotations(&var)
-                    ).contains(trait_)
-            )
-    )
-}
-
-fn trait_forbidden(constraint: &Constraint, traits: &[String], var: &[VarInfo]) -> bool {
-    constraint.not_traits.iter().any(|t| traits.contains(t))
-}
-
 fn satisfies_condition(
     cond: &WhenCondition,
     vars: &Vec<VarInfo>,
@@ -133,71 +76,89 @@ fn satisfies_condition(
 ) -> (bool, Constraints) {
     match cond {
         WhenCondition::Type(generic, type_) => {
+            let concrete_type = get_concrete_type(type_, vars);
+            let generic_var = vars.iter().find(|v: &_| v.type_definition == generic.to_string());
+            let concrete_type_var = vars.iter().find(|v: &_| v.concrete_type == concrete_type);
+
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints
                 .entry(generic.clone())
                 .or_insert_with(Constraint::default);
-            constraint.type_ = Some(get_concrete_type(type_, &vars));
+            constraint.type_ = Some(concrete_type.clone());
 
-            if
-                generic_not_present_or_type_not_match(&type_, &generic, &vars) ||
-                type_forbidden(&constraint, &type_, &vars) ||
-                type_not_implementing_trait(&constraint, &Some(type_), &vars)
-            {
-                (false, new_constraints)
-            } else {
-                (true, new_constraints)
-            }
+            let violates_constraints =
+                // generic parameter is not present in the function parameters or the type does not match
+                generic_var.is_none_or(|v| { concrete_type != v.concrete_type }) ||
+                // generic parameter is forbidden to be assigned to this type
+                constraint.not_types.contains(&concrete_type.clone().into()) ||
+                // generic parameter should implement a trait that the type does not implement
+                concrete_type_var.is_none_or(|v|
+                    constraint.traits.iter().any(|t| !v.traits.contains(t))
+                );
+
+            (!violates_constraints, new_constraints)
         }
         WhenCondition::Trait(generic, traits) => {
+            let generic_var = vars.iter().find(|v: &_| v.type_definition == generic.to_string());
+
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints
                 .entry(generic.clone())
                 .or_insert_with(Constraint::default);
             constraint.traits.extend(traits.clone());
 
-            if
-                generic_not_present_or_trait_not_match(&traits, &generic, &vars) ||
-                trait_forbidden(&constraint, traits, &vars) ||
-                type_not_implementing_trait(&constraint, &constraint.type_.as_deref(), &vars)
-            {
-                (false, new_constraints)
-            } else {
-                (true, new_constraints)
-            }
+            let violates_constraints =
+                // generic parameter is not present in the function parameters or the trait does not match
+                generic_var.is_none_or(|v| traits.iter().any(|t| !v.traits.contains(t))) ||
+                // generic parameter is forbidden to be implement one of the traits
+                constraint.not_traits.iter().any(|t| traits.contains(t)) ||
+                // generic parameter is already assigned to a type that does not implement one of the traits
+                constraint.type_.as_ref().is_some_and(|ty| {
+                    let concrete_type_var = vars.iter().find(|v: &_| v.concrete_type == *ty);
+                    concrete_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
+                });
+
+            (!violates_constraints, new_constraints)
         }
+        // make sure all the inner conditions are satisfied
         WhenCondition::All(inner) => {
-            let mut satisfied = true;
             let mut new_constraints = constraints.clone();
-            for c in inner {
-                let (s, nc) = satisfies_condition(c, vars, &new_constraints);
-                if !s {
-                    satisfied = false;
-                    break;
-                }
+
+            let satisfied = inner.iter().all(|cond| {
+                let (is_satisfied, nc) = satisfies_condition(cond, vars, &new_constraints);
                 new_constraints = nc;
-            }
+                is_satisfied
+            });
+
             (satisfied, new_constraints)
         }
+        // returns the most specific of all the consraints that satisfy the inner conditions
         WhenCondition::Any(inner) => {
             let mut satisfied = false;
             let mut new_constraints = constraints.clone();
-            for c in inner {
-                let (s, nc) = satisfies_condition(c, vars, constraints);
-                if s {
+
+            for cond in inner {
+                let (is_satisfied, nc) = satisfies_condition(cond, vars, constraints);
+                if is_satisfied {
                     satisfied = true;
-                    let cmp = cmp_constraints(&nc, &new_constraints);
-                    new_constraints = if cmp == Ordering::Greater { nc } else { new_constraints };
+
+                    if cmp_constraints(&nc, &new_constraints) == Ordering::Greater {
+                        new_constraints = nc;
+                    }
                 }
             }
+
             (satisfied, new_constraints)
         }
+        // negates the constraints on the inner condition
         WhenCondition::Not(inner) => {
             let (satisfied, nc) = satisfies_condition(inner, vars, constraints);
-            let mut new_constraints = Constraints::default();
-            for (generic, constraint) in nc {
-                new_constraints.insert(generic, constraint.reverse());
-            }
+
+            let new_constraints = nc
+                .into_iter()
+                .map(|(generic, constraint)| (generic, constraint.reverse()))
+                .collect::<Constraints>();
+
             (!satisfied, new_constraints)
         }
     }

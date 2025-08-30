@@ -53,6 +53,8 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
         "Failed to parse TokenStream into ImplBody"
     );
 
+    // TODO: can we somehow get cond and impl_body from cache instead of parsing them again?
+
     let mut trait_body = cache
         ::get_trait_by_name(&impl_body.trait_name)
         .expect("Trait not found in cache");
