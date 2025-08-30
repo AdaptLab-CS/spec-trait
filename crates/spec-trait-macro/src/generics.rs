@@ -1,17 +1,41 @@
-use spec_trait_utils::traits::TraitBody;
-use spec_trait_utils::conditions::WhenCondition;
-use spec_trait_utils::impls::ImplBody;
+use spec_trait_utils::traits::{ find_fn, get_param_types, TraitBody };
 
-pub fn get_for_impl(
-    impl_: &ImplBody,
-    traits: &[TraitBody],
-    constraints: &[WhenCondition]
-) -> String {
-    let trait_ = traits
+use crate::annotations::{ get_type_aliases, get_type_traits };
+use crate::constraints::Constraints;
+use crate::AnnotationBody;
+
+#[derive(Debug, Clone)]
+pub struct VarInfo {
+    /// type defined in the trait's fn, usually a generic
+    pub type_definition: String,
+    /// concrete type with which the fn was called
+    pub concrete_type: String,
+    /// aliases for the concrete_type, got from annotations
+    pub type_aliases: Vec<String>,
+    /// traits implemented by the concrete_type, got from annotations
+    pub traits: Vec<String>,
+}
+
+pub fn get_var_info_for_trait(ann: &AnnotationBody, trait_: &TraitBody) -> Vec<VarInfo> {
+    let trait_fn = find_fn(trait_, &ann.fn_, ann.args.len()).unwrap_or_else(||
+        panic!("Function {} not found in trait {}", ann.fn_, trait_.name)
+    );
+
+    let param_types = get_param_types(&trait_fn);
+
+    ann.args_types
         .iter()
-        .find(|tr| tr.name == impl_.trait_name)
-        .expect("Trait not found");
+        .enumerate()
+        .map(|(i, type_)| VarInfo {
+            type_definition: param_types[i].clone(),
+            concrete_type: type_.clone(),
+            type_aliases: get_type_aliases(type_, &ann.annotations),
+            traits: get_type_traits(type_, &ann.annotations),
+        })
+        .collect()
+}
 
+pub fn get_for_impl(trait_: &TraitBody, constraints: &Constraints) -> String {
     let generics_without_angle_brackets = &trait_.generics[1..trait_.generics.len() - 1];
     let types = generics_without_angle_brackets
         .split(',')
@@ -25,18 +49,11 @@ pub fn get_for_impl(
     }
 }
 
-fn get_type(generic: &str, constraints: &[WhenCondition]) -> Option<String> {
-    if generic.is_empty() {
-        return None;
-    }
-
-    constraints
-        .iter()
-        .find_map(|c| {
-            match c {
-                WhenCondition::Type(g, type_) if generic == *g => Some(type_.clone()),
-                _ => None,
-            }
-        })
-        .or(Some("_".to_string()))
+fn get_type(generic: &str, constraints: &Constraints) -> Option<String> {
+    Some(
+        constraints
+            .get(generic)
+            .and_then(|constraint| constraint.type_.clone())
+            .unwrap_or_else(|| "_".into())
+    )
 }

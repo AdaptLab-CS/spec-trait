@@ -1,6 +1,7 @@
 mod annotations;
 mod generics;
 mod spec;
+mod constraints;
 
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::cache;
@@ -108,8 +109,12 @@ pub fn spec(item: TokenStream) -> TokenStream {
     let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits);
 
     let (impl_, constraints) = spec::get_most_specific_impl(&impls, &traits, &ann);
+    let trait_ = traits
+        .iter()
+        .find(|tr| tr.name == impl_.trait_name)
+        .unwrap();
 
-    let generics = generics::get_for_impl(&impl_, &traits, &constraints);
+    let generics = generics::get_for_impl(&trait_, &constraints);
 
     let res = spec::create_spec(&impl_, &generics, &ann);
     res.into()
