@@ -35,6 +35,14 @@ pub fn get_var_info_for_trait(ann: &AnnotationBody, trait_: &TraitBody) -> Vec<V
         .collect()
 }
 
+pub fn get_concrete_type(type_or_alias: &str, var: &[VarInfo]) -> String {
+    if let Some(alias) = var.iter().find(|v| v.type_aliases.contains(&type_or_alias.to_string())) {
+        alias.concrete_type.clone()
+    } else {
+        type_or_alias.to_string()
+    }
+}
+
 pub fn get_for_impl(trait_: &TraitBody, constraints: &Constraints) -> String {
     let generics_without_angle_brackets = &trait_.generics[1..trait_.generics.len() - 1];
     let types = generics_without_angle_brackets

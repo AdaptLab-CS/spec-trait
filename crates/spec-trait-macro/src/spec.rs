@@ -1,5 +1,5 @@
-use crate::annotations::{ AnnotationBody };
-use crate::generics::{ get_var_info_for_trait, VarInfo };
+use crate::annotations::AnnotationBody;
+use crate::generics::{ get_concrete_type, get_var_info_for_trait, VarInfo };
 use spec_trait_utils::conversions::{
     str_to_expr,
     str_to_generics,
@@ -13,12 +13,19 @@ use proc_macro2::TokenStream as TokenStream2;
 use std::cmp::Ordering;
 use crate::constraints::{ cmp_constraints, Constraint, Constraints };
 
+#[derive(Debug, Clone)]
+pub struct SpecBody {
+    pub impl_: ImplBody,
+    pub trait_: TraitBody,
+    pub constraints: Constraints,
+}
+
 pub fn get_most_specific_impl(
     impls: &[ImplBody],
     traits: &[TraitBody],
     ann: &AnnotationBody
-) -> (ImplBody, Constraints) {
-    let mut filtered_impls = impls
+) -> SpecBody {
+    let mut satisfied_specs = impls
         .iter()
         .filter_map(|impl_| {
             let trait_ = traits
@@ -26,46 +33,49 @@ pub fn get_most_specific_impl(
                 .find(|tr| tr.name == impl_.trait_name)
                 .unwrap_or_else(|| panic!("Trait {} not found", impl_.trait_name));
 
-            let fn_info = get_var_info_for_trait(ann, trait_);
+            let vars = get_var_info_for_trait(ann, trait_);
 
             match &impl_.condition {
-                Some(condition) => {
-                    let (satisfied, c) = satisfies_condition(
-                        condition,
-                        &fn_info,
+                // from when macro
+                Some(cond) => {
+                    let (satisfied, constraints) = satisfies_condition(
+                        cond,
+                        &vars,
                         &Constraints::default()
                     );
 
                     if satisfied {
-                        Some((impl_.clone(), c))
+                        Some(SpecBody {
+                            impl_: impl_.clone(),
+                            trait_: trait_.clone(),
+                            constraints,
+                        })
                     } else {
                         None
                     }
                 }
-                None => Some((impl_.clone(), Constraints::default())),
+                // from spec default
+                None =>
+                    Some(SpecBody {
+                        impl_: impl_.clone(),
+                        trait_: trait_.clone(),
+                        constraints: Constraints::default(),
+                    }),
             }
         })
         .collect::<Vec<_>>();
 
-    filtered_impls.sort_by(|(_, a), (_, b)| cmp_constraints(a, b));
+    satisfied_specs.sort_by(|a, b| cmp_constraints(&a.constraints, &b.constraints));
 
-    let most_specific = filtered_impls.last();
-
-    if let [.., second, last] = filtered_impls.as_slice() {
-        if cmp_constraints(&last.1, &second.1) == Ordering::Equal {
-            panic!("Ambiguous implementation: multiple implementations are equally specific");
+    match satisfied_specs.as_slice() {
+        [] => panic!("No valid implementation found"),
+        [most_specific] => most_specific.clone(),
+        [.., second, first] => {
+            if cmp_constraints(&first.constraints, &second.constraints) == Ordering::Equal {
+                panic!("Ambiguous implementation: multiple implementations are equally specific");
+            }
+            first.clone()
         }
-    }
-
-    let (impl_ref, constraints) = most_specific.expect("No valid implementation found");
-    (impl_ref.clone(), constraints.clone())
-}
-
-fn get_concrete_type(type_or_alias: &str, var: &[VarInfo]) -> String {
-    if let Some(alias) = var.iter().find(|v| v.type_aliases.contains(&type_or_alias.to_string())) {
-        alias.concrete_type.clone()
-    } else {
-        type_or_alias.to_string()
     }
 }
 
@@ -139,12 +149,10 @@ fn satisfies_condition(
 
             for cond in inner {
                 let (is_satisfied, nc) = satisfies_condition(cond, vars, constraints);
-                if is_satisfied {
-                    satisfied = true;
+                satisfied = satisfied || is_satisfied;
 
-                    if cmp_constraints(&nc, &new_constraints) == Ordering::Greater {
-                        new_constraints = nc;
-                    }
+                if is_satisfied && cmp_constraints(&nc, &new_constraints) == Ordering::Greater {
+                    new_constraints = nc;
                 }
             }
 

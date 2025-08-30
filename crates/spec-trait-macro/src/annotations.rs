@@ -5,13 +5,13 @@ use std::fmt::Debug;
 use syn::parse::{ Parse, ParseStream };
 use syn::{ bracketed, parenthesized, Error, Expr, Ident, Token, token };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Annotation {
     Trait(String /* type */, Vec<String> /* traits */),
     Alias(String /* type */, String /* alias */),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AnnotationBody {
     pub var: String,
     pub fn_: String,
