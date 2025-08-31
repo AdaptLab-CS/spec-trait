@@ -1,8 +1,6 @@
 use spec_trait_utils::traits::{ find_fn, get_param_types, TraitBody };
 
-use crate::annotations::{ get_type_aliases, get_type_traits };
-use crate::constraints::Constraints;
-use crate::AnnotationBody;
+use crate::annotations::{ Annotation, AnnotationBody };
 
 #[derive(Debug, Clone)]
 pub struct VarInfo {
@@ -35,33 +33,33 @@ pub fn get_var_info_for_trait(ann: &AnnotationBody, trait_: &TraitBody) -> Vec<V
         .collect()
 }
 
+fn get_type_aliases(type_: &str, ann: &[Annotation]) -> Vec<String> {
+    ann.iter()
+        .filter_map(|a| {
+            match a {
+                Annotation::Alias(t, alias) if t == type_ => Some(alias.clone()),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+fn get_type_traits(type_: &str, ann: &[Annotation]) -> Vec<String> {
+    ann.iter()
+        .filter_map(|a| {
+            match a {
+                Annotation::Trait(t, traits) if t == type_ => Some(traits.clone()),
+                _ => None,
+            }
+        })
+        .flatten()
+        .collect()
+}
+
 pub fn get_concrete_type(type_or_alias: &str, var: &[VarInfo]) -> String {
     if let Some(alias) = var.iter().find(|v| v.type_aliases.contains(&type_or_alias.to_string())) {
         alias.concrete_type.clone()
     } else {
         type_or_alias.to_string()
     }
-}
-
-pub fn get_for_impl(trait_: &TraitBody, constraints: &Constraints) -> String {
-    let generics_without_angle_brackets = &trait_.generics[1..trait_.generics.len() - 1];
-    let types = generics_without_angle_brackets
-        .split(',')
-        .filter_map(|g| get_type(g.trim(), constraints))
-        .collect::<Vec<_>>();
-
-    if types.is_empty() {
-        String::new()
-    } else {
-        format!("<{}>", types.join(", "))
-    }
-}
-
-fn get_type(generic: &str, constraints: &Constraints) -> Option<String> {
-    Some(
-        constraints
-            .get(generic)
-            .and_then(|constraint| constraint.type_.clone())
-            .unwrap_or_else(|| "_".into())
-    )
 }

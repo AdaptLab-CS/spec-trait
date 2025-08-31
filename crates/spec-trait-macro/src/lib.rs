@@ -1,5 +1,5 @@
 mod annotations;
-mod generics;
+mod vars;
 mod spec;
 mod constraints;
 
@@ -9,6 +9,7 @@ use spec_trait_utils::impls::ImplBody;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use annotations::AnnotationBody;
+use crate::spec::SpecBody;
 
 // TODO: add support to other cases (e.g. Vec<_>, &[_], (_,_), etc.)
 /**
@@ -110,10 +111,9 @@ pub fn spec(item: TokenStream) -> TokenStream {
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
     let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits);
 
-    let spec = spec::get_most_specific_impl(&impls, &traits, &ann);
+    let spec_body = SpecBody::try_from((&impls, &traits, &ann)).unwrap_or_else(|err|
+        panic!("Specialization failed: {}", err)
+    );
 
-    let generics = generics::get_for_impl(&spec.trait_, &spec.constraints);
-
-    let res = spec::create_spec(&spec.impl_, &generics, &ann);
-    res.into()
+    TokenStream2::from(&spec_body).into()
 }

@@ -2,6 +2,7 @@ use proc_macro2::TokenStream;
 use syn::{ Expr, Generics, ImplItem, ItemImpl, ItemTrait, Path, TraitItem, Type, Result };
 use quote::ToTokens;
 use std::hash::{ DefaultHasher, Hasher, Hash };
+use quote::quote;
 
 pub fn str_to_generics(str: &str) -> Generics {
     syn::parse_str(str).expect("Failed to parse generics")
@@ -40,7 +41,7 @@ pub fn tokens_to_impl(tokens: TokenStream) -> Result<ItemImpl> {
 }
 
 pub fn to_string<T: ToTokens>(item: &T) -> String {
-    (quote::quote! { #item }).to_string()
+    (quote! { #item }).to_string()
 }
 
 pub fn trait_to_string<T, U>(trait_: &Option<(T, Path, U)>) -> String {

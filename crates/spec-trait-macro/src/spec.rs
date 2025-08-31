@@ -1,5 +1,5 @@
 use crate::annotations::AnnotationBody;
-use crate::generics::{ get_concrete_type, get_var_info_for_trait, VarInfo };
+use crate::vars::{ get_concrete_type, get_var_info_for_trait, VarInfo };
 use spec_trait_utils::conversions::{
     str_to_expr,
     str_to_generics,
@@ -9,82 +9,83 @@ use spec_trait_utils::conversions::{
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
-use proc_macro2::TokenStream as TokenStream2;
+use proc_macro2::TokenStream;
 use std::cmp::Ordering;
 use crate::constraints::{ cmp_constraints, Constraint, Constraints };
+use quote::quote;
 
 #[derive(Debug, Clone)]
 pub struct SpecBody {
     pub impl_: ImplBody,
     pub trait_: TraitBody,
     pub constraints: Constraints,
+    pub annotations: AnnotationBody,
 }
 
-pub fn get_most_specific_impl(
-    impls: &[ImplBody],
-    traits: &[TraitBody],
-    ann: &AnnotationBody
-) -> SpecBody {
-    let mut satisfied_specs = impls
-        .iter()
-        .filter_map(|impl_| {
-            let trait_ = traits
-                .iter()
-                .find(|tr| tr.name == impl_.trait_name)
-                .unwrap_or_else(|| panic!("Trait {} not found", impl_.trait_name));
+impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
+    type Error = String;
 
-            let vars = get_var_info_for_trait(ann, trait_);
+    fn try_from((impls, traits, ann): (&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)) -> Result<
+        Self,
+        Self::Error
+    > {
+        let mut satisfied_specs = impls
+            .iter()
+            .filter_map(|impl_| {
+                let trait_ = traits.iter().find(|tr| tr.name == impl_.trait_name)?;
+                let default = SpecBody {
+                    impl_: impl_.clone(),
+                    trait_: trait_.clone(),
+                    constraints: Constraints::default(),
+                    annotations: ann.clone(),
+                };
+                get_constraints(default)
+            })
+            .collect::<Vec<_>>();
 
-            match &impl_.condition {
-                // from when macro
-                Some(cond) => {
-                    let (satisfied, constraints) = satisfies_condition(
-                        cond,
-                        &vars,
-                        &Constraints::default()
-                    );
+        satisfied_specs.sort_by(|a, b| cmp_constraints(&a.constraints, &b.constraints));
 
-                    if satisfied {
-                        Some(SpecBody {
-                            impl_: impl_.clone(),
-                            trait_: trait_.clone(),
-                            constraints,
-                        })
-                    } else {
-                        None
-                    }
+        match satisfied_specs.as_slice() {
+            [] => Err("No valid implementation found".into()),
+            [most_specific] => Ok(most_specific.clone()),
+            [.., second, first] => {
+                if cmp_constraints(&first.constraints, &second.constraints) == Ordering::Equal {
+                    Err("Multiple implementations are equally specific".into())
+                } else {
+                    Ok(first.clone())
                 }
-                // from spec default
-                None =>
-                    Some(SpecBody {
-                        impl_: impl_.clone(),
-                        trait_: trait_.clone(),
-                        constraints: Constraints::default(),
-                    }),
             }
-        })
-        .collect::<Vec<_>>();
+        }
+    }
+}
 
-    satisfied_specs.sort_by(|a, b| cmp_constraints(&a.constraints, &b.constraints));
+/// if the condition is satisfiable, it inserts the constraints and returns the spec body, otherwise return none
+fn get_constraints(default: SpecBody) -> Option<SpecBody> {
+    match &default.impl_.condition {
+        // from spec default
+        None => Some(default),
+        // from when macro
+        Some(cond) => {
+            let vars = get_var_info_for_trait(&default.annotations, &default.trait_);
+            let (satisfied, constraints) = satisfies_condition(cond, &vars, &default.constraints);
 
-    match satisfied_specs.as_slice() {
-        [] => panic!("No valid implementation found"),
-        [most_specific] => most_specific.clone(),
-        [.., second, first] => {
-            if cmp_constraints(&first.constraints, &second.constraints) == Ordering::Equal {
-                panic!("Ambiguous implementation: multiple implementations are equally specific");
+            if satisfied {
+                let mut with_constraints = default.clone();
+                with_constraints.constraints = constraints;
+                Some(with_constraints)
+            } else {
+                None
             }
-            first.clone()
         }
     }
 }
 
 fn satisfies_condition(
-    cond: &WhenCondition,
+    condition: &WhenCondition,
     vars: &Vec<VarInfo>,
     constraints: &Constraints
 ) -> (bool, Constraints) {
-    match cond {
+    match condition {
         WhenCondition::Type(generic, type_) => {
             let concrete_type = get_concrete_type(type_, vars);
             let generic_var = vars.iter().find(|v: &_| v.type_definition == generic.to_string());
@@ -172,22 +173,49 @@ fn satisfies_condition(
     }
 }
 
-pub fn create_spec(impl_: &ImplBody, generics_types: &str, ann: &AnnotationBody) -> TokenStream2 {
-    let type_ = str_to_type_name(&impl_.type_name);
-    let trait_ = str_to_trait_name(&impl_.spec_trait_name);
-    let generics = str_to_generics(generics_types);
-    let fn_ = str_to_expr(&ann.fn_);
-    let var = str_to_expr(("&".to_owned() + &ann.var).as_str());
-    let args = ann.args
-        .iter()
-        .map(|arg| str_to_expr(arg))
+impl From<&SpecBody> for TokenStream {
+    fn from(spec_body: &SpecBody) -> Self {
+        let generics_str = get_generics(&spec_body);
+
+        let type_ = str_to_type_name(&spec_body.impl_.type_name);
+        let trait_ = str_to_trait_name(&spec_body.impl_.spec_trait_name);
+        let generics = str_to_generics(&generics_str);
+        let fn_ = str_to_expr(&spec_body.annotations.fn_);
+        let var = str_to_expr(("&".to_owned() + &spec_body.annotations.var).as_str());
+        let args = spec_body.annotations.args
+            .iter()
+            .map(|arg| str_to_expr(arg))
+            .collect::<Vec<_>>();
+
+        let all_args = std::iter::once(var.clone()).chain(args.iter().cloned()).collect::<Vec<_>>();
+
+        quote! {
+            <#type_ as #trait_ #generics>::#fn_(#(#all_args),*)
+        }
+    }
+}
+
+pub fn get_generics(spec: &SpecBody) -> String {
+    let generics_without_angle_brackets = &spec.trait_.generics[1..spec.trait_.generics.len() - 1];
+    let types = generics_without_angle_brackets
+        .split(',')
+        .filter_map(|g| get_type(g.trim(), &spec.constraints))
         .collect::<Vec<_>>();
 
-    let all_args = std::iter::once(var.clone()).chain(args.iter().cloned()).collect::<Vec<_>>();
-
-    quote::quote! {
-        <#type_ as #trait_ #generics>::#fn_(#(#all_args),*)
+    if types.is_empty() {
+        String::new()
+    } else {
+        format!("<{}>", types.join(", "))
     }
+}
+
+fn get_type(generic: &str, constraints: &Constraints) -> Option<String> {
+    Some(
+        constraints
+            .get(generic)
+            .and_then(|constraint| constraint.type_.clone())
+            .unwrap_or_else(|| "_".into())
+    )
 }
 
 #[cfg(test)]

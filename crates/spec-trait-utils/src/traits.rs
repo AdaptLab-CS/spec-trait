@@ -84,7 +84,7 @@ pub fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
             match arg {
                 FnArg::Typed(pat_type) => {
                     let t = &pat_type.ty;
-                    Some((quote::quote! { #t }).to_string())
+                    Some((quote! { #t }).to_string())
                 }
                 _ => None,
             }

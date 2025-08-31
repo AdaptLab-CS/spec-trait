@@ -124,29 +124,6 @@ fn parse_annotations(input: ParseStream) -> Result<Vec<Annotation>, Error> {
         .map(|annotations| annotations.into_iter().collect())
 }
 
-pub fn get_type_aliases(type_: &str, ann: &[Annotation]) -> Vec<String> {
-    ann.iter()
-        .filter_map(|a| {
-            match a {
-                Annotation::Alias(t, alias) if t == type_ => Some(alias.clone()),
-                _ => None,
-            }
-        })
-        .collect()
-}
-
-pub fn get_type_traits(type_: &str, ann: &[Annotation]) -> Vec<String> {
-    ann.iter()
-        .filter_map(|a| {
-            match a {
-                Annotation::Trait(t, traits) if t == type_ => Some(traits.clone()),
-                _ => None,
-            }
-        })
-        .flatten()
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
