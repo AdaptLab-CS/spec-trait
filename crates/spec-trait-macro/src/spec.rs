@@ -1,11 +1,7 @@
 use crate::annotations::AnnotationBody;
-use crate::vars::{ get_concrete_type, get_var_info_for_trait, VarInfo };
-use spec_trait_utils::conversions::{
-    str_to_expr,
-    str_to_generics,
-    str_to_trait_name,
-    str_to_type_name,
-};
+use crate::vars::{ get_var_info_for_trait, VarInfo };
+use crate::types::{ get_concrete_type, types_equal };
+use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
@@ -89,7 +85,9 @@ fn satisfies_condition(
         WhenCondition::Type(generic, type_) => {
             let concrete_type = get_concrete_type(type_, vars);
             let generic_var = vars.iter().find(|v: &_| v.type_definition == generic.to_string());
-            let concrete_type_var = vars.iter().find(|v: &_| v.concrete_type == concrete_type);
+            let concrete_type_var = vars
+                .iter()
+                .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, vars));
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints
@@ -99,9 +97,9 @@ fn satisfies_condition(
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
-                generic_var.is_none_or(|v| { concrete_type != v.concrete_type }) ||
+                generic_var.is_none_or(|v| !types_equal(&concrete_type, &v.concrete_type, vars)) ||
                 // generic parameter is forbidden to be assigned to this type
-                constraint.not_types.contains(&concrete_type.clone().into()) ||
+                constraint.not_types.iter().any(|t| types_equal(&concrete_type, t, vars)) ||
                 // generic parameter should implement a trait that the type does not implement
                 concrete_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
@@ -125,7 +123,9 @@ fn satisfies_condition(
                 constraint.not_traits.iter().any(|t| traits.contains(t)) ||
                 // generic parameter is already assigned to a type that does not implement one of the traits
                 constraint.type_.as_ref().is_some_and(|ty| {
-                    let concrete_type_var = vars.iter().find(|v: &_| v.concrete_type == *ty);
+                    let concrete_type_var = vars
+                        .iter()
+                        .find(|v| types_equal(&v.concrete_type, ty, vars));
                     concrete_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
 
@@ -175,11 +175,9 @@ fn satisfies_condition(
 
 impl From<&SpecBody> for TokenStream {
     fn from(spec_body: &SpecBody) -> Self {
-        let generics_str = get_generics(&spec_body);
-
         let type_ = str_to_type_name(&spec_body.impl_.type_name);
         let trait_ = str_to_trait_name(&spec_body.impl_.spec_trait_name);
-        let generics = str_to_generics(&generics_str);
+        let generics = get_generics_types(&spec_body);
         let fn_ = str_to_expr(&spec_body.annotations.fn_);
         let var = str_to_expr(("&".to_owned() + &spec_body.annotations.var).as_str());
         let args = spec_body.annotations.args
@@ -195,27 +193,26 @@ impl From<&SpecBody> for TokenStream {
     }
 }
 
-pub fn get_generics(spec: &SpecBody) -> String {
+pub fn get_generics_types(spec: &SpecBody) -> TokenStream {
     let generics_without_angle_brackets = &spec.trait_.generics[1..spec.trait_.generics.len() - 1];
     let types = generics_without_angle_brackets
         .split(',')
-        .filter_map(|g| get_type(g.trim(), &spec.constraints))
+        .map(|g| get_type(g.trim(), &spec.constraints))
+        .map(|t| str_to_type_name(&t))
         .collect::<Vec<_>>();
 
     if types.is_empty() {
-        String::new()
+        TokenStream::new()
     } else {
-        format!("<{}>", types.join(", "))
+        quote! { <#(#types),*> }
     }
 }
 
-fn get_type(generic: &str, constraints: &Constraints) -> Option<String> {
-    Some(
-        constraints
-            .get(generic)
-            .and_then(|constraint| constraint.type_.clone())
-            .unwrap_or_else(|| "_".into())
-    )
+fn get_type(generic: &str, constraints: &Constraints) -> String {
+    constraints
+        .get(generic)
+        .and_then(|constraint| constraint.type_.clone())
+        .unwrap_or_else(|| "_".into())
 }
 
 #[cfg(test)]

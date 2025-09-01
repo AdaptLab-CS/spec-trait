@@ -55,11 +55,3 @@ fn get_type_traits(type_: &str, ann: &[Annotation]) -> Vec<String> {
         .flatten()
         .collect()
 }
-
-pub fn get_concrete_type(type_or_alias: &str, var: &[VarInfo]) -> String {
-    if let Some(alias) = var.iter().find(|v| v.type_aliases.contains(&type_or_alias.to_string())) {
-        alias.concrete_type.clone()
-    } else {
-        type_or_alias.to_string()
-    }
-}

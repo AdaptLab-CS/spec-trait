@@ -1,6 +1,6 @@
 use syn::{ Error, Ident, Type, Token };
 use syn::parse::ParseStream;
-use quote::quote;
+use crate::conversions::to_string;
 
 pub trait ParseTypeOrTrait {
     fn from_type(ident: String, type_name: String) -> Self;
@@ -29,7 +29,7 @@ pub fn parse_type_or_trait<T: ParseTypeOrTrait>(
 fn parse_type<T: ParseTypeOrTrait>(ident: Ident, input: ParseStream) -> Result<T, Error> {
     input.parse::<Token![=]>()?; // consume the '=' token
     let type_name = input.parse::<Type>()?;
-    Ok(T::from_type(ident.to_string(), quote!(#type_name).to_string()))
+    Ok(T::from_type(ident.to_string(), to_string(&type_name)))
 }
 
 fn parse_trait<T: ParseTypeOrTrait>(ident: Ident, input: ParseStream) -> Result<T, Error> {
@@ -56,6 +56,7 @@ fn parse_trait<T: ParseTypeOrTrait>(ident: Ident, input: ParseStream) -> Result<
 mod tests {
     use super::*;
     use syn::parse::Parse;
+    use quote::quote;
 
     #[derive(Debug, PartialEq)]
     enum MockTypeOrTrait {

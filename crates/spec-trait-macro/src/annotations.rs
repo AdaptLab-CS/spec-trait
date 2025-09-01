@@ -3,7 +3,7 @@ use spec_trait_utils::conversions::to_string;
 use spec_trait_utils::parsing::{ parse_type_or_trait, ParseTypeOrTrait };
 use std::fmt::Debug;
 use syn::parse::{ Parse, ParseStream };
-use syn::{ bracketed, parenthesized, Error, Expr, Ident, Token, token };
+use syn::{ bracketed, parenthesized, Error, Expr, Ident, Type, Token, token };
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Annotation {
@@ -103,9 +103,9 @@ fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
         bracketed!(content in input); // consume the '[' and ']' token pair
 
         content
-            .parse_terminated(Ident::parse, Token![,])?
-            .into_iter()
-            .map(|ident| ident.to_string())
+            .parse_terminated(Type::parse, Token![,])?
+            .iter()
+            .map(to_string)
             .collect()
     } else {
         vec![]
@@ -152,6 +152,23 @@ mod tests {
         assert_eq!(result.args, vec!["1", "2i8"]);
         assert_eq!(result.var_type, "ZST");
         assert_eq!(result.args_types, vec!["i32", "i8"]);
+        assert!(result.annotations.is_empty());
+    }
+
+    #[test]
+    fn arguments_formats() {
+        let input =
+            quote! { zst.foo(1, vec![2i8], Vec::new(3), x, (4, 5)); ZST; [i32, Vec<i8>, Vec<i32>, &[i32], (i32, i32)] };
+        let result = AnnotationBody::try_from(input).unwrap();
+
+        assert_eq!(result.var, "zst");
+        assert_eq!(result.fn_, "foo");
+        assert_eq!(result.args, vec!["1", "vec ! [2i8]", "Vec :: new (3)", "x", "(4 , 5)"]);
+        assert_eq!(result.var_type, "ZST");
+        assert_eq!(
+            result.args_types,
+            vec!["i32", "Vec < i8 >", "Vec < i32 >", "& [i32]", "(i32 , i32)"]
+        );
         assert!(result.annotations.is_empty());
     }
 

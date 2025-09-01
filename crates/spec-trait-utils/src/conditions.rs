@@ -259,6 +259,24 @@ mod tests {
     }
 
     #[test]
+    fn parse_type_formats() {
+        let inputs = vec![
+            quote! { T = u32 },
+            quote! { T = Vec<u8> },
+            quote! { T = (u8, u32) },
+            quote! { T = &[u8] },
+            quote! { T = _ },
+            quote! { T = Vec<_> },
+            quote! { T = (_, _) },
+            quote! { T = &[_] }
+        ];
+        for input in inputs {
+            let condition = WhenCondition::try_from(input);
+            assert!(condition.is_ok());
+        }
+    }
+
+    #[test]
     fn parse_single_trait_condition() {
         let input = quote! { T: Clone };
         let condition = WhenCondition::try_from(input).unwrap();

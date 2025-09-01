@@ -47,6 +47,20 @@ impl<T> Foo<T> for ZST {
     }
 }
 
+#[when(T = Vec<MyType>)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is Vec<u8>");
+    }
+}
+
+#[when(T = Vec<_>)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is Vec<_>");
+    }
+}
+
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
@@ -79,12 +93,13 @@ impl<T> Foo<T> for ZST2 {
 }
 
 fn main() {
-    println!("Hello, world! (from spec-trait-bin)");
     let zst = ZST;
     let zst2 = ZST2;
 
     // ZST - Foo
     spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType }
+    spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType } // TODO: fix
+    spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }
     spec! { zst.foo(1i8); ZST; [i8] }

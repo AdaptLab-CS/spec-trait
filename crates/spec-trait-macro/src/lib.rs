@@ -2,6 +2,7 @@ mod annotations;
 mod vars;
 mod spec;
 mod constraints;
+mod types;
 
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::cache;
