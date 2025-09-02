@@ -1,5 +1,5 @@
 use crate::annotations::AnnotationBody;
-use crate::vars::{ get_var_info_for_trait, VarInfo };
+use crate::vars::VarBody;
 use crate::types::{ get_concrete_type, types_equal };
 use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
@@ -62,8 +62,8 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
         None => Some(default),
         // from when macro
         Some(cond) => {
-            let vars = get_var_info_for_trait(&default.annotations, &default.trait_);
-            let (satisfied, constraints) = satisfies_condition(cond, &vars, &default.constraints);
+            let var = VarBody::from((&default.annotations, &default.trait_));
+            let (satisfied, constraints) = satisfies_condition(cond, &var, &default.constraints);
 
             if satisfied {
                 let mut with_constraints = default.clone();
@@ -78,16 +78,18 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
 
 fn satisfies_condition(
     condition: &WhenCondition,
-    vars: &Vec<VarInfo>,
+    var: &VarBody,
     constraints: &Constraints
 ) -> (bool, Constraints) {
     match condition {
         WhenCondition::Type(generic, type_) => {
-            let concrete_type = get_concrete_type(type_, vars);
-            let generic_var = vars.iter().find(|v: &_| v.type_definition == generic.to_string());
-            let concrete_type_var = vars
+            let concrete_type = get_concrete_type(type_, &var.aliases);
+            let generic_var = var.vars
                 .iter()
-                .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, vars));
+                .find(|v: &_| v.type_definition == generic.to_string());
+            let concrete_type_var = var.vars
+                .iter()
+                .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, &var.aliases));
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints
@@ -97,9 +99,11 @@ fn satisfies_condition(
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
-                generic_var.is_none_or(|v| !types_equal(&concrete_type, &v.concrete_type, vars)) ||
+                generic_var.is_none_or(
+                    |v| !types_equal(&concrete_type, &v.concrete_type, &var.aliases)
+                ) ||
                 // generic parameter is forbidden to be assigned to this type
-                constraint.not_types.iter().any(|t| types_equal(&concrete_type, t, vars)) ||
+                constraint.not_types.iter().any(|t| types_equal(&concrete_type, t, &var.aliases)) ||
                 // generic parameter should implement a trait that the type does not implement
                 concrete_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
@@ -108,7 +112,9 @@ fn satisfies_condition(
             (!violates_constraints, new_constraints)
         }
         WhenCondition::Trait(generic, traits) => {
-            let generic_var = vars.iter().find(|v: &_| v.type_definition == generic.to_string());
+            let generic_var = var.vars
+                .iter()
+                .find(|v: &_| v.type_definition == generic.to_string());
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints
@@ -123,9 +129,9 @@ fn satisfies_condition(
                 constraint.not_traits.iter().any(|t| traits.contains(t)) ||
                 // generic parameter is already assigned to a type that does not implement one of the traits
                 constraint.type_.as_ref().is_some_and(|ty| {
-                    let concrete_type_var = vars
+                    let concrete_type_var = var.vars
                         .iter()
-                        .find(|v| types_equal(&v.concrete_type, ty, vars));
+                        .find(|v| types_equal(&v.concrete_type, ty, &var.aliases));
                     concrete_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
 
@@ -136,7 +142,7 @@ fn satisfies_condition(
             let mut new_constraints = constraints.clone();
 
             let satisfied = inner.iter().all(|cond| {
-                let (is_satisfied, nc) = satisfies_condition(cond, vars, &new_constraints);
+                let (is_satisfied, nc) = satisfies_condition(cond, var, &new_constraints);
                 new_constraints = nc;
                 is_satisfied
             });
@@ -149,7 +155,7 @@ fn satisfies_condition(
             let mut new_constraints = constraints.clone();
 
             for cond in inner {
-                let (is_satisfied, nc) = satisfies_condition(cond, vars, constraints);
+                let (is_satisfied, nc) = satisfies_condition(cond, var, constraints);
                 satisfied = satisfied || is_satisfied;
 
                 if is_satisfied && cmp_constraints(&nc, &new_constraints) == Ordering::Greater {
@@ -161,7 +167,7 @@ fn satisfies_condition(
         }
         // negates the constraints on the inner condition
         WhenCondition::Not(inner) => {
-            let (satisfied, nc) = satisfies_condition(inner, vars, constraints);
+            let (satisfied, nc) = satisfies_condition(inner, var, constraints);
 
             let new_constraints = nc
                 .into_iter()
@@ -218,6 +224,20 @@ fn get_type(generic: &str, constraints: &Constraints) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vars::{ Aliases, VarInfo };
+
+    fn get_var_body() -> VarBody {
+        let mut aliases = Aliases::new();
+        aliases.insert("MyType".to_string(), vec!["MyOtherType".to_string()]);
+        VarBody {
+            aliases,
+            vars: vec![VarInfo {
+                type_definition: "T".into(),
+                concrete_type: "MyType".into(),
+                traits: vec!["MyTrait".into()],
+            }],
+        }
+    }
 
     #[test]
     fn test_satisfies_condition() {
@@ -228,16 +248,10 @@ mod tests {
                 WhenCondition::Trait("T".into(), vec!["MyTrait".into()])
             ]
         );
-        let fn_args = vec![VarInfo {
-            type_aliases: vec!["MyOtherType".into()],
-            type_definition: "T".into(),
-            concrete_type: "MyType".into(),
-            traits: vec!["MyTrait".into()],
-        }];
 
         let (satisfies, constraints) = satisfies_condition(
             &condition,
-            &fn_args,
+            &get_var_body(),
             &Constraints::default()
         );
 
@@ -250,30 +264,20 @@ mod tests {
 
     #[test]
     fn type_not_respected() {
-        let condition = WhenCondition::Type("T".into(), "MyType".into());
-        let fn_args = vec![VarInfo {
-            type_aliases: vec![],
-            type_definition: "T".into(),
-            concrete_type: "MyOtherType".into(),
-            traits: vec![],
-        }];
+        let condition = WhenCondition::Type("T".into(), "AnotherType".into());
+        let var = get_var_body();
 
-        let (satisfies, _) = satisfies_condition(&condition, &fn_args, &Constraints::default());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
     }
 
     #[test]
     fn trait_not_respected() {
-        let condition = WhenCondition::Trait("T".into(), vec!["MyTrait".into()]);
-        let fn_args = vec![VarInfo {
-            type_aliases: vec![],
-            type_definition: "T".into(),
-            concrete_type: "MyType".into(),
-            traits: vec![],
-        }];
+        let condition = WhenCondition::Trait("T".into(), vec!["AnotherTrait".into()]);
+        let var = get_var_body();
 
-        let (satisfies, _) = satisfies_condition(&condition, &fn_args, &Constraints::default());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
     }
@@ -286,14 +290,9 @@ mod tests {
                 WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "MyType".into())))
             ]
         );
-        let fn_args = vec![VarInfo {
-            type_aliases: vec![],
-            type_definition: "T".into(),
-            concrete_type: "MyType".into(),
-            traits: vec![],
-        }];
+        let var = get_var_body();
 
-        let (satisfies, _) = satisfies_condition(&condition, &fn_args, &Constraints::default());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
     }
@@ -308,14 +307,9 @@ mod tests {
                 )
             ]
         );
-        let fn_args = vec![VarInfo {
-            type_aliases: vec![],
-            type_definition: "T".into(),
-            concrete_type: "MyType".into(),
-            traits: vec!["MyTrait".into()],
-        }];
+        let var = get_var_body();
 
-        let (satisfies, _) = satisfies_condition(&condition, &fn_args, &Constraints::default());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
     }

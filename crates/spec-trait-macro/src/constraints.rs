@@ -1,4 +1,5 @@
 use std::{ cmp::Ordering, collections::HashMap };
+use crate::{ types::types_equal, vars::Aliases };
 
 /// constraint related to a single generic attribute
 #[derive(Debug, Default, Clone)]
@@ -13,9 +14,7 @@ pub type Constraints = HashMap<String /* type definition (generic) */, Constrain
 
 impl Ord for Constraint {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.type_
-            .is_some()
-            .cmp(&other.type_.is_some())
+        cmp_type(self, other)
             .then(self.traits.len().cmp(&other.traits.len()))
             .then(self.not_types.len().cmp(&other.not_types.len()))
             .then(self.not_traits.len().cmp(&other.not_traits.len()))
@@ -35,6 +34,16 @@ impl PartialEq for Constraint {
 }
 
 impl Eq for Constraint {}
+
+fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
+    match (this.type_.clone(), other.type_.clone()) {
+        // compare wildcards
+        (Some(a), Some(b)) if types_equal(&a, &b, &Aliases::default()) => {
+            a.replace("_", "").len().cmp(&b.replace("_", "").len())
+        }
+        _ => this.type_.is_some().cmp(&other.type_.is_some()),
+    }
+}
 
 pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {
     let all_keys: Vec<&String> = {
@@ -184,6 +193,26 @@ mod tests {
         assert_eq!(c1, c2);
         assert!(!(c1 < c2));
         assert!(!(c1 > c2));
+    }
+
+    #[test]
+    fn ordering_by_type_with_wildcard() {
+        let c1 = Constraint {
+            type_: Some("TypeA<TypeB>".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            type_: Some("TypeA<_>".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert!(c1 > c2);
+        assert!(c2 < c1);
     }
 
     #[test]
