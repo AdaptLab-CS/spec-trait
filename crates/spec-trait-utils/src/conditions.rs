@@ -107,7 +107,7 @@ impl Parse for WhenCondition {
 
         match ident.to_string().as_str() {
             "all" | "any" | "not" => parse_aggregation(ident, input),
-            _ => parse_type_or_trait(ident, input),
+            _ => parse_type_or_trait(&ident.to_string(), input),
         }
     }
 }

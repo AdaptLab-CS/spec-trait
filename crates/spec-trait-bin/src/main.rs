@@ -10,6 +10,7 @@ trait Foo2<T, U> {
 }
 
 type MyType = u8;
+type MyVecAlias = Vec<i32>;
 
 trait Bar {}
 trait FooBar {}
@@ -61,6 +62,13 @@ impl<T> Foo<T> for ZST {
     }
 }
 
+#[when(T = MyVecAlias)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is MyVecAlias");
+    }
+}
+
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
@@ -98,7 +106,8 @@ fn main() {
 
     // ZST - Foo
     spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType }
-    spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType } // TODO: fix
+    spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>]; Vec<i32> = MyVecAlias }
+    spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType }
     spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }

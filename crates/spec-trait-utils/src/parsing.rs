@@ -14,7 +14,7 @@ pub trait ParseTypeOrTrait {
     - If neither token is found returns an error
  */
 pub fn parse_type_or_trait<T: ParseTypeOrTrait>(
-    ident: Ident,
+    ident: &str,
     input: ParseStream
 ) -> Result<T, Error> {
     if input.peek(Token![=]) {
@@ -22,17 +22,17 @@ pub fn parse_type_or_trait<T: ParseTypeOrTrait>(
     } else if input.peek(Token![:]) {
         parse_trait::<T>(ident, input)
     } else {
-        Err(Error::new(ident.span(), "Expected ':' or '=' after identifier"))
+        Err(Error::new(input.span(), "Expected ':' or '=' after identifier"))
     }
 }
 
-fn parse_type<T: ParseTypeOrTrait>(ident: Ident, input: ParseStream) -> Result<T, Error> {
+fn parse_type<T: ParseTypeOrTrait>(ident: &str, input: ParseStream) -> Result<T, Error> {
     input.parse::<Token![=]>()?; // consume the '=' token
     let type_name = input.parse::<Type>()?;
     Ok(T::from_type(ident.to_string(), to_string(&type_name)))
 }
 
-fn parse_trait<T: ParseTypeOrTrait>(ident: Ident, input: ParseStream) -> Result<T, Error> {
+fn parse_trait<T: ParseTypeOrTrait>(ident: &str, input: ParseStream) -> Result<T, Error> {
     input.parse::<Token![:]>()?; // Consume the ':' token
 
     let mut traits = vec![];
@@ -46,7 +46,7 @@ fn parse_trait<T: ParseTypeOrTrait>(ident: Ident, input: ParseStream) -> Result<
     }
 
     if traits.is_empty() {
-        return Err(Error::new(ident.span(), "Expected at least one trait after ':'"));
+        return Err(Error::new(input.span(), "Expected at least one trait after ':'"));
     }
 
     Ok(T::from_trait(ident.to_string(), traits))
@@ -77,7 +77,7 @@ mod tests {
     impl Parse for MockTypeOrTrait {
         fn parse(input: ParseStream) -> Result<Self, Error> {
             let ident: Ident = input.parse()?;
-            parse_type_or_trait(ident, input)
+            parse_type_or_trait(&ident.to_string(), input)
         }
     }
 

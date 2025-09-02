@@ -33,8 +33,8 @@ impl ParseTypeOrTrait for Annotation {
 
 impl Parse for Annotation {
     fn parse(input: ParseStream) -> Result<Self, Error> {
-        let ident: Ident = input.parse()?;
-        parse_type_or_trait(ident, input)
+        let ty: Type = input.parse()?;
+        parse_type_or_trait(&to_string(&ty), input)
     }
 }
 
