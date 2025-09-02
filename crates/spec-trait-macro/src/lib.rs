@@ -12,13 +12,17 @@ use proc_macro2::TokenStream as TokenStream2;
 use annotations::AnnotationBody;
 use crate::spec::SpecBody;
 
-// TODO: add support to other cases (e.g. Vec<_>, &[_], (_,_), etc.)
+// TODO: check support to other cases
 /**
 `attr` is a condition in one of these forms:
 - `T: TraitName`
 - `T: TraitName1 + TraitName2`
+- `T = _`
 - `T = TypeName`
 - `T = &TypeName`
+- `T = TypeName1<TypeName2>`
+- `T = (TypeName1, TypeName2)`
+- `T = &[TypeName]`
 - `all(attr1, attr2, ...)`
 - `any(attr1, attr2, ...)`
 - `not(attr)`

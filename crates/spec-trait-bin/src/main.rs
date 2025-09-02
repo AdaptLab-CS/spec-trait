@@ -69,6 +69,21 @@ impl<T> Foo<T> for ZST {
     }
 }
 
+#[when(T = (i32, _))]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is (_, _)");
+    }
+}
+
+
+#[when(T = &[i32])]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is &[i32]");
+    }
+}
+
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
@@ -109,6 +124,8 @@ fn main() {
     spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>]; Vec<i32> = MyVecAlias }
     spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType }
     spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }
+    spec! { zst.foo((1, 2)); ZST; [(i32, i32)] }
+    spec! { zst.foo(&[1i32]); ZST; [&[i32]] }
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }
     spec! { zst.foo(1i8); ZST; [i8] }

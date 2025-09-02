@@ -19,16 +19,22 @@ pub enum WhenCondition {
 impl Display for WhenCondition {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         fn to_string(conditions: &[WhenCondition]) -> String {
-            conditions
+            let mut sorted_conditions: Vec<&WhenCondition> = conditions.iter().collect::<Vec<_>>();
+            sorted_conditions.sort_by_key(|c| c.to_string());
+
+            sorted_conditions
                 .iter()
                 .map(|cond| cond.to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         }
         match self {
-            WhenCondition::Type(generic, ty) => write!(f, "{} = {}", generic, ty),
-            WhenCondition::Trait(generic, traits) =>
-                write!(f, "{}: {}", generic, traits.join(" + ")),
+            WhenCondition::Type(generic, ty) => write!(f, "{} = {}", generic, ty.replace(" ", "")),
+            WhenCondition::Trait(generic, traits) => {
+                let mut sorted_traits = traits.iter().cloned().collect::<Vec<_>>();
+                sorted_traits.sort();
+                write!(f, "{}: {}", generic, sorted_traits.join(" + "))
+            }
             WhenCondition::All(conditions) => write!(f, "all({})", to_string(conditions)),
             WhenCondition::Any(conditions) => write!(f, "any({})", to_string(conditions)),
             WhenCondition::Not(condition) => write!(f, "not({})", condition),
@@ -38,30 +44,7 @@ impl Display for WhenCondition {
 
 impl Hash for WhenCondition {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            WhenCondition::Type(generic, ty) => {
-                generic.hash(state);
-                ty.hash(state);
-            }
-            WhenCondition::Trait(generic, traits) => {
-                generic.hash(state);
-                let mut sorted_traits: Vec<_> = traits.iter().collect();
-                sorted_traits.sort();
-                for trait_name in sorted_traits {
-                    trait_name.hash(state);
-                }
-            }
-            WhenCondition::All(conditions) | WhenCondition::Any(conditions) => {
-                let mut sorted_conditions: Vec<_> = conditions.iter().collect();
-                sorted_conditions.sort_by_key(|c| c.to_string());
-                for condition in sorted_conditions {
-                    condition.hash(state);
-                }
-            }
-            WhenCondition::Not(condition) => {
-                condition.hash(state);
-            }
-        }
+        self.to_string().hash(state);
     }
 }
 
