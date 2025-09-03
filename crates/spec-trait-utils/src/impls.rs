@@ -15,7 +15,7 @@ use syn::{ ItemImpl, Attribute };
 use std::fmt::Debug;
 use quote::quote;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ImplBody {
     pub condition: Option<WhenCondition>,
     pub impl_generics: String,

@@ -224,6 +224,7 @@ fn get_type(generic: &str, constraints: &Constraints) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::annotations::Annotation;
     use crate::vars::{ Aliases, VarInfo };
 
     fn get_var_body() -> VarBody {
@@ -236,6 +237,33 @@ mod tests {
                 concrete_type: "MyType".into(),
                 traits: vec!["MyTrait".into()],
             }],
+        }
+    }
+
+    fn get_impl_body(condition: Option<WhenCondition>) -> ImplBody {
+        ImplBody {
+            trait_name: "MyTrait".to_string(),
+            condition,
+            ..Default::default()
+        }
+    }
+
+    fn get_trait_body() -> TraitBody {
+        TraitBody {
+            name: "MyTrait".to_string(),
+            generics: "<T>".to_string(),
+            fns: vec!["fn foo(&self, my_arg: T);".to_string()],
+            ..Default::default()
+        }
+    }
+
+    fn get_annotation_body() -> AnnotationBody {
+        AnnotationBody {
+            fn_: "foo".to_string(),
+            args: vec!["my_arg".to_string()],
+            args_types: vec!["MyType".to_string()],
+            annotations: vec![Annotation::Trait("MyType".to_string(), vec!["MyTrait".to_string()])],
+            ..Default::default()
         }
     }
 
@@ -312,5 +340,100 @@ mod tests {
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
+    }
+
+    #[test]
+    fn default_impl() {
+        let impls = vec![get_impl_body(None)];
+        let traits = vec![get_trait_body()];
+        let annotations = get_annotation_body();
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_ok());
+        let spec_body = result.unwrap();
+        assert_eq!(spec_body.impl_.trait_name, "MyTrait");
+        assert_eq!(spec_body.constraints, Constraints::default());
+    }
+
+    #[test]
+    fn single_impl() {
+        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into())))];
+        let traits = vec![get_trait_body()];
+        let annotations = get_annotation_body();
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_ok());
+        let spec_body = result.unwrap();
+        assert_eq!(spec_body.impl_.trait_name, "MyTrait");
+        assert_eq!(
+            spec_body.constraints.get("T".into()),
+            Some(
+                &(Constraint {
+                    type_: Some("MyType".into()),
+                    traits: vec![],
+                    not_types: vec![],
+                    not_traits: vec![],
+                })
+            )
+        );
+    }
+
+    #[test]
+    fn multiple_impls() {
+        let impls = vec![
+            get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into()))),
+            get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyTrait".into()])))
+        ];
+        let traits = vec![get_trait_body()];
+        let annotations = get_annotation_body();
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_ok());
+        let spec_body = result.unwrap();
+        assert_eq!(spec_body.impl_.trait_name, "MyTrait");
+        assert_eq!(
+            spec_body.constraints.get("T".into()),
+            Some(
+                &(Constraint {
+                    type_: Some("MyType".into()),
+                    traits: vec![],
+                    not_types: vec![],
+                    not_traits: vec![],
+                })
+            )
+        );
+    }
+
+    #[test]
+    fn multiple_equally_specific_impls() {
+        let impls = vec![
+            get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into()))),
+            get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into())))
+        ];
+        let traits = vec![get_trait_body()];
+        let annotations = get_annotation_body();
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Multiple implementations are equally specific");
+    }
+
+    #[test]
+    fn no_valid_impl() {
+        let impls = vec![
+            get_impl_body(Some(WhenCondition::Type("T".into(), "MyOtherType".into()))),
+            get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyOtherTrait".into()])))
+        ];
+        let traits = vec![get_trait_body()];
+        let annotations = get_annotation_body();
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "No valid implementation found");
     }
 }

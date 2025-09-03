@@ -11,7 +11,7 @@ pub enum Annotation {
     Alias(String /* type */, String /* alias */),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct AnnotationBody {
     pub var: String,
     pub fn_: String,

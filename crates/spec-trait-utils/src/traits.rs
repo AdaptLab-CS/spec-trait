@@ -19,7 +19,7 @@ use syn::{
 };
 use quote::quote;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TraitBody {
     pub name: String,
     pub generics: String,
