@@ -9,6 +9,7 @@ use crate::conversions::{
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
+use crate::parsing::parse_generics;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use syn::{ ItemImpl, Attribute };
@@ -35,7 +36,7 @@ impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
     > {
         let bod = tokens_to_impl(tokens)?;
 
-        let impl_generics = to_string(&bod.generics);
+        let impl_generics = to_string(&parse_generics(bod.generics.clone()));
         let trait_with_generics = trait_to_string(&bod.trait_);
         let trait_name = get_trait_name_without_generics(&trait_with_generics);
         let trait_generics = trait_with_generics.replace(&trait_name, "");
@@ -92,4 +93,27 @@ pub fn break_attr(impl_: &ItemImpl) -> (ItemImpl, Vec<Attribute>) {
     let mut impl_no_attrs = impl_.clone();
     impl_no_attrs.attrs.clear();
     (impl_no_attrs, attrs)
+}
+
+pub fn assert_lifetimes_constraints(impls: &[ImplBody]) {
+    for impl_ in impls {
+        let violating = impls
+            .iter()
+            .filter(|other| {
+                other.type_name == impl_.type_name &&
+                    other.trait_name == impl_.trait_name &&
+                    impl_.impl_generics != other.impl_generics
+            })
+            .collect::<Vec<_>>();
+
+        if !violating.is_empty() {
+            panic!(
+                "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{}' vs '{}'",
+                impl_.type_name,
+                impl_.trait_name,
+                impl_.impl_generics,
+                violating.first().unwrap().impl_generics
+            );
+        }
+    }
 }

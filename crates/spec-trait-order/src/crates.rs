@@ -8,7 +8,7 @@ use spec_trait_utils::cache::CrateCache;
 pub struct Crate {
     pub name: String,
     pub content: CrateCache,
-    #[cfg(test)] pub files: Vec<PathBuf>,
+    #[cfg(test)] files: Vec<PathBuf>,
 }
 
 /// Get all crates in the given directory, considering both single-package and workspace setups

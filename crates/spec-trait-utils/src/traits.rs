@@ -5,6 +5,7 @@ use crate::conversions::{
     to_string,
     tokens_to_trait,
 };
+use crate::parsing::parse_generics;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use std::fmt::Debug;
@@ -33,7 +34,7 @@ impl TryFrom<TokenStream> for TraitBody {
         let bod = tokens_to_trait(tokens)?;
 
         let name = bod.ident.to_string();
-        let generics = to_string(&bod.generics);
+        let generics = to_string(&parse_generics(bod.generics));
         let fns = bod.items.iter().map(to_string).collect();
 
         Ok(TraitBody { name, generics, fns })

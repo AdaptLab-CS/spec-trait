@@ -1,5 +1,16 @@
-use syn::{ Error, Ident, Type, Token };
+use syn::{
+    Error,
+    GenericParam,
+    Generics,
+    Ident,
+    PredicateLifetime,
+    PredicateType,
+    Token,
+    Type,
+    WherePredicate,
+};
 use syn::parse::ParseStream;
+use quote::ToTokens;
 use crate::conversions::to_string;
 
 pub trait ParseTypeOrTrait {
@@ -50,6 +61,84 @@ fn parse_trait<T: ParseTypeOrTrait>(ident: &str, input: ParseStream) -> Result<T
     }
 
     Ok(T::from_trait(ident.to_string(), traits))
+}
+
+/**
+    adds the generics in the where clause in the params
+
+    e.g.
+    ```ignore
+    <T: Clone + Debug> ... where T: Default, U: Copy
+    ```
+    becomes
+    ```ignore
+    <T: Clone + Debug + Default, U: Copy>
+    ```
+
+*/
+pub fn parse_generics(mut generics: Generics) -> Generics {
+    let predicates = generics.where_clause
+        .as_ref()
+        .map(|wc| wc.predicates.clone())
+        .unwrap_or_default();
+
+    for predicate in predicates {
+        match predicate {
+            WherePredicate::Type(predicate) => {
+                handle_type_predicate(&predicate, &mut generics);
+            }
+            WherePredicate::Lifetime(predicate) => {
+                handle_lifetime_predicate(&predicate, &mut generics);
+            }
+            _ => {}
+        }
+    }
+
+    generics
+}
+
+fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics) {
+    let ident = match &predicate.bounded_ty {
+        Type::Path(tp) => &tp.path.segments.first().unwrap().ident,
+        _ => panic!("Ident not found in bounded type"),
+    };
+
+    let param = generics.params
+        .iter_mut()
+        .find_map(|param| {
+            match param {
+                GenericParam::Type(tp) if tp.ident == *ident => Some(tp),
+                _ => None,
+            }
+        })
+        .expect("Type parameter not found in generics");
+
+    for bound in predicate.bounds.iter().cloned() {
+        let bound_str = bound.to_token_stream().to_string();
+        if !param.bounds.iter().any(|b| b.to_token_stream().to_string() == bound_str) {
+            param.bounds.push(bound);
+        }
+    }
+}
+
+fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Generics) {
+    let lifetime = &predicate.lifetime;
+
+    let param = generics.params
+        .iter_mut()
+        .find_map(|param| {
+            match param {
+                GenericParam::Lifetime(lp) if lp.lifetime == *lifetime => Some(lp),
+                _ => None,
+            }
+        })
+        .expect("Lifetime parameter not found in generics");
+
+    for bound in predicate.bounds.iter().cloned() {
+        if !param.bounds.iter().any(|b| b == &bound) {
+            param.bounds.push(bound);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -134,5 +223,71 @@ mod tests {
         let result = syn::parse2::<MockTypeOrTrait>(input);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_generics_trait() {
+        let mut generics: Generics = syn::parse2(quote! { <T> }).unwrap();
+        generics.where_clause = Some(syn::parse2(quote! { where T: Clone }).unwrap());
+
+        let res = parse_generics(generics);
+
+        assert_eq!(to_string(&res).replace(" ", ""), "<T: Clone>".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn parse_generics_trait_already_present() {
+        let mut generics: Generics = syn::parse2(quote! { <T: Clone> }).unwrap();
+        generics.where_clause = Some(syn::parse2(quote! { where T: Clone }).unwrap());
+
+        let res = parse_generics(generics);
+
+        assert_eq!(to_string(&res).replace(" ", ""), "<T: Clone>".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn parse_generics_trait_join() {
+        let mut generics: Generics = syn::parse2(quote! { <T: Copy> }).unwrap();
+        generics.where_clause = Some(syn::parse2(quote! { where T: Clone }).unwrap());
+
+        let res = parse_generics(generics);
+
+        assert_eq!(
+            to_string(&res).replace(" ", ""),
+            "<T: Copy + Clone>".to_string().replace(" ", "")
+        );
+    }
+
+    #[test]
+    fn parse_generics_lifetime() {
+        let mut generics: Generics = syn::parse2(quote! { <'a, 'b> }).unwrap();
+        generics.where_clause = Some(syn::parse2(quote! { where 'a: 'b }).unwrap());
+
+        let res = parse_generics(generics);
+
+        assert_eq!(to_string(&res).replace(" ", ""), "<'a: 'b, 'b>".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn parse_generics_lifetime_already_present() {
+        let mut generics: Generics = syn::parse2(quote! { <'a: 'b, 'b> }).unwrap();
+        generics.where_clause = Some(syn::parse2(quote! { where 'a: 'b }).unwrap());
+
+        let res = parse_generics(generics);
+
+        assert_eq!(to_string(&res).replace(" ", ""), "<'a: 'b, 'b>".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn parse_generics_trait_and_lifetime() {
+        let mut generics: Generics = syn::parse2(quote! { <T: Clone, 'a, 'b> }).unwrap();
+        generics.where_clause = Some(syn::parse2(quote! { where T: Copy, 'a: 'b }).unwrap());
+
+        let res = parse_generics(generics);
+
+        assert_eq!(
+            to_string(&res).replace(" ", ""),
+            "<'a: 'b, 'b, T: Clone + Copy,>".to_string().replace(" ", "")
+        );
     }
 }

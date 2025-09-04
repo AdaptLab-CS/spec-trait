@@ -115,6 +115,28 @@ impl<T> Foo<T> for ZST2 {
     }
 }
 
+// ZST2 - Foo2
+
+impl<T, U> Foo2<T, U> for ZST2 where T: 'static {
+    fn foo(&self, x: T, y: U) {
+        println!("Default Foo2 for ZST2");
+    }
+}
+
+#[when(T = MyType)]
+impl<T: 'static, U> Foo2<T, U> for ZST2 {
+    fn foo(&self, x: T, y: U) {
+        println!("Foo2 for ZST2 where T is MyType");
+    }
+}
+
+#[when(not(T = MyType))]
+impl<T: 'static, U> Foo2<T, U> for ZST2 where T: 'static {
+    fn foo(&self, x: T, y: U) {
+        println!("Foo2 for ZST2 where T is not MyType");
+    }
+}
+
 fn main() {
     let zst = ZST;
     let zst2 = ZST2;
@@ -137,4 +159,8 @@ fn main() {
     // ZST2 - Foo
     spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }
     spec! { zst2.foo(1i8); ZST2; [i8] }
+
+    // ZST2 - Foo2
+    spec! { zst2.foo(1u8, 2u8); ZST2; [u8, u8]; u8 = MyType }
+    spec! { zst2.foo(1i8, 1i8); ZST2; [i8, i8] }
 }

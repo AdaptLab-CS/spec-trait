@@ -116,9 +116,7 @@ pub fn spec(item: TokenStream) -> TokenStream {
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
     let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits);
 
-    let spec_body = SpecBody::try_from((&impls, &traits, &ann)).unwrap_or_else(|err|
-        panic!("Specialization failed: {}", err)
-    );
+    let spec_body = SpecBody::try_from((&impls, &traits, &ann)).expect("Specialization failed");
 
     TokenStream2::from(&spec_body).into()
 }

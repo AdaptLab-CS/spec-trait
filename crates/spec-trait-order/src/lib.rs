@@ -2,6 +2,7 @@ mod crates;
 mod files;
 
 use spec_trait_utils::cache;
+use spec_trait_utils::impls;
 use std::path::Path;
 use spec_trait_utils::env::get_cache_path;
 
@@ -16,6 +17,7 @@ pub fn handle_order() {
         ::get_crates(Path::new("."))
         .into_iter()
         .for_each(|crate_| {
+            impls::assert_lifetimes_constraints(&crate_.content.impls);
             cache::add_crate(&crate_.name, crate_.content);
         });
 }
