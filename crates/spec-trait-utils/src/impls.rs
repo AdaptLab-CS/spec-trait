@@ -99,20 +99,19 @@ pub fn assert_lifetimes_constraints(impls: &[ImplBody]) {
     for impl_ in impls {
         let violating = impls
             .iter()
-            .filter(|other| {
-                other.type_name == impl_.type_name &&
-                    other.trait_name == impl_.trait_name &&
+            .find(|other| {
+                impl_.type_name ==  other.type_name &&
+                    impl_.trait_name == other.trait_name &&
                     impl_.impl_generics != other.impl_generics
-            })
-            .collect::<Vec<_>>();
+            });
 
-        if !violating.is_empty() {
+        if violating.is_some() {
             panic!(
                 "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{}' vs '{}'",
                 impl_.type_name,
                 impl_.trait_name,
                 impl_.impl_generics,
-                violating.first().unwrap().impl_generics
+                violating.unwrap().impl_generics
             );
         }
     }

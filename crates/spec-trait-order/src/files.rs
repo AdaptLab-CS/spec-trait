@@ -1,13 +1,15 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fs;
-
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::{ self, ImplBody };
 use spec_trait_utils::traits::{ self, TraitBody };
 use spec_trait_utils::cache::CrateCache;
 use syn::{ Attribute, Item, Meta };
 use quote::quote;
+use crate::aliases::{ collect_when_aliases, is_when_macro };
 
+/// get CrateCache by parsing all the files in `paths`
 pub fn parse_all(paths: &[PathBuf]) -> CrateCache {
     let mut traits = Vec::new();
     let mut impls = Vec::new();
@@ -21,6 +23,7 @@ pub fn parse_all(paths: &[PathBuf]) -> CrateCache {
     CrateCache { traits, impls }
 }
 
+/// get CrateCache by parsing a single file in `path`
 pub fn parse(path: &PathBuf) -> CrateCache {
     let content = fs::read_to_string(path).expect("failed to read file");
     let file = syn::parse_file(&content).expect("failed to parse content");
@@ -31,6 +34,7 @@ pub fn parse(path: &PathBuf) -> CrateCache {
     }
 }
 
+/// get traits from items
 fn get_traits(items: &[Item]) -> Vec<TraitBody> {
     items
         .iter()
@@ -48,7 +52,10 @@ fn get_traits(items: &[Item]) -> Vec<TraitBody> {
         .collect()
 }
 
+/// get impls from items
 fn get_impls(items: &[Item]) -> Vec<ImplBody> {
+    let when_aliases = collect_when_aliases(&items);
+
     items
         .iter()
         .filter_map(|item| {
@@ -60,7 +67,7 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
         .map(|impl_| {
             let (impl_no_attrs, impl_attrs) = impls::break_attr(impl_);
             let tokens = quote! { #impl_no_attrs };
-            let condition = get_condition(&impl_attrs);
+            let condition = get_condition(&impl_attrs, &when_aliases);
             ImplBody::try_from((tokens, condition)).expect(
                 "Failed to parse TokenStream into ImplBody"
             )
@@ -68,10 +75,11 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
         .collect()
 }
 
-fn get_condition(attrs: &[Attribute]) -> Option<WhenCondition> {
+/// get WhenCondition from impl attributes
+fn get_condition(attrs: &[Attribute], when_aliases: &HashSet<String>) -> Option<WhenCondition> {
     attrs
         .iter()
-        .find(|attr| attr.path().is_ident("when")) // TODO: handle use spec_trait_macro::{ when as ... }
+        .find(|attr| is_when_macro(attr.path(), when_aliases))
         .and_then(|attr| {
             match attr.clone().meta {
                 Meta::List(meta_list) => {
@@ -176,7 +184,10 @@ mod tests {
 
         let (_, attributes) = impls::break_attr(&impl_);
 
-        let condition = get_condition(&attributes);
+        let mut aliases = HashSet::new();
+        aliases.insert("when".to_string());
+
+        let condition = get_condition(&attributes, &aliases);
 
         assert!(condition.is_some());
         let condition = condition.unwrap();

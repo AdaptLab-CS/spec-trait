@@ -1,5 +1,6 @@
 mod crates;
 mod files;
+mod aliases;
 
 use spec_trait_utils::cache;
 use spec_trait_utils::impls;
