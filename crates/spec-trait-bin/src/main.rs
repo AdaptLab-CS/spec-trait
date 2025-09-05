@@ -27,13 +27,6 @@ impl<T> Foo<T> for ZST {
     }
 }
 
-#[when(T = _)] // TODO: this should have the same specificity as the default impl above
-impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
-        println!("Foo impl ZST where T is _");
-    }
-}
-
 #[when(T = MyType)]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
@@ -79,7 +72,7 @@ impl<T> Foo<T> for ZST {
 #[when(T = (i32, _))]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
-        println!("Foo impl ZST where T is (_, _)");
+        println!("Foo impl ZST where T is (i32, _)");
     }
 }
 

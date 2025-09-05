@@ -36,12 +36,20 @@ impl PartialEq for Constraint {
 impl Eq for Constraint {}
 
 fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
-    match (this.type_.clone(), other.type_.clone()) {
-        // compare wildcards
-        (Some(a), Some(b)) if types_equal(&a, &b, &Aliases::default()) => {
+    // `Some("_")` = `None`
+    fn norm(ty: &Option<String>) -> Option<String> {
+        ty.as_ref().and_then(|s| if s == "_" { None } else { Some(s.clone()) })
+    }
+
+    let a = norm(&this.type_);
+    let b = norm(&other.type_);
+
+    match (&a, &b) {
+        // ('Vec<_>', 'Vec<T>')
+        (Some(a), Some(b)) if types_equal(a, b, &Aliases::default()) => {
             a.replace("_", "").len().cmp(&b.replace("_", "").len())
         }
-        _ => this.type_.is_some().cmp(&other.type_.is_some()),
+        _ => a.is_some().cmp(&b.is_some()),
     }
 }
 
@@ -53,17 +61,14 @@ pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {
         keys
     };
 
+    let default = Constraint::default();
+    
     let mut sum = 0;
     for key in all_keys {
-        let self_constraint = this.get(key);
-        let other_constraint = other.get(key);
+        let self_constraint = this.get(key).unwrap_or(&default);
+        let other_constraint = other.get(key).unwrap_or(&default);
 
-        let ord = match (self_constraint, other_constraint) {
-            (Some(s), Some(o)) => s.cmp(o),
-            (Some(_), None) => Ordering::Greater,
-            (None, Some(_)) => Ordering::Less,
-            (None, None) => Ordering::Equal,
-        };
+        let ord = self_constraint.cmp(&other_constraint);
 
         sum += match ord {
             Ordering::Greater => 1,
@@ -213,6 +218,25 @@ mod tests {
 
         assert!(c1 > c2);
         assert!(c2 < c1);
+    }
+
+    #[test]
+    fn ordering_by_type_only_wildcard() {
+        let c1 = Constraint {
+            type_: None,
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            type_: Some("_".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert_eq!(c1, c2);
     }
 
     #[test]

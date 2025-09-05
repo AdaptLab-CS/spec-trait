@@ -20,8 +20,8 @@ use crate::spec::SpecBody;
 - `T = _`
 - `T = TypeName`
 - `T = &TypeName`
-- `T = TypeName1<TypeName2>`
-- `T = (TypeName1, TypeName2)`
+- `T = TypeName1<TypeName2, ...>`
+- `T = (TypeName1, TypeName2, ...)`
 - `T = &[TypeName]`
 - `all(attr1, attr2, ...)`
 - `any(attr1, attr2, ...)`
