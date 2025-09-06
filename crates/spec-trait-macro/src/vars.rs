@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use spec_trait_utils::traits::{ find_fn, get_param_types, TraitBody };
+use spec_trait_utils::traits::{ get_param_types, TraitBody };
 use crate::annotations::{ Annotation, AnnotationBody };
 use crate::types::{ get_concrete_type, types_equal };
 
@@ -43,7 +43,7 @@ fn get_type_aliases(ann: &[Annotation]) -> Aliases {
 }
 
 fn get_vars(ann: &AnnotationBody, trait_: &TraitBody, aliases: &Aliases) -> Vec<VarInfo> {
-    let trait_fn = find_fn(trait_, &ann.fn_, ann.args.len()).unwrap();
+    let trait_fn = trait_.find_fn(&ann.fn_, ann.args.len()).unwrap();
     let param_types = get_param_types(&trait_fn);
 
     ann.args_types

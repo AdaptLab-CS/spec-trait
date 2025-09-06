@@ -70,7 +70,7 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
 
             let conditions = match get_condition(&impl_attrs, &when_aliases) {
                 Some(condition) =>
-                    conditions::get_dnf_conjunctions(condition).into_iter().map(Some).collect(),
+                    conditions::get_conjunctions(condition).into_iter().map(Some).collect(),
                 None => vec![None],
             };
 

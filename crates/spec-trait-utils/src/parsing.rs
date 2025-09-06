@@ -97,7 +97,7 @@ pub fn parse_generics(mut generics: Generics) -> Generics {
     generics
 }
 
-fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics) {
+pub fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics) {
     let ident = match &predicate.bounded_ty {
         Type::Path(tp) => &tp.path.segments.first().unwrap().ident,
         _ => panic!("Ident not found in bounded type"),

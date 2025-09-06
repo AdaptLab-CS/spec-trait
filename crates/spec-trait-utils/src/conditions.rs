@@ -234,7 +234,7 @@ fn flatten_and_deduplicate(
     # Example:
     `any(A, all(B, C), D)` -> `vec![A, all(B, C), D]`
 */
-pub fn get_dnf_conjunctions(condition: WhenCondition) -> Vec<WhenCondition> {
+pub fn get_conjunctions(condition: WhenCondition) -> Vec<WhenCondition> {
     match condition {
         WhenCondition::Any(inner) => inner,
         _ => vec![condition],

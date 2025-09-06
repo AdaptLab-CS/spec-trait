@@ -1,4 +1,4 @@
-use crate::traits::{ find_fn, TraitBody };
+use crate::traits::TraitBody;
 use crate::impls::ImplBody;
 use crate::env::get_cache_path;
 use serde::{ Deserialize, Serialize };
@@ -73,7 +73,7 @@ pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
     let cache = read_cache(None);
     cache.traits
         .into_iter()
-        .filter(|tr| find_fn(tr, fn_name, args_len).is_some())
+        .filter(|tr| tr.find_fn(fn_name, args_len).is_some())
         .collect()
 }
 

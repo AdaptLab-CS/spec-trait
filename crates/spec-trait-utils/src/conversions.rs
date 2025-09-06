@@ -1,8 +1,22 @@
 use proc_macro2::TokenStream;
-use syn::{ Expr, Generics, ImplItem, ItemImpl, ItemTrait, Path, TraitItem, Type, Result };
+use syn::{
+    Expr,
+    Generics,
+    ImplItem,
+    ItemImpl,
+    ItemTrait,
+    Path,
+    PredicateType,
+    Result,
+    TraitItem,
+    Type,
+    WherePredicate,
+};
 use quote::ToTokens;
 use std::hash::{ DefaultHasher, Hasher, Hash };
 use quote::quote;
+
+use crate::conditions::WhenCondition;
 
 pub fn str_to_generics(str: &str) -> Generics {
     syn::parse_str(str).expect("Failed to parse generics")
@@ -55,4 +69,18 @@ pub fn to_hash<T: Hash>(item: &T) -> u64 {
     let mut hasher = DefaultHasher::new();
     item.hash(&mut hasher);
     hasher.finish()
+}
+
+pub fn trait_condition_to_generic_predicate(condition: &WhenCondition) -> PredicateType {
+    match condition {
+        WhenCondition::Trait(generic, trait_) => {
+            let predicate_str = format!("{}: {}", generic, trait_.join(" + "));
+            let predicate = syn::parse_str(&predicate_str).expect("Failed to parse predicate");
+            match predicate {
+                WherePredicate::Type(p) => p,
+                _ => panic!("Expected WherePredicate::Type"),
+            }
+        }
+        _ => panic!("Expected WhenCondition::Trait"),
+    }
 }

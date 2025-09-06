@@ -24,7 +24,7 @@ pub struct ImplBody {
     pub spec_trait_name: String,
     pub trait_generics: String,
     pub type_name: String,
-    pub fns: Vec<String>,
+    pub items: Vec<String>,
 }
 
 impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
@@ -41,7 +41,7 @@ impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
         let trait_name = get_trait_name_without_generics(&trait_with_generics);
         let trait_generics = trait_with_generics.replace(&trait_name, "");
         let type_name = to_string(&bod.self_ty);
-        let fns = bod.items.iter().map(to_string).collect();
+        let items = bod.items.iter().map(to_string).collect();
         let spec_trait_name = get_spec_trait_name(&condition, &trait_name, &type_name);
 
         Ok(ImplBody {
@@ -51,7 +51,7 @@ impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
             trait_generics,
             spec_trait_name,
             type_name,
-            fns,
+            items,
         })
     }
 }
@@ -77,11 +77,11 @@ impl From<&ImplBody> for TokenStream {
         let trait_name = str_to_trait_name(&impl_body.spec_trait_name);
         let trait_generics = str_to_generics(&impl_body.trait_generics);
         let type_name = str_to_type_name(&impl_body.type_name);
-        let fns = strs_to_impl_items(&impl_body.fns);
+        let items = strs_to_impl_items(&impl_body.items);
 
         quote! {
         impl #impl_generics #trait_name #trait_generics for #type_name {
-            #(#fns)*
+            #(#items)*
         }
     }
     }

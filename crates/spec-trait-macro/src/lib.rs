@@ -58,20 +58,20 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
     );
 
     let mut parts = vec![];
-    for c in conditions::get_dnf_conjunctions(condition) {
+    for c in conditions::get_conjunctions(condition) {
         let impl_body = ImplBody::try_from((TokenStream2::from(item.clone()), Some(c))).expect(
             "Failed to parse TokenStream into ImplBody"
         );
 
         // TODO: can we somehow get condition and impl_body from cache instead of parsing them again?
 
-        let mut trait_body = cache
+        let trait_body = cache
             ::get_trait_by_name(&impl_body.trait_name)
             .expect("Trait not found in cache");
 
-        trait_body.name = impl_body.spec_trait_name.clone();
+        let specialized_trait = trait_body.apply_impl(&impl_body);
 
-        let trait_token_stream = TokenStream2::from(&trait_body);
+        let trait_token_stream = TokenStream2::from(&specialized_trait);
         let impl_token_stream = TokenStream2::from(&impl_body);
 
         //TODO: infer generics from conditions (e.g. with condition "T = Type" generic "T" is replaced with type "Type")

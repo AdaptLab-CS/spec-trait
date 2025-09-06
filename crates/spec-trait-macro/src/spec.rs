@@ -264,7 +264,7 @@ mod tests {
         TraitBody {
             name: "MyTrait".to_string(),
             generics: "<T>".to_string(),
-            fns: vec!["fn foo(&self, my_arg: T);".to_string()],
+            items: vec!["fn foo(&self, my_arg: T);".to_string()],
             ..Default::default()
         }
     }
