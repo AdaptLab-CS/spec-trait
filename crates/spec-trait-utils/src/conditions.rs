@@ -229,6 +229,18 @@ fn flatten_and_deduplicate(
     }
 }
 
+/**
+    return the top level conjunctive terms of a condition assumed to be in DNF.
+    # Example:
+    `any(A, all(B, C), D)` -> `vec![A, all(B, C), D]`
+*/
+pub fn get_dnf_conjunctions(condition: WhenCondition) -> Vec<WhenCondition> {
+    match condition {
+        WhenCondition::Any(inner) => inner,
+        _ => vec![condition],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

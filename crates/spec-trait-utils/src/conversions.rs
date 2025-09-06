@@ -16,13 +16,13 @@ pub fn str_to_type_name(str: &str) -> Type {
     syn::parse_str(str).expect("Failed to parse type")
 }
 
-pub fn strs_to_impl_fns(strs: &[String]) -> Vec<ImplItem> {
+pub fn strs_to_impl_items(strs: &[String]) -> Vec<ImplItem> {
     strs.iter()
         .map(|f| syn::parse_str(f).expect("Failed to parse impl item"))
         .collect()
 }
 
-pub fn strs_to_trait_fns(strs: &[String]) -> Vec<TraitItem> {
+pub fn strs_to_trait_items(strs: &[String]) -> Vec<TraitItem> {
     strs.iter()
         .map(|f| syn::parse_str(f).expect("Failed to parse trait item"))
         .collect()

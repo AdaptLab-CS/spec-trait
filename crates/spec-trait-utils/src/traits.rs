@@ -1,7 +1,7 @@
 use crate::conversions::{
     str_to_generics,
     str_to_trait_name,
-    strs_to_trait_fns,
+    strs_to_trait_items,
     to_string,
     tokens_to_trait,
 };
@@ -45,7 +45,7 @@ impl From<&TraitBody> for TokenStream {
     fn from(trait_body: &TraitBody) -> Self {
         let name = str_to_trait_name(&trait_body.name);
         let generics = str_to_generics(&trait_body.generics);
-        let fns = strs_to_trait_fns(&trait_body.fns);
+        let fns = strs_to_trait_items(&trait_body.fns);
 
         quote! {
             trait #name #generics {
@@ -56,7 +56,7 @@ impl From<&TraitBody> for TokenStream {
 }
 
 pub fn find_fn(trait_body: &TraitBody, fn_name: &str, args_len: usize) -> Option<TraitItemFn> {
-    let fns = strs_to_trait_fns(&trait_body.fns);
+    let fns = strs_to_trait_items(&trait_body.fns);
 
     fns.iter().find_map(|f| {
         match f {

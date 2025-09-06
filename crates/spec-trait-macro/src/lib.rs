@@ -4,12 +4,13 @@ mod spec;
 mod constraints;
 mod types;
 
-use spec_trait_utils::conditions::WhenCondition;
+use spec_trait_utils::conditions::{ self, WhenCondition };
 use spec_trait_utils::cache;
 use spec_trait_utils::impls::ImplBody;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use annotations::AnnotationBody;
+use quote::quote;
 use crate::spec::SpecBody;
 
 // TODO: check support to other cases
@@ -52,31 +53,36 @@ impl<T> MyTrait<T> for MyType {
 */
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let cond = WhenCondition::try_from(TokenStream2::from(attr)).expect(
+    let condition = WhenCondition::try_from(TokenStream2::from(attr)).expect(
         "Failed to parse TokenStream into WhenCondition"
     );
-    let impl_body = ImplBody::try_from((TokenStream2::from(item), Some(cond))).expect(
-        "Failed to parse TokenStream into ImplBody"
-    );
 
-    // TODO: can we somehow get cond and impl_body from cache instead of parsing them again?
+    let mut parts = vec![];
+    for c in conditions::get_dnf_conjunctions(condition) {
+        let impl_body = ImplBody::try_from((TokenStream2::from(item.clone()), Some(c))).expect(
+            "Failed to parse TokenStream into ImplBody"
+        );
 
-    let mut trait_body = cache
-        ::get_trait_by_name(&impl_body.trait_name)
-        .expect("Trait not found in cache");
+        // TODO: can we somehow get condition and impl_body from cache instead of parsing them again?
 
-    trait_body.name = impl_body.spec_trait_name.clone();
+        let mut trait_body = cache
+            ::get_trait_by_name(&impl_body.trait_name)
+            .expect("Trait not found in cache");
 
-    let trait_token_stream = TokenStream2::from(&trait_body);
-    let impl_token_stream = TokenStream2::from(&impl_body);
+        trait_body.name = impl_body.spec_trait_name.clone();
 
-    //TODO: infer generics from conditions (e.g. with condition "T = Type" generic "T" is replaced with type "Type")
+        let trait_token_stream = TokenStream2::from(&trait_body);
+        let impl_token_stream = TokenStream2::from(&impl_body);
 
-    let combined = quote::quote! {
-        #trait_token_stream
-        #impl_token_stream
-    };
+        //TODO: infer generics from conditions (e.g. with condition "T = Type" generic "T" is replaced with type "Type")
 
+        parts.push(quote! {
+            #trait_token_stream
+            #impl_token_stream
+        });
+    }
+
+    let combined = quote! { #(#parts)* };
     combined.into()
 }
 

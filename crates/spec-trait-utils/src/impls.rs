@@ -2,7 +2,7 @@ use crate::conversions::{
     str_to_generics,
     str_to_trait_name,
     str_to_type_name,
-    strs_to_impl_fns,
+    strs_to_impl_items,
     to_hash,
     to_string,
     tokens_to_impl,
@@ -77,7 +77,7 @@ impl From<&ImplBody> for TokenStream {
         let trait_name = str_to_trait_name(&impl_body.spec_trait_name);
         let trait_generics = str_to_generics(&impl_body.trait_generics);
         let type_name = str_to_type_name(&impl_body.type_name);
-        let fns = strs_to_impl_fns(&impl_body.fns);
+        let fns = strs_to_impl_items(&impl_body.fns);
 
         quote! {
         impl #impl_generics #trait_name #trait_generics for #type_name {
@@ -100,7 +100,7 @@ pub fn assert_lifetimes_constraints(impls: &[ImplBody]) {
         let violating = impls
             .iter()
             .find(|other| {
-                impl_.type_name ==  other.type_name &&
+                impl_.type_name == other.type_name &&
                     impl_.trait_name == other.trait_name &&
                     impl_.impl_generics != other.impl_generics
             });

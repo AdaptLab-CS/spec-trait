@@ -1,5 +1,5 @@
 use crate::annotations::AnnotationBody;
-use crate::vars::VarBody;
+use crate::vars::{ Aliases, VarBody };
 use crate::types::{ get_concrete_type, types_equal };
 use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
@@ -95,7 +95,19 @@ fn satisfies_condition(
             let constraint = new_constraints
                 .entry(generic.clone())
                 .or_insert_with(Constraint::default);
-            constraint.type_ = Some(concrete_type.clone());
+
+            // update the type only if it is more specific than the current one
+            if
+                constraint.type_
+                    .as_ref()
+                    .is_none_or(
+                        |t|
+                            types_equal(&concrete_type, &t, &Aliases::default()) &&
+                            concrete_type.replace("_", "").len() > t.replace("_", "").len()
+                    )
+            {
+                constraint.type_ = Some(concrete_type.clone());
+            }
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
@@ -323,6 +335,36 @@ mod tests {
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
+    }
+
+    #[test]
+    fn most_specific_type() {
+        let condition = WhenCondition::All(
+            vec![
+                WhenCondition::Type("T".into(), "_".into()),
+                WhenCondition::Type("T".into(), "Vec<MyType>".into()),
+                WhenCondition::Type("T".into(), "Vec<_>".into())
+            ]
+        );
+        let var = VarBody {
+            aliases: Aliases::default(),
+            vars: vec![VarInfo {
+                type_definition: "T".into(),
+                concrete_type: "Vec<MyType>".into(),
+                traits: vec![],
+            }],
+        };
+
+        let (satisfies, constraints) = satisfies_condition(
+            &condition,
+            &var,
+            &Constraints::default()
+        );
+
+        assert!(satisfies);
+
+        let c = constraints.get("T".into()).unwrap();
+        assert_eq!(c.type_.clone().unwrap().replace(" ", ""), "Vec<MyType>".to_string());
     }
 
     #[test]

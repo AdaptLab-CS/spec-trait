@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::fs;
-use spec_trait_utils::conditions::WhenCondition;
+use spec_trait_utils::conditions::{ self, WhenCondition };
 use spec_trait_utils::impls::{ self, ImplBody };
 use spec_trait_utils::traits::{ self, TraitBody };
 use spec_trait_utils::cache::CrateCache;
@@ -64,13 +64,24 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
                 _ => None,
             }
         })
-        .map(|impl_| {
+        .flat_map(|impl_| {
             let (impl_no_attrs, impl_attrs) = impls::break_attr(impl_);
             let tokens = quote! { #impl_no_attrs };
-            let condition = get_condition(&impl_attrs, &when_aliases);
-            ImplBody::try_from((tokens, condition)).expect(
-                "Failed to parse TokenStream into ImplBody"
-            )
+
+            let conditions = match get_condition(&impl_attrs, &when_aliases) {
+                Some(condition) =>
+                    conditions::get_dnf_conjunctions(condition).into_iter().map(Some).collect(),
+                None => vec![None],
+            };
+
+            conditions
+                .into_iter()
+                .map(|condition|
+                    ImplBody::try_from((tokens.clone(), condition)).expect(
+                        "Failed to parse TokenStream into ImplBody"
+                    )
+                )
+                .collect::<Vec<_>>()
         })
         .collect()
 }
