@@ -1,5 +1,5 @@
 use spec_trait_utils::conversions::{ str_to_type_name, to_string };
-use syn::{ Type, TypeTuple, TypeReference, TypeArray };
+use syn::{ Type, TypeTuple, TypeReference, TypeArray, PathArguments, GenericArgument, TypeSlice };
 use crate::vars::Aliases;
 
 pub fn get_concrete_type(type_or_alias: &str, aliases: &Aliases) -> String {
@@ -45,7 +45,7 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
         // [T]
         Type::Slice(slice) => {
             let resolved_elem = resolve_type(&slice.elem, aliases);
-            Type::Slice(syn::TypeSlice {
+            Type::Slice(TypeSlice {
                 elem: Box::new(resolved_elem),
                 ..slice.clone()
             })
@@ -61,9 +61,9 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
             }
 
             for segment in &mut resolved_path.path.segments {
-                if let syn::PathArguments::AngleBracketed(args) = &mut segment.arguments {
+                if let PathArguments::AngleBracketed(args) = &mut segment.arguments {
                     for arg in &mut args.args {
-                        if let syn::GenericArgument::Type(inner_ty) = arg {
+                        if let GenericArgument::Type(inner_ty) = arg {
                             *inner_ty = resolve_type(inner_ty, aliases);
                         }
                     }
