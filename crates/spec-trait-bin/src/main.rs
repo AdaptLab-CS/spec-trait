@@ -118,7 +118,7 @@ impl<T> Foo<T> for ZST2 {
 #[when(all(T = Vec<i32>, T = Vec<_>))]
 impl<T> Foo<T> for ZST2 {
     fn foo(&self, x: T) {
-        println!("Foo impl ZST2 where T is ...");
+        println!("Foo impl ZST2 where T is Vec<i32>");
     }
 }
 
@@ -165,8 +165,8 @@ fn main() {
 
     // ZST2 - Foo
     spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }
-    spec! { zst2.foo(1i32); ZST2; [i32] }
     spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] }
+    spec! { zst2.foo(1i32); ZST2; [i32] }
 
     // ZST2 - Foo2
     spec! { zst2.foo(1u8, 2u8); ZST2; [u8, u8]; u8 = MyType }

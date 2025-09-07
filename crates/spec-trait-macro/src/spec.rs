@@ -29,9 +29,10 @@ impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
             .iter()
             .filter_map(|impl_| {
                 let trait_ = traits.iter().find(|tr| tr.name == impl_.trait_name)?;
+                let specialized_trait = trait_.specialize(impl_);
                 let default = SpecBody {
                     impl_: impl_.clone(),
-                    trait_: trait_.clone(),
+                    trait_: specialized_trait,
                     constraints: Constraints::default(),
                     annotations: ann.clone(),
                 };

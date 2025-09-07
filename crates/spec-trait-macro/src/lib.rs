@@ -69,12 +69,10 @@ pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
             ::get_trait_by_name(&impl_body.trait_name)
             .expect("Trait not found in cache");
 
-        let specialized_trait = trait_body.apply_impl(&impl_body);
+        let specialized_trait = trait_body.specialize(&impl_body);
 
         let trait_token_stream = TokenStream2::from(&specialized_trait);
         let impl_token_stream = TokenStream2::from(&impl_body);
-
-        //TODO: infer generics from conditions (e.g. with condition "T = Type" generic "T" is replaced with type "Type")
 
         parts.push(quote! {
             #trait_token_stream

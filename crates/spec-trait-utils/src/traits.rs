@@ -12,7 +12,7 @@ use crate::impls::ImplBody;
 use crate::parsing::{ handle_type_predicate, parse_generics, replace_type, replace_infers };
 use proc_macro2::{ Span, TokenStream };
 use serde::{ Deserialize, Serialize };
-use syn::{ GenericParam, Ident, ReturnType, TypeParam };
+use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
 use std::collections::HashSet;
 use std::fmt::Debug;
 use syn::{
@@ -25,6 +25,7 @@ use syn::{
     TraitItemFn,
 };
 use quote::quote;
+use syn::visit_mut::{ self, VisitMut };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TraitBody {
@@ -78,33 +79,48 @@ impl TraitBody {
         })
     }
 
-    pub fn apply_impl(&self, impl_body: &ImplBody) -> Self {
+    pub fn specialize(&self, impl_body: &ImplBody) -> Self {
         let mut new_trait = self.clone();
         new_trait.name = impl_body.spec_trait_name.clone();
+        // if let Some(condition) = &impl_body.condition {
+        //     let impl_generics = str_to_generics(&impl_body.trait_generics);
+        //     new_trait.apply_condition(&impl_generics, condition);
+        // }
         new_trait
     }
 
-    fn apply_condition(&mut self, condition: &WhenCondition) {
+    fn apply_condition(&mut self, impl_trait_generics: &mut Generics, condition: &WhenCondition) {
         match condition {
             WhenCondition::All(conds) => {
                 // pass multiple times to handle chained dependencies
                 for _ in 0..conds.len() {
                     for c in conds {
-                        self.apply_condition(c);
+                        self.apply_condition(impl_trait_generics, c);
                     }
                 }
             }
 
             // replace generic
-            WhenCondition::Type(generic, type_) => {
+            WhenCondition::Type(impl_generic, type_) => {
                 let mut generics = str_to_generics(&self.generics);
+                let trait_generic = self
+                    .get_corresponding_generic(&impl_trait_generics, impl_generic)
+                    .unwrap_or_else(|| impl_generic.clone());
 
-                // remove generic from generics
+                // remove generic from generics (no-op if trait_generic not present)
                 generics.params = generics.params
                     .into_iter()
                     .filter(
                         |param|
-                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *generic)
+                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *trait_generic)
+                    )
+                    .collect();
+                impl_trait_generics.params = impl_trait_generics.params
+                    .clone()
+                    .into_iter()
+                    .filter(
+                        |param|
+                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *impl_generic)
                     )
                     .collect();
 
@@ -131,36 +147,41 @@ impl TraitBody {
 
                 // add new generics
                 for ident in new_generics {
-                    generics.params.push(
-                        GenericParam::Type(TypeParam {
-                            attrs: vec![],
-                            ident: Ident::new(&ident, Span::call_site()),
-                            colon_token: None,
-                            bounds: Punctuated::new(),
-                            eq_token: None,
-                            default: None,
-                        })
-                    );
+                    let param = GenericParam::Type(TypeParam {
+                        attrs: vec![],
+                        ident: Ident::new(&ident, Span::call_site()),
+                        colon_token: None,
+                        bounds: Punctuated::new(),
+                        eq_token: None,
+                        default: None,
+                    });
+                    generics.params.push(param.clone());
+                    impl_trait_generics.params.push(param);
                 }
 
                 // replace generic with type in the trait items
                 let items = strs_to_trait_items(&self.items);
                 let mut new_items = vec![];
 
-                for mut item in items {
-                    if let TraitItem::Fn(ref mut fn_item) = item {
-                        // parameters
-                        for input in fn_item.sig.inputs.iter_mut() {
-                            if let FnArg::Typed(pat_type) = input {
-                                replace_type(&mut *pat_type.ty, generic, &new_ty);
-                            }
-                        }
-                        // return type
-                        if let ReturnType::Type(_, boxed_ty) = &mut fn_item.sig.output {
-                            replace_type(&mut **boxed_ty, generic, &new_ty);
-                        }
-                    }
+                struct TypeReplacer {
+                    generic: String,
+                    new_ty: Type,
+                }
 
+                impl VisitMut for TypeReplacer {
+                    fn visit_type_mut(&mut self, node: &mut Type) {
+                        replace_type(node, &self.generic, &self.new_ty);
+                        visit_mut::visit_type_mut(self, node);
+                    }
+                }
+
+                let mut replacer = TypeReplacer {
+                    generic: trait_generic.clone(),
+                    new_ty: new_ty.clone(),
+                };
+
+                for mut item in items {
+                    replacer.visit_trait_item_mut(&mut item);
                     new_items.push(item);
                 }
 
@@ -170,13 +191,39 @@ impl TraitBody {
             }
 
             // add trait bound
-            WhenCondition::Trait(_, _) => {
+            WhenCondition::Trait(impl_generic, traits) => {
                 let mut generics = str_to_generics(&self.generics);
-                let predicate = trait_condition_to_generic_predicate(condition);
+                let trait_generic = self
+                    .get_corresponding_generic(&impl_trait_generics, impl_generic)
+                    .unwrap_or_else(|| impl_generic.clone());
+
+                let predicate = trait_condition_to_generic_predicate(
+                    &WhenCondition::Trait(trait_generic, traits.clone())
+                );
                 handle_type_predicate(&predicate, &mut generics);
                 self.generics = to_string(&generics);
             }
             _ => {}
+        }
+    }
+
+    fn get_corresponding_generic(
+        &self,
+        impl_generics: &Generics,
+        impl_generic: &str
+    ) -> Option<String> {
+        let trait_generics = str_to_generics(&self.generics);
+
+        let impl_generic_param = impl_generics.params
+            .iter()
+            .position(
+                |param|
+                    matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *impl_generic)
+            )?;
+
+        match trait_generics.params.iter().nth(impl_generic_param) {
+            Some(GenericParam::Type(tp)) => Some(tp.ident.to_string()),
+            _ => None,
         }
     }
 }
@@ -229,9 +276,10 @@ mod tests {
     #[test]
     fn apply_trait_condition() {
         let mut trait_body = get_trait_body();
+        let mut impl_trait_generics = str_to_generics("<T, A>");
         let condition = WhenCondition::Trait("T".into(), vec!["Copy".into(), "Clone".into()]);
 
-        trait_body.apply_condition(&condition);
+        trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
         assert_eq!(
             trait_body.generics.replace(" ", ""),
@@ -242,9 +290,10 @@ mod tests {
     #[test]
     fn apply_type_condition() {
         let mut trait_body = get_trait_body();
+        let mut impl_trait_generics = str_to_generics("<T, A>");
         let condition = WhenCondition::Type("T".into(), "String".into());
 
-        trait_body.apply_condition(&condition);
+        trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
         assert_eq!(trait_body.generics.replace(" ", ""), "<U: Copy>".to_string().replace(" ", ""));
         assert_eq!(
@@ -262,9 +311,10 @@ mod tests {
     #[test]
     fn apply_type_condition_with_wildcard() {
         let mut trait_body = get_trait_body();
+        let mut impl_trait_generics = str_to_generics("<T, A>");
         let condition = WhenCondition::Type("T".into(), "Vec<_>".into());
 
-        trait_body.apply_condition(&condition);
+        trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
         assert_eq!(
             trait_body.generics.replace(" ", ""),
@@ -287,6 +337,7 @@ mod tests {
     #[test]
     fn apply_type_condition_all() {
         let mut trait_body = get_trait_body();
+        let mut impl_trait_generics = str_to_generics("<T, A>");
         let condition = WhenCondition::All(
             vec![
                 WhenCondition::Type("T".into(), "Vec<V>".into()),
@@ -294,7 +345,7 @@ mod tests {
             ]
         );
 
-        trait_body.apply_condition(&condition);
+        trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
         assert_eq!(trait_body.generics.replace(" ", ""), "<U: Copy>".to_string().replace(" ", ""));
         assert_eq!(
