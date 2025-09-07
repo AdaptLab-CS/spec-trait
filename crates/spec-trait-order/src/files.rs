@@ -54,7 +54,7 @@ fn get_traits(items: &[Item]) -> Vec<TraitBody> {
 
 /// get impls from items
 fn get_impls(items: &[Item]) -> Vec<ImplBody> {
-    let when_aliases = collect_when_aliases(&items);
+    let when_aliases = collect_when_aliases(items);
 
     items
         .iter()

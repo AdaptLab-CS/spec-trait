@@ -68,7 +68,7 @@ pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {
         let self_constraint = this.get(key).unwrap_or(&default);
         let other_constraint = other.get(key).unwrap_or(&default);
 
-        let ord = self_constraint.cmp(&other_constraint);
+        let ord = self_constraint.cmp(other_constraint);
 
         sum += match ord {
             Ordering::Greater => 1,

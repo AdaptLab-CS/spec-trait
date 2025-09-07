@@ -7,7 +7,7 @@ use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
 use proc_macro2::TokenStream;
 use std::cmp::Ordering;
-use crate::constraints::{ cmp_constraints, Constraint, Constraints };
+use crate::constraints::{ cmp_constraints, Constraints };
 use quote::quote;
 
 #[derive(Debug, Clone)]
@@ -85,17 +85,13 @@ fn satisfies_condition(
     match condition {
         WhenCondition::Type(generic, type_) => {
             let concrete_type = get_concrete_type(type_, &var.aliases);
-            let generic_var = var.vars
-                .iter()
-                .find(|v: &_| v.impl_type_definition == generic.to_string());
+            let generic_var = var.vars.iter().find(|v: &_| v.impl_type_definition == *generic);
             let concrete_type_var = var.vars
                 .iter()
                 .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, &var.aliases));
 
             let mut new_constraints = constraints.clone();
-            let constraint = new_constraints
-                .entry(generic.clone())
-                .or_insert_with(Constraint::default);
+            let constraint = new_constraints.entry(generic.clone()).or_default();
 
             // update the type only if it is more specific than the current one
             if
@@ -103,7 +99,7 @@ fn satisfies_condition(
                     .as_ref()
                     .is_none_or(
                         |t|
-                            types_equal(&concrete_type, &t, &Aliases::default()) &&
+                            types_equal(&concrete_type, t, &Aliases::default()) &&
                             concrete_type.replace("_", "").len() > t.replace("_", "").len()
                     )
             {
@@ -125,14 +121,10 @@ fn satisfies_condition(
             (!violates_constraints, new_constraints)
         }
         WhenCondition::Trait(generic, traits) => {
-            let generic_var = var.vars
-                .iter()
-                .find(|v: &_| v.impl_type_definition == generic.to_string());
+            let generic_var = var.vars.iter().find(|v: &_| v.impl_type_definition == *generic);
 
             let mut new_constraints = constraints.clone();
-            let constraint = new_constraints
-                .entry(generic.clone())
-                .or_insert_with(Constraint::default);
+            let constraint = new_constraints.entry(generic.clone()).or_default();
             constraint.traits.extend(traits.clone());
 
             let violates_constraints =
@@ -198,7 +190,7 @@ impl From<&SpecBody> for TokenStream {
 
         let type_ = str_to_type_name(&impl_body.type_name);
         let trait_ = str_to_trait_name(&impl_body.trait_name);
-        let generics = get_generics_types(&spec_body);
+        let generics = get_generics_types(spec_body);
         let fn_ = str_to_expr(&spec_body.annotations.fn_);
         let var = str_to_expr(("&".to_owned() + &spec_body.annotations.var).as_str());
         let args = spec_body.annotations.args
@@ -248,7 +240,8 @@ mod tests {
 
     use super::*;
     use crate::annotations::Annotation;
-    use crate::vars::{ Aliases, VarInfo };
+    use crate::vars::VarInfo;
+    use crate::constraints::Constraint;
 
     fn get_var_body() -> VarBody {
         let mut aliases = Aliases::new();

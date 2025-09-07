@@ -31,7 +31,7 @@ impl Display for WhenCondition {
         match self {
             WhenCondition::Type(generic, ty) => write!(f, "{} = {}", generic, ty.replace(" ", "")),
             WhenCondition::Trait(generic, traits) => {
-                let mut sorted_traits = traits.iter().cloned().collect::<Vec<_>>();
+                let mut sorted_traits = traits.to_vec();
                 sorted_traits.sort();
                 write!(f, "{}: {}", generic, sorted_traits.join(" + "))
             }

@@ -10,8 +10,8 @@ use crate::conversions::{
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
-use crate::parsing::{ handle_type_predicate, parse_generics, replace_infers, replace_type };
-use crate::types::{ types_equal, Aliases };
+use crate::parsing::{ handle_type_predicate, parse_generics };
+use crate::types::{ types_equal, replace_infers, replace_type, Aliases };
 use proc_macro2::{ Span, TokenStream };
 use serde::{ Deserialize, Serialize };
 use syn::punctuated::Punctuated;
@@ -130,17 +130,15 @@ impl ImplBody {
 
                                 let diff_types = generic_type_conditions
                                     .iter()
-                                    .any(|other_t| !types_equal(&t, &other_t, &Aliases::default()));
+                                    .any(|other_t| !types_equal(t, other_t, &Aliases::default()));
 
                                 if diff_types {
                                     None
                                 } else {
-                                    generic_type_conditions.sort_by(|a, b|
-                                        b.replace("_", "").len().cmp(&a.replace("_", "").len())
+                                    generic_type_conditions.sort_by_key(|t|
+                                        t.replace("_", "").len()
                                     );
-                                    let most_specific = generic_type_conditions
-                                        .first()
-                                        .map_or(false, |most_specific| most_specific == t);
+                                    let most_specific = generic_type_conditions.last() == Some(t);
 
                                     if most_specific {
                                         Some(c.clone())
@@ -170,18 +168,12 @@ impl ImplBody {
                 // remove generic from generics
                 impl_generics.params = impl_generics.params
                     .into_iter()
-                    .filter(
-                        |param|
-                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *generic)
-                    )
+                    .filter(|param| !matches!(param, GenericParam::Type(tp) if tp.ident == generic))
                     .collect();
 
                 trait_generics.params = trait_generics.params
                     .into_iter()
-                    .filter(
-                        |param|
-                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *generic)
-                    )
+                    .filter(|param| !matches!(param, GenericParam::Type(tp) if tp.ident == generic))
                     .collect();
 
                 // replace infers in the type
@@ -279,8 +271,7 @@ impl ImplBody {
         let trait_generic_param = trait_generics.params
             .iter()
             .position(
-                |param|
-                    matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *trait_generic)
+                |param| matches!(param, GenericParam::Type(tp) if tp.ident == trait_generic)
             )?;
 
         match impl_generics.params.iter().nth(trait_generic_param) {

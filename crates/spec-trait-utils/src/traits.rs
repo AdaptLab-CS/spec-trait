@@ -9,8 +9,8 @@ use crate::conversions::{
     trait_condition_to_generic_predicate,
 };
 use crate::impls::ImplBody;
-use crate::parsing::{ handle_type_predicate, parse_generics, replace_type, replace_infers };
-use crate::types::{ types_equal, Aliases };
+use crate::parsing::{ handle_type_predicate, parse_generics };
+use crate::types::{ types_equal, replace_infers, replace_type, Aliases };
 use proc_macro2::{ Span, TokenStream };
 use serde::{ Deserialize, Serialize };
 use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
@@ -121,17 +121,15 @@ impl TraitBody {
 
                                 let diff_types = generic_type_conditions
                                     .iter()
-                                    .any(|other_t| !types_equal(&t, &other_t, &Aliases::default()));
+                                    .any(|other_t| !types_equal(t, other_t, &Aliases::default()));
 
                                 if diff_types {
                                     None
                                 } else {
-                                    generic_type_conditions.sort_by(|a, b|
-                                        b.replace("_", "").len().cmp(&a.replace("_", "").len())
+                                    generic_type_conditions.sort_by_key(|t|
+                                        t.replace("_", "").len()
                                     );
-                                    let most_specific = generic_type_conditions
-                                        .first()
-                                        .map_or(false, |most_specific| most_specific == t);
+                                    let most_specific = generic_type_conditions.last() == Some(t);
 
                                     if most_specific {
                                         Some(c.clone())
@@ -157,7 +155,7 @@ impl TraitBody {
             WhenCondition::Type(impl_generic, type_) => {
                 let mut generics = str_to_generics(&self.generics);
                 let trait_generic = self
-                    .get_corresponding_generic(&impl_trait_generics, impl_generic)
+                    .get_corresponding_generic(impl_trait_generics, impl_generic)
                     .unwrap_or_else(|| impl_generic.clone());
 
                 // remove generic from generics (no-op if trait_generic not present)
@@ -165,15 +163,14 @@ impl TraitBody {
                     .into_iter()
                     .filter(
                         |param|
-                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *trait_generic)
+                            !matches!(param, GenericParam::Type(tp) if tp.ident == trait_generic)
                     )
                     .collect();
                 impl_trait_generics.params = impl_trait_generics.params
                     .clone()
                     .into_iter()
                     .filter(
-                        |param|
-                            !matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *impl_generic)
+                        |param| !matches!(param, GenericParam::Type(tp) if tp.ident == impl_generic)
                     )
                     .collect();
 
@@ -247,7 +244,7 @@ impl TraitBody {
             WhenCondition::Trait(impl_generic, traits) => {
                 let mut generics = str_to_generics(&self.generics);
                 let trait_generic = self
-                    .get_corresponding_generic(&impl_trait_generics, impl_generic)
+                    .get_corresponding_generic(impl_trait_generics, impl_generic)
                     .unwrap_or_else(|| impl_generic.clone());
 
                 let predicate = trait_condition_to_generic_predicate(
@@ -276,10 +273,7 @@ impl TraitBody {
 
         let impl_generic_param = impl_generics.params
             .iter()
-            .position(
-                |param|
-                    matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *impl_generic)
-            )?;
+            .position(|param| matches!(param, GenericParam::Type(tp) if tp.ident == impl_generic))?;
 
         match trait_generics.params.iter().nth(impl_generic_param) {
             Some(GenericParam::Type(tp)) => Some(tp.ident.to_string()),

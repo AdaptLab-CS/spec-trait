@@ -35,7 +35,7 @@ fn get_type_aliases(ann: &[Annotation]) -> Aliases {
 
     for a in ann {
         if let Annotation::Alias(type_, alias) = a {
-            aliases.entry(type_.clone()).or_insert_with(Vec::new).push(alias.clone());
+            aliases.entry(type_.clone()).or_default().push(alias.clone());
         }
     }
 

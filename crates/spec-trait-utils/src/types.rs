@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{ HashMap, HashSet };
 use crate::conversions::{ str_to_type_name, to_string };
 use syn::{ Type, TypeTuple, TypeReference, TypeArray, PathArguments, GenericArgument, TypeSlice };
 
@@ -159,9 +159,119 @@ fn unwrap_paren(ty: &Type) -> &Type {
     if let Type::Paren(paren) = ty { unwrap_paren(&paren.elem) } else { ty }
 }
 
+/// Replaces all occurrences of `prev` in the given type with `new`.
+pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
+    match ty {
+        // (T, U)
+        Type::Tuple(t) => {
+            for elem in &mut t.elems {
+                replace_type(elem, prev, new);
+            }
+        }
+
+        // &T
+        Type::Reference(r) => replace_type(&mut r.elem, prev, new),
+
+        // [T; N]
+        Type::Array(a) => replace_type(&mut a.elem, prev, new),
+
+        // [T]
+        Type::Slice(s) => replace_type(&mut s.elem, prev, new),
+
+        // (T)
+        Type::Paren(s) => replace_type(&mut s.elem, prev, new),
+
+        // T, T<U>
+        Type::Path(type_path) => {
+            // T
+            if
+                type_path.qself.is_none() &&
+                type_path.path.segments.len() == 1 &&
+                type_path.path.segments[0].ident == prev
+            {
+                *ty = new.clone();
+                return;
+            }
+
+            // T<U>
+            for seg in &mut type_path.path.segments {
+                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
+                    for arg in ab.args.iter_mut() {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            replace_type(inner_ty, prev, new);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replaces all occurrences of `_` (inferred types) in the given type with fresh generic type parameters.
+pub fn replace_infers(
+    ty: &mut Type,
+    generics: &mut HashSet<String>,
+    counter: &mut usize,
+    new_generics: &mut Vec<String>
+) {
+    match ty {
+        // (T, U, _)
+        Type::Tuple(t) => {
+            for elem in &mut t.elems {
+                replace_infers(elem, generics, counter, new_generics);
+            }
+        }
+
+        // &_
+        Type::Reference(r) => replace_infers(&mut r.elem, generics, counter, new_generics),
+
+        // [_; N]
+        Type::Array(a) => replace_infers(&mut a.elem, generics, counter, new_generics),
+
+        // [_]
+        Type::Slice(s) => replace_infers(&mut s.elem, generics, counter, new_generics),
+
+        // (_)
+        Type::Paren(p) => replace_infers(&mut p.elem, generics, counter, new_generics),
+
+        // T<_>
+        Type::Path(type_path) => {
+            for seg in &mut type_path.path.segments {
+                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
+                    for arg in ab.args.iter_mut() {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            replace_infers(inner_ty, generics, counter, new_generics);
+                        }
+                    }
+                }
+            }
+        }
+
+        // _
+        Type::Infer(_) => {
+            let name = loop {
+                let candidate = format!("__W{}", *counter);
+                *counter += 1;
+
+                if generics.insert(candidate.clone()) {
+                    break candidate;
+                }
+            };
+
+            *ty = str_to_type_name(&name);
+            new_generics.push(name);
+        }
+
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use syn::parse2;
+    use quote::quote;
 
     fn get_aliases() -> Aliases {
         let mut aliases = Aliases::new();
@@ -355,5 +465,202 @@ mod tests {
         let t1 = str_to_type_name("Result<Vec<u8>, String>");
         let t2 = str_to_type_name("Result<Vec<i32>, String>");
         assert!(!same_type(&t1, &t2));
+    }
+
+    #[test]
+    fn replace_type_simple() {
+        let mut ty: Type = parse2(quote! { T }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn replace_type_tuple() {
+        let mut ty: Type = parse2(quote! { (T, Other, T) }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "(String, Other, String)".to_string().replace(" ", "")
+        );
+    }
+
+    #[test]
+    fn replace_type_reference() {
+        let mut ty: Type = parse2(quote! { &T }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "&String".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn replace_type_array() {
+        let mut ty: Type = parse2(quote! { [T; 3] }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "[String; 3]".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn replace_type_slice() {
+        let mut ty: Type = parse2(quote! { &[T] }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "&[String]".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn replace_type_paren() {
+        let mut ty: Type = parse2(quote! { (T) }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "(String)".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn replace_type_path() {
+        let mut ty: Type = parse2(quote! { Option<T> }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "Option<String>".to_string().replace(" ", ""));
+    }
+
+    #[test]
+    fn replace_type_nested() {
+        let mut ty: Type = parse2(quote! { Option<(T, &[T])> }).unwrap();
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "Option<(String, &[String])>".to_string().replace(" ", "")
+        );
+    }
+
+    #[test]
+    fn replace_infers_simple() {
+        let mut ty: Type = parse2(quote! { _ }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "__W0".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__W0".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_tuple() {
+        let mut ty: Type = parse2(quote! { (_, Other, _) }).unwrap();
+
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "(__W0, Other, __W1)".to_string().replace(" ", "")
+        );
+        assert_eq!(new_generics, vec!["__W0".to_string(), "__W1".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_reference() {
+        let mut ty: Type = parse2(quote! { &_ }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "&__W0".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__W0".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_array() {
+        let mut ty: Type = parse2(quote! { [_; 3] }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "[__W0; 3]".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__W0".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_slice() {
+        let mut ty: Type = parse2(quote! { &[_] }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "&[__W0]".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__W0".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_paren() {
+        let mut ty: Type = parse2(quote! { (_) }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "(__W0)".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__W0".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_path() {
+        let mut ty: Type = parse2(quote! { Option<_> }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "Option<__W0>".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__W0".to_string()]);
+    }
+
+    #[test]
+    fn replace_infers_nested() {
+        let mut ty: Type = parse2(quote! { Option<(_, &[_])> }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "Option<(__W0, &[__W1])>".to_string().replace(" ", "")
+        );
+        assert_eq!(new_generics, vec!["__W0".to_string(), "__W1".to_string()]);
     }
 }
