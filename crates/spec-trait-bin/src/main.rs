@@ -122,6 +122,13 @@ impl<T> Foo<T> for ZST2 {
     }
 }
 
+#[when(any(T: Copy, T: Clone))]
+impl<T> Foo<T> for ZST2 {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST2 where T implements Copy or Clone");
+    }
+}
+
 // ZST2 - Foo2
 
 impl<T, U> Foo2<T, U> for ZST2 where T: 'static {
@@ -165,7 +172,8 @@ fn main() {
 
     // ZST2 - Foo
     spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }
-    spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] }
+    // spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] } 
+    spec! { zst2.foo(1i32); ZST2; [i32]; i32: Copy  }
     spec! { zst2.foo(1i32); ZST2; [i32] }
 
     // ZST2 - Foo2

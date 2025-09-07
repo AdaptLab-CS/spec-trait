@@ -32,6 +32,7 @@ pub struct TraitBody {
     pub name: String,
     pub generics: String,
     pub items: Vec<String>,
+    pub specialized: Option<Box<TraitBody>>,
 }
 
 impl TryFrom<TokenStream> for TraitBody {
@@ -44,12 +45,14 @@ impl TryFrom<TokenStream> for TraitBody {
         let generics = to_string(&parse_generics(bod.generics));
         let items = bod.items.iter().map(to_string).collect();
 
-        Ok(TraitBody { name, generics, items })
+        Ok(TraitBody { name, generics, items, specialized: None })
     }
 }
 
 impl From<&TraitBody> for TokenStream {
     fn from(trait_body: &TraitBody) -> Self {
+        let trait_body = trait_body.specialized.as_ref().expect("TraitBody not specialized");
+
         let name = str_to_trait_name(&trait_body.name);
         let generics = str_to_generics(&trait_body.generics);
         let items = strs_to_trait_items(&trait_body.items);
@@ -81,20 +84,25 @@ impl TraitBody {
 
     pub fn specialize(&self, impl_body: &ImplBody) -> Self {
         let mut new_trait = self.clone();
-        new_trait.name = impl_body.spec_trait_name.clone();
-        // if let Some(condition) = &impl_body.condition {
-        //     let impl_generics = str_to_generics(&impl_body.trait_generics);
-        //     new_trait.apply_condition(&impl_generics, condition);
-        // }
+        let mut specialized = new_trait.clone();
+
+        specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
+
+        if let Some(condition) = &impl_body.condition {
+            let mut impl_generics = str_to_generics(&impl_body.trait_generics);
+            specialized.apply_condition(&mut impl_generics, condition);
+        }
+
+        new_trait.specialized = Some(Box::new(specialized));
         new_trait
     }
 
     fn apply_condition(&mut self, impl_trait_generics: &mut Generics, condition: &WhenCondition) {
         match condition {
-            WhenCondition::All(conds) => {
+            WhenCondition::All(inner) => {
                 // pass multiple times to handle chained dependencies
-                for _ in 0..conds.len() {
-                    for c in conds {
+                for _ in 0..inner.len() {
+                    for c in inner {
                         self.apply_condition(impl_trait_generics, c);
                     }
                 }
@@ -207,7 +215,14 @@ impl TraitBody {
         }
     }
 
-    fn get_corresponding_generic(
+    /**
+        get the generic in the trait corresponding to the impl_generic in the impl
+        # Example:
+        for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
+        - impl_generic = T -> trait_generic = A
+        - impl_generic = U -> trait_generic = B
+     */
+    pub fn get_corresponding_generic(
         &self,
         impl_generics: &Generics,
         impl_generic: &str
@@ -265,9 +280,9 @@ mod tests {
     fn get_trait_body() -> TraitBody {
         TraitBody::try_from(
             quote! {
-            trait Foo<T: Clone, U: Copy> {
+            trait Foo<S: Clone, U: Copy> {
                 type Bar;
-                fn foo(&self, arg1: Vec<T>, arg2: U) -> T;
+                fn foo(&self, arg1: Vec<S>, arg2: U) -> S;
             }
         }
         ).unwrap()
@@ -283,7 +298,7 @@ mod tests {
 
         assert_eq!(
             trait_body.generics.replace(" ", ""),
-            "<T: Clone + Copy, U: Copy>".to_string().replace(" ", "")
+            "<S: Clone + Copy, U: Copy>".to_string().replace(" ", "")
         );
     }
 
@@ -341,7 +356,8 @@ mod tests {
         let condition = WhenCondition::All(
             vec![
                 WhenCondition::Type("T".into(), "Vec<V>".into()),
-                WhenCondition::Type("V".into(), "String".into())
+                WhenCondition::Type("V".into(), "String".into()),
+                WhenCondition::Type("T".into(), "Vec<_>".into())
             ]
         );
 

@@ -14,7 +14,7 @@ use crate::parsing::{ handle_type_predicate, parse_generics, replace_infers, rep
 use proc_macro2::{ Span, TokenStream };
 use serde::{ Deserialize, Serialize };
 use syn::punctuated::Punctuated;
-use syn::{ Attribute, GenericParam, Ident, ItemImpl, Type, TypeParam };
+use syn::{ Attribute, GenericParam, Generics, Ident, ItemImpl, Type, TypeParam };
 use std::collections::HashSet;
 use std::fmt::Debug;
 use quote::quote;
@@ -25,10 +25,10 @@ pub struct ImplBody {
     pub condition: Option<WhenCondition>,
     pub impl_generics: String,
     pub trait_name: String,
-    pub spec_trait_name: String,
     pub trait_generics: String,
     pub type_name: String,
     pub items: Vec<String>,
+    pub specialized: Option<Box<ImplBody>>,
 }
 
 impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
@@ -46,17 +46,18 @@ impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
         let trait_generics = trait_with_generics.replace(&trait_name, "");
         let type_name = to_string(&bod.self_ty);
         let items = bod.items.iter().map(to_string).collect();
-        let spec_trait_name = get_spec_trait_name(&condition, &trait_name, &type_name);
 
-        Ok(ImplBody {
-            condition,
-            impl_generics,
-            trait_name,
-            trait_generics,
-            spec_trait_name,
-            type_name,
-            items,
-        })
+        Ok(
+            (ImplBody {
+                condition,
+                impl_generics,
+                trait_name,
+                trait_generics,
+                type_name,
+                items,
+                specialized: None,
+            }).specialize()
+        )
     }
 }
 
@@ -64,21 +65,12 @@ fn get_trait_name_without_generics(trait_with_generics: &str) -> String {
     trait_with_generics.split('<').next().unwrap_or(trait_with_generics).trim().to_string()
 }
 
-fn get_spec_trait_name(
-    condition: &Option<WhenCondition>,
-    trait_name: &str,
-    type_name: &str
-) -> String {
-    match condition {
-        Some(c) => format!("{}_{}_{}", trait_name, type_name, to_hash(c)), // TODO: check if we need the type_name here
-        None => trait_name.to_owned(),
-    }
-}
-
 impl From<&ImplBody> for TokenStream {
     fn from(impl_body: &ImplBody) -> Self {
+        let impl_body = impl_body.specialized.as_ref().expect("ImplBody not specialized");
+
         let impl_generics = str_to_generics(&impl_body.impl_generics);
-        let trait_name = str_to_trait_name(&impl_body.spec_trait_name);
+        let trait_name = str_to_trait_name(&impl_body.trait_name);
         let trait_generics = str_to_generics(&impl_body.trait_generics);
         let type_name = str_to_type_name(&impl_body.type_name);
         let items = strs_to_impl_items(&impl_body.items);
@@ -92,20 +84,34 @@ impl From<&ImplBody> for TokenStream {
 }
 
 impl ImplBody {
-    pub fn specialize(&self) -> Self {
-        let mut new_impl = self.clone();
-        if let Some(condition) = &self.condition {
-            new_impl.apply_condition(condition);
+    fn get_spec_trait_name(&self) -> String {
+        match &self.condition {
+            Some(c) => format!("{}_{}_{}", self.trait_name, self.type_name, to_hash(c)), // TODO: check if we need the type_name here
+            None => self.trait_name.to_owned(),
         }
+    }
+
+    pub fn specialize(&mut self) -> Self {
+        let mut new_impl = self.clone();
+        let mut specialized = new_impl.clone();
+
+        specialized.trait_name = specialized.get_spec_trait_name();
+        specialized.condition = None;
+
+        if let Some(condition) = &self.condition {
+            specialized.apply_condition(condition);
+        }
+
+        new_impl.specialized = Some(Box::new(specialized));
         new_impl
     }
 
     fn apply_condition(&mut self, condition: &WhenCondition) {
         match condition {
-            WhenCondition::All(conds) => {
+            WhenCondition::All(inner) => {
                 // pass multiple times to handle chained dependencies
-                for _ in 0..conds.len() {
-                    for c in conds {
+                for _ in 0..inner.len() {
+                    for c in inner {
                         self.apply_condition(c);
                     }
                 }
@@ -210,6 +216,33 @@ impl ImplBody {
             _ => {}
         }
     }
+
+    /**
+        get the generic in the trait corresponding to the impl_generic in the impl
+        # Example:
+        for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
+        - trait_generic = A -> trait_generic = T
+        - trait_generic = B -> trait_generic = U
+     */
+    pub fn get_corresponding_generic(
+        &self,
+        trait_generics: &Generics,
+        trait_generic: &str
+    ) -> Option<String> {
+        let impl_generics = str_to_generics(&self.trait_generics);
+
+        let trait_generic_param = trait_generics.params
+            .iter()
+            .position(
+                |param|
+                    matches!(param, GenericParam::Type(tp) if tp.ident.to_string() == *trait_generic)
+            )?;
+
+        match impl_generics.params.iter().nth(trait_generic_param) {
+            Some(GenericParam::Type(tp)) => Some(tp.ident.to_string()),
+            _ => None,
+        }
+    }
 }
 
 /// from an ItemImpl returns the ItemImpl without attributes and the attributes as a Vec
@@ -222,21 +255,42 @@ pub fn break_attr(impl_: &ItemImpl) -> (ItemImpl, Vec<Attribute>) {
 
 pub fn assert_lifetimes_constraints(impls: &[ImplBody]) {
     for impl_ in impls {
-        let violating = impls
-            .iter()
-            .find(|other| {
-                impl_.type_name == other.type_name &&
-                    impl_.trait_name == other.trait_name &&
-                    impl_.impl_generics != other.impl_generics
-            });
+        let violating = impls.iter().find(|other| {
+            let a = str_to_generics(&impl_.impl_generics);
+            let b = str_to_generics(&other.impl_generics);
 
-        if violating.is_some() {
+            let lifetimes_a = a.params
+                .iter()
+                .filter_map(|p| {
+                    match p {
+                        GenericParam::Lifetime(ld) => Some(to_string(ld)),
+                        _ => None,
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let lifetimes_b = b.params
+                .iter()
+                .filter_map(|p| {
+                    match p {
+                        GenericParam::Lifetime(ld) => Some(to_string(ld)),
+                        _ => None,
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            impl_.type_name == other.type_name &&
+                impl_.trait_name == other.trait_name &&
+                lifetimes_a != lifetimes_b
+        });
+
+        if let Some(v) = violating {
             panic!(
                 "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{}' vs '{}'",
                 impl_.type_name,
                 impl_.trait_name,
                 impl_.impl_generics,
-                violating.unwrap().impl_generics
+                v.impl_generics
             );
         }
     }
@@ -335,7 +389,8 @@ mod tests {
         let condition = WhenCondition::All(
             vec![
                 WhenCondition::Type("T".into(), "Vec<V>".into()),
-                WhenCondition::Type("V".into(), "String".into())
+                WhenCondition::Type("V".into(), "String".into()),
+                WhenCondition::Type("T".into(), "Vec<_>".into())
             ]
         );
 

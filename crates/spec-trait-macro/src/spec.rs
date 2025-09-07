@@ -63,7 +63,7 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
         None => Some(default),
         // from when macro
         Some(cond) => {
-            let var = VarBody::from((&default.annotations, &default.trait_));
+            let var = VarBody::from(&default);
             let (satisfied, constraints) = satisfies_condition(cond, &var, &default.constraints);
 
             if satisfied {
@@ -87,7 +87,7 @@ fn satisfies_condition(
             let concrete_type = get_concrete_type(type_, &var.aliases);
             let generic_var = var.vars
                 .iter()
-                .find(|v: &_| v.type_definition == generic.to_string());
+                .find(|v: &_| v.impl_type_definition == generic.to_string());
             let concrete_type_var = var.vars
                 .iter()
                 .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, &var.aliases));
@@ -127,7 +127,7 @@ fn satisfies_condition(
         WhenCondition::Trait(generic, traits) => {
             let generic_var = var.vars
                 .iter()
-                .find(|v: &_| v.type_definition == generic.to_string());
+                .find(|v: &_| v.impl_type_definition == generic.to_string());
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints
@@ -194,8 +194,10 @@ fn satisfies_condition(
 
 impl From<&SpecBody> for TokenStream {
     fn from(spec_body: &SpecBody) -> Self {
-        let type_ = str_to_type_name(&spec_body.impl_.type_name);
-        let trait_ = str_to_trait_name(&spec_body.impl_.spec_trait_name);
+        let impl_body = spec_body.impl_.specialized.as_ref().expect("ImplBody not specialized");
+
+        let type_ = str_to_type_name(&impl_body.type_name);
+        let trait_ = str_to_trait_name(&impl_body.trait_name);
         let generics = get_generics_types(&spec_body);
         let fn_ = str_to_expr(&spec_body.annotations.fn_);
         let var = str_to_expr(("&".to_owned() + &spec_body.annotations.var).as_str());
@@ -213,7 +215,13 @@ impl From<&SpecBody> for TokenStream {
 }
 
 pub fn get_generics_types(spec: &SpecBody) -> TokenStream {
-    let generics_without_angle_brackets = &spec.trait_.generics[1..spec.trait_.generics.len() - 1];
+    let trait_body = spec.trait_.specialized.as_ref().expect("TraitBody not specialized");
+
+    if trait_body.generics.trim().is_empty() {
+        return TokenStream::new();
+    }
+
+    let generics_without_angle_brackets = &trait_body.generics[1..trait_body.generics.len() - 1];
     let types = generics_without_angle_brackets
         .split(',')
         .map(|g| get_type(g.trim(), &spec.constraints))
@@ -236,6 +244,8 @@ fn get_type(generic: &str, constraints: &Constraints) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::vec;
+
     use super::*;
     use crate::annotations::Annotation;
     use crate::vars::{ Aliases, VarInfo };
@@ -246,7 +256,7 @@ mod tests {
         VarBody {
             aliases,
             vars: vec![VarInfo {
-                type_definition: "T".into(),
+                impl_type_definition: "T".into(),
                 concrete_type: "MyType".into(),
                 traits: vec!["MyTrait".into()],
             }],
@@ -254,20 +264,13 @@ mod tests {
     }
 
     fn get_impl_body(condition: Option<WhenCondition>) -> ImplBody {
-        ImplBody {
-            trait_name: "MyTrait".to_string(),
-            condition,
-            ..Default::default()
-        }
+        let impl_ = quote! { impl <T> MyTrait<T> for MyType { fn foo(&self, my_arg: T) {} } };
+        ImplBody::try_from((impl_, condition)).unwrap()
     }
 
-    fn get_trait_body() -> TraitBody {
-        TraitBody {
-            name: "MyTrait".to_string(),
-            generics: "<T>".to_string(),
-            items: vec!["fn foo(&self, my_arg: T);".to_string()],
-            ..Default::default()
-        }
+    fn get_trait_body(impl_: &ImplBody) -> TraitBody {
+        let trait_ = quote! { trait MyTrait<A> { fn foo(&self, my_arg: A); } };
+        TraitBody::try_from(trait_).unwrap().specialize(impl_)
     }
 
     fn get_annotation_body() -> AnnotationBody {
@@ -350,7 +353,7 @@ mod tests {
         let var = VarBody {
             aliases: Aliases::default(),
             vars: vec![VarInfo {
-                type_definition: "T".into(),
+                impl_type_definition: "T".into(),
                 concrete_type: "Vec<MyType>".into(),
                 traits: vec![],
             }],
@@ -388,7 +391,7 @@ mod tests {
     #[test]
     fn default_impl() {
         let impls = vec![get_impl_body(None)];
-        let traits = vec![get_trait_body()];
+        let traits = vec![get_trait_body(&impls[0])];
         let annotations = get_annotation_body();
 
         let result = SpecBody::try_from((&impls, &traits, &annotations));
@@ -402,7 +405,7 @@ mod tests {
     #[test]
     fn single_impl() {
         let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into())))];
-        let traits = vec![get_trait_body()];
+        let traits = vec![get_trait_body(&impls[0])];
         let annotations = get_annotation_body();
 
         let result = SpecBody::try_from((&impls, &traits, &annotations));
@@ -429,7 +432,7 @@ mod tests {
             get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into()))),
             get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyTrait".into()])))
         ];
-        let traits = vec![get_trait_body()];
+        let traits = vec![get_trait_body(&impls[0])];
         let annotations = get_annotation_body();
 
         let result = SpecBody::try_from((&impls, &traits, &annotations));
@@ -456,7 +459,7 @@ mod tests {
             get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into()))),
             get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into())))
         ];
-        let traits = vec![get_trait_body()];
+        let traits = vec![get_trait_body(&impls[0]), get_trait_body(&impls[1])];
         let annotations = get_annotation_body();
 
         let result = SpecBody::try_from((&impls, &traits, &annotations));
@@ -471,7 +474,7 @@ mod tests {
             get_impl_body(Some(WhenCondition::Type("T".into(), "MyOtherType".into()))),
             get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyOtherTrait".into()])))
         ];
-        let traits = vec![get_trait_body()];
+        let traits = vec![get_trait_body(&impls[0]), get_trait_body(&impls[1])];
         let annotations = get_annotation_body();
 
         let result = SpecBody::try_from((&impls, &traits, &annotations));
