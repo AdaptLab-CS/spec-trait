@@ -10,6 +10,7 @@ use crate::conversions::{
 };
 use crate::impls::ImplBody;
 use crate::parsing::{ handle_type_predicate, parse_generics, replace_type, replace_infers };
+use crate::types::{ types_equal, Aliases };
 use proc_macro2::{ Span, TokenStream };
 use serde::{ Deserialize, Serialize };
 use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
@@ -99,10 +100,54 @@ impl TraitBody {
 
     fn apply_condition(&mut self, impl_trait_generics: &mut Generics, condition: &WhenCondition) {
         match condition {
+            // assign trait conditions and type conditions if unique
             WhenCondition::All(inner) => {
+                let assignable_conditions = inner
+                    .iter()
+                    .filter_map(|c| {
+                        match c {
+                            WhenCondition::Trait(_, _) => Some(c.clone()),
+                            WhenCondition::Type(g, t) => {
+                                let mut generic_type_conditions = inner
+                                    .iter()
+                                    .filter_map(|other_c| {
+                                        match other_c {
+                                            WhenCondition::Type(g2, t2) if g == g2 =>
+                                                Some(t2.clone()),
+                                            _ => None,
+                                        }
+                                    })
+                                    .collect::<Vec<_>>();
+
+                                let diff_types = generic_type_conditions
+                                    .iter()
+                                    .any(|other_t| !types_equal(&t, &other_t, &Aliases::default()));
+
+                                if diff_types {
+                                    None
+                                } else {
+                                    generic_type_conditions.sort_by(|a, b|
+                                        b.replace("_", "").len().cmp(&a.replace("_", "").len())
+                                    );
+                                    let most_specific = generic_type_conditions
+                                        .first()
+                                        .map_or(false, |most_specific| most_specific == t);
+
+                                    if most_specific {
+                                        Some(c.clone())
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
                 // pass multiple times to handle chained dependencies
-                for _ in 0..inner.len() {
-                    for c in inner {
+                for _ in 0..assignable_conditions.len() {
+                    for c in &assignable_conditions {
                         self.apply_condition(impl_trait_generics, c);
                     }
                 }
@@ -374,6 +419,35 @@ mod tests {
                 "fn foo(&self, arg1: Vec<Vec<String>>, arg2: U) -> Vec<String>;"
                     .to_string()
                     .replace(" ", "")
+            ]
+        );
+    }
+
+    #[test]
+    fn apply_type_condition_unsuccessful() {
+        let mut trait_body = get_trait_body();
+        let mut impl_trait_generics = str_to_generics("<T, A>");
+        let condition = WhenCondition::All(
+            vec![
+                WhenCondition::Type("T".into(), "MyType".into()),
+                WhenCondition::Type("T".into(), "OtherType".into())
+            ]
+        );
+
+        trait_body.apply_condition(&mut impl_trait_generics, &condition);
+
+        assert_eq!(
+            trait_body.generics.replace(" ", ""),
+            "<S: Clone, U: Copy>".to_string().replace(" ", "")
+        );
+        assert_eq!(
+            trait_body.items
+                .into_iter()
+                .map(|item| item.replace(" ", ""))
+                .collect::<Vec<_>>(),
+            vec![
+                "type Bar;".to_string().replace(" ", ""),
+                "fn foo(&self, arg1: Vec<S>, arg2: U) -> S;".to_string().replace(" ", "")
             ]
         );
     }

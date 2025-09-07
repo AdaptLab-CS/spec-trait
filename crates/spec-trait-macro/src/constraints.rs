@@ -1,5 +1,5 @@
 use std::{ cmp::Ordering, collections::HashMap };
-use crate::{ types::types_equal, vars::Aliases };
+use spec_trait_utils::types::{ types_equal, Aliases };
 
 /// constraint related to a single generic attribute
 #[derive(Debug, Default, Clone)]
@@ -62,7 +62,7 @@ pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {
     };
 
     let default = Constraint::default();
-    
+
     let mut sum = 0;
     for key in all_keys {
         let self_constraint = this.get(key).unwrap_or(&default);

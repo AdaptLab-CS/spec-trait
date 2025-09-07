@@ -1,9 +1,8 @@
-use std::collections::HashMap;
 use spec_trait_utils::conversions::str_to_generics;
 use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::traits::{ get_param_types, TraitBody };
 use crate::annotations::{ Annotation, AnnotationBody };
-use crate::types::{ get_concrete_type, types_equal };
+use spec_trait_utils::types::{ get_concrete_type, types_equal, Aliases };
 use crate::SpecBody;
 
 #[derive(Debug, Clone)]
@@ -22,8 +21,6 @@ pub struct VarBody {
     /// map from type definition (e.g. generic) to VarInfo
     pub vars: Vec<VarInfo>,
 }
-
-pub type Aliases = HashMap<String, Vec<String>>;
 
 impl From<&SpecBody> for VarBody {
     fn from(spec: &SpecBody) -> Self {

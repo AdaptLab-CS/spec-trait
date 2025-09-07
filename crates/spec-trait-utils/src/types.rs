@@ -1,6 +1,8 @@
-use spec_trait_utils::conversions::{ str_to_type_name, to_string };
+use std::collections::HashMap;
+use crate::conversions::{ str_to_type_name, to_string };
 use syn::{ Type, TypeTuple, TypeReference, TypeArray, PathArguments, GenericArgument, TypeSlice };
-use crate::vars::Aliases;
+
+pub type Aliases = HashMap<String, Vec<String>>;
 
 pub fn get_concrete_type(type_or_alias: &str, aliases: &Aliases) -> String {
     let parsed_type = str_to_type_name(type_or_alias);
@@ -160,7 +162,6 @@ fn unwrap_paren(ty: &Type) -> &Type {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use spec_trait_utils::conversions::str_to_type_name;
 
     fn get_aliases() -> Aliases {
         let mut aliases = Aliases::new();

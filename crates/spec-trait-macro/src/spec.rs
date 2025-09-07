@@ -1,6 +1,6 @@
 use crate::annotations::AnnotationBody;
-use crate::vars::{ Aliases, VarBody };
-use crate::types::{ get_concrete_type, types_equal };
+use crate::vars::VarBody;
+use spec_trait_utils::types::{ get_concrete_type, types_equal, Aliases };
 use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;

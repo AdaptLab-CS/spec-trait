@@ -172,7 +172,7 @@ fn main() {
 
     // ZST2 - Foo
     spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }
-    // spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] } 
+    spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] } 
     spec! { zst2.foo(1i32); ZST2; [i32]; i32: Copy  }
     spec! { zst2.foo(1i32); ZST2; [i32] }
 
