@@ -182,21 +182,6 @@ fn count_fn_args(inputs: &Punctuated<FnArg, Comma>) -> usize {
         .count()
 }
 
-pub fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
-    trait_fn.sig.inputs
-        .iter()
-        .filter_map(|arg| {
-            match arg {
-                FnArg::Typed(pat_type) => {
-                    let t = &pat_type.ty;
-                    Some((quote! { #t }).to_string())
-                }
-                _ => None,
-            }
-        })
-        .collect()
-}
-
 /// from an ItemTrait returns the ItemTrait without attributes and the attributes as a Vec
 pub fn break_attr(trait_: &ItemTrait) -> (ItemTrait, Vec<Attribute>) {
     let attrs = trait_.attrs.clone();

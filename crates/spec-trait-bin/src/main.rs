@@ -9,6 +9,8 @@ trait Foo2<T, U> {
     fn foo(&self, x: T, y: U);
 }
 
+trait Foo3<T> { fn foo(&self, x: T, y: String); }
+
 type MyType = u8;
 type MyVecAlias = Vec<i32>;
 
@@ -99,6 +101,14 @@ impl<T, U> Foo2<T, U> for ZST {
     }
 }
 
+// ZST - Foo3
+#[when(T = String)]
+impl<T> Foo3<T> for ZST {
+    fn foo(&self, x: T, y: String) {
+        println!("Foo3 for ZST where T is String");
+    }
+}
+
 
 // ZST2 - Foo
 
@@ -169,6 +179,10 @@ fn main() {
     // ZST - Foo2
     spec! { zst.foo(1u8, 2u8); ZST; [u8, u8]; u8 = MyType }
     spec! { zst.foo(1i32, 1i32); ZST; [i32, i32] }
+
+
+    // ZST - Foo3
+    spec! { zst.foo("hello".to_string(), "world".to_string()); ZST; [String, String] }
 
     // ZST2 - Foo
     spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }

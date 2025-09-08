@@ -85,7 +85,7 @@ fn satisfies_condition(
     match condition {
         WhenCondition::Type(generic, type_) => {
             let concrete_type = get_concrete_type(type_, &var.aliases);
-            let generic_var = var.vars.iter().find(|v: &_| v.impl_type_definition == *generic);
+            let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
             let concrete_type_var = var.vars
                 .iter()
                 .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, &var.aliases));
@@ -121,7 +121,7 @@ fn satisfies_condition(
             (!violates_constraints, new_constraints)
         }
         WhenCondition::Trait(generic, traits) => {
-            let generic_var = var.vars.iter().find(|v: &_| v.impl_type_definition == *generic);
+            let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.entry(generic.clone()).or_default();
@@ -249,7 +249,7 @@ mod tests {
         VarBody {
             aliases,
             vars: vec![VarInfo {
-                impl_type_definition: "T".into(),
+                impl_generic: "T".into(),
                 concrete_type: "MyType".into(),
                 traits: vec!["MyTrait".into()],
             }],
@@ -346,7 +346,7 @@ mod tests {
         let var = VarBody {
             aliases: Aliases::default(),
             vars: vec![VarInfo {
-                impl_type_definition: "T".into(),
+                impl_generic: "T".into(),
                 concrete_type: "Vec<MyType>".into(),
                 traits: vec![],
             }],
