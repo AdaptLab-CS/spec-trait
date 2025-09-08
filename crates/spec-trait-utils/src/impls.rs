@@ -6,20 +6,22 @@ use crate::conversions::{
     to_hash,
     to_string,
     tokens_to_impl,
-    trait_condition_to_generic_predicate,
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
-use crate::parsing::{ handle_type_predicate, parse_generics };
-use crate::types::{ types_equal, replace_infers, replace_type, Aliases };
-use proc_macro2::{ Span, TokenStream };
+use crate::parsing::parse_generics;
+use crate::specialize::{
+    apply_trait_condition,
+    apply_type_condition,
+    get_assignable_conditions,
+    Specializable,
+};
+use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
-use syn::punctuated::Punctuated;
-use syn::{ Attribute, GenericParam, Generics, Ident, ItemImpl, Type, TypeParam };
-use std::collections::HashSet;
+use syn::{ Attribute, GenericParam, Generics, ItemImpl };
 use std::fmt::Debug;
 use quote::quote;
-use syn::visit_mut::{ self, VisitMut };
+use syn::visit_mut::VisitMut;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ImplBody {
@@ -84,6 +86,23 @@ impl From<&ImplBody> for TokenStream {
     }
 }
 
+impl Specializable for ImplBody {
+    fn resolve_item_generic(&self, _: &Generics, impl_generic: &str) -> Option<String> {
+        Some(impl_generic.to_string())
+    }
+
+    fn handle_items_replace<V: VisitMut>(&mut self, replacer: &mut V) {
+        let mut new_items = vec![];
+
+        for mut item in strs_to_impl_items(&self.items) {
+            replacer.visit_impl_item_mut(&mut item);
+            new_items.push(to_string(&item));
+        }
+
+        self.items = new_items;
+    }
+}
+
 impl ImplBody {
     fn get_spec_trait_name(&self) -> String {
         match &self.condition {
@@ -97,7 +116,6 @@ impl ImplBody {
         let mut specialized = new_impl.clone();
 
         specialized.trait_name = specialized.get_spec_trait_name();
-        specialized.condition = None;
 
         if let Some(condition) = &self.condition {
             specialized.apply_condition(condition);
@@ -109,147 +127,36 @@ impl ImplBody {
 
     fn apply_condition(&mut self, condition: &WhenCondition) {
         match condition {
-            // assign trait conditions and type conditions if unique
             WhenCondition::All(inner) => {
-                let assignable_conditions = inner
-                    .iter()
-                    .filter_map(|c| {
-                        match c {
-                            WhenCondition::Trait(_, _) => Some(c.clone()),
-                            WhenCondition::Type(g, t) => {
-                                let mut generic_type_conditions = inner
-                                    .iter()
-                                    .filter_map(|other_c| {
-                                        match other_c {
-                                            WhenCondition::Type(g2, t2) if g == g2 =>
-                                                Some(t2.clone()),
-                                            _ => None,
-                                        }
-                                    })
-                                    .collect::<Vec<_>>();
-
-                                let diff_types = generic_type_conditions
-                                    .iter()
-                                    .any(|other_t| !types_equal(t, other_t, &Aliases::default()));
-
-                                if diff_types {
-                                    None
-                                } else {
-                                    generic_type_conditions.sort_by_key(|t|
-                                        t.replace("_", "").len()
-                                    );
-                                    let most_specific = generic_type_conditions.last() == Some(t);
-
-                                    if most_specific {
-                                        Some(c.clone())
-                                    } else {
-                                        None
-                                    }
-                                }
-                            }
-                            _ => None,
-                        }
-                    })
-                    .collect::<Vec<_>>();
+                let assignable = get_assignable_conditions(inner);
 
                 // pass multiple times to handle chained dependencies
-                for _ in 0..assignable_conditions.len() {
-                    for c in &assignable_conditions {
+                for _ in 0..assignable.len() {
+                    for c in &assignable {
                         self.apply_condition(c);
                     }
                 }
             }
 
-            // replace generic
             WhenCondition::Type(generic, type_) => {
-                let mut impl_generics = str_to_generics(&self.impl_generics);
-                let mut trait_generics = str_to_generics(&self.trait_generics);
+                let mut generics = str_to_generics(&self.impl_generics);
+                let mut other_generics = str_to_generics(&self.trait_generics);
 
-                // remove generic from generics
-                impl_generics.params = impl_generics.params
-                    .into_iter()
-                    .filter(|param| !matches!(param, GenericParam::Type(tp) if tp.ident == generic))
-                    .collect();
+                apply_type_condition(self, &mut generics, &mut other_generics, generic, type_);
 
-                trait_generics.params = trait_generics.params
-                    .into_iter()
-                    .filter(|param| !matches!(param, GenericParam::Type(tp) if tp.ident == generic))
-                    .collect();
-
-                // replace infers in the type
-                let mut new_ty = str_to_type_name(type_);
-                let mut existing_generics = impl_generics.params
-                    .iter()
-                    .filter_map(|p| {
-                        match p {
-                            GenericParam::Type(tp) => Some(tp.ident.to_string()),
-                            _ => None,
-                        }
-                    })
-                    .collect::<HashSet<_>>();
-                let mut counter = 0;
-                let mut new_generics = vec![];
-
-                replace_infers(
-                    &mut new_ty,
-                    &mut existing_generics,
-                    &mut counter,
-                    &mut new_generics
-                );
-
-                // add new generics
-                for ident in new_generics {
-                    let param = GenericParam::Type(TypeParam {
-                        attrs: vec![],
-                        ident: Ident::new(&ident, Span::call_site()),
-                        colon_token: None,
-                        bounds: Punctuated::new(),
-                        eq_token: None,
-                        default: None,
-                    });
-                    impl_generics.params.push(param.clone());
-                    trait_generics.params.push(param);
-                }
-
-                // replace generic with type in the impl items
-                let items = strs_to_impl_items(&self.items);
-                let mut new_items = vec![];
-
-                struct TypeReplacer {
-                    generic: String,
-                    new_ty: Type,
-                }
-
-                impl VisitMut for TypeReplacer {
-                    fn visit_type_mut(&mut self, node: &mut Type) {
-                        replace_type(node, &self.generic, &self.new_ty);
-                        visit_mut::visit_type_mut(self, node);
-                    }
-                }
-
-                let mut replacer = TypeReplacer {
-                    generic: generic.clone(),
-                    new_ty: new_ty.clone(),
-                };
-
-                for mut item in items {
-                    replacer.visit_impl_item_mut(&mut item);
-                    new_items.push(item);
-                }
-
-                // update generics and items
-                self.impl_generics = to_string(&impl_generics);
-                self.trait_generics = to_string(&trait_generics);
-                self.items = new_items.iter().map(to_string).collect();
+                self.impl_generics = to_string(&generics);
+                self.trait_generics = to_string(&other_generics);
             }
 
-            // add trait bound
-            WhenCondition::Trait(_, _) => {
+            WhenCondition::Trait(generic, traits) => {
                 let mut generics = str_to_generics(&self.impl_generics);
-                let predicate = trait_condition_to_generic_predicate(condition);
-                handle_type_predicate(&predicate, &mut generics);
+                let other_generics = str_to_generics(&self.trait_generics);
+
+                apply_trait_condition(self, &mut generics, &other_generics, generic, traits);
+
                 self.impl_generics = to_string(&generics);
             }
+
             _ => {}
         }
     }
