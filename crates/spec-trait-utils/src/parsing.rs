@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use syn::{
     Error,
     GenericParam,
@@ -7,11 +9,13 @@ use syn::{
     PredicateType,
     Token,
     Type,
+    TypeParam,
     WherePredicate,
 };
 use syn::parse::ParseStream;
 use quote::ToTokens;
-use crate::conversions::to_string;
+use crate::conversions::{ str_to_generics, to_string };
+use crate::specialize::add_generic;
 
 pub trait ParseTypeOrTrait {
     fn from_type(ident: String, type_name: String) -> Self;
@@ -99,19 +103,17 @@ pub fn parse_generics(mut generics: Generics) -> Generics {
 
 pub fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics) {
     let ident = match &predicate.bounded_ty {
-        Type::Path(tp) => &tp.path.segments.first().unwrap().ident,
+        Type::Path(tp) => &tp.path.segments.first().unwrap().ident.to_string(),
         _ => panic!("Ident not found in bounded type"),
     };
 
-    let param = generics.params
-        .iter_mut()
-        .find_map(|param| {
-            match param {
-                GenericParam::Type(tp) if tp.ident == *ident => Some(tp),
-                _ => None,
-            }
-        })
-        .expect("Type parameter not found in generics");
+    let param = match find_type_param_mut(generics, ident) {
+        Some(p) => p,
+        None => {
+            add_generic(generics, ident);
+            find_type_param_mut(generics, ident).unwrap()
+        }
+    };
 
     for bound in predicate.bounds.iter().cloned() {
         let bound_str = bound.to_token_stream().to_string();
@@ -119,6 +121,18 @@ pub fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics)
             param.bounds.push(bound);
         }
     }
+}
+
+pub fn find_type_param_mut<'a>(
+    generics: &'a mut Generics,
+    ident: &str
+) -> Option<&'a mut TypeParam> {
+    generics.params.iter_mut().find_map(|param| {
+        match param {
+            GenericParam::Type(tp) if tp.ident == ident => Some(tp),
+            _ => None,
+        }
+    })
 }
 
 fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Generics) {
@@ -139,6 +153,20 @@ fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Gener
             param.bounds.push(bound);
         }
     }
+}
+
+// TODO: unite with collect_generics
+pub fn get_generics(generics_str: &str) -> HashSet<String> {
+    let generics = str_to_generics(generics_str);
+    generics.params
+        .iter()
+        .filter_map(|param| {
+            match param {
+                GenericParam::Type(tp) => Some(tp.ident.to_string()),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

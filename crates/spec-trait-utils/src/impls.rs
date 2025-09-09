@@ -106,7 +106,7 @@ impl Specializable for ImplBody {
 impl ImplBody {
     fn get_spec_trait_name(&self) -> String {
         match &self.condition {
-            Some(c) => format!("{}_{}_{}", self.trait_name, self.type_name, to_hash(c)), // TODO: check if we need the type_name here
+            Some(c) => format!("{}_{}_{}", self.trait_name, self.type_name, to_hash(c)),
             None => self.trait_name.to_owned(),
         }
     }
@@ -125,10 +125,11 @@ impl ImplBody {
         new_impl
     }
 
+    // TODO: clean unused generics at the end
     fn apply_condition(&mut self, condition: &WhenCondition) {
         match condition {
             WhenCondition::All(inner) => {
-                let assignable = get_assignable_conditions(inner);
+                let assignable = get_assignable_conditions(inner, &self.impl_generics);
 
                 // pass multiple times to handle chained dependencies
                 for _ in 0..assignable.len() {
@@ -150,11 +151,19 @@ impl ImplBody {
 
             WhenCondition::Trait(generic, traits) => {
                 let mut generics = str_to_generics(&self.impl_generics);
-                let other_generics = str_to_generics(&self.trait_generics);
+                let mut other_generics = str_to_generics(&self.trait_generics);
 
-                apply_trait_condition(self, &mut generics, &other_generics, generic, traits);
+                apply_trait_condition(
+                    self,
+                    &mut generics,
+                    &mut other_generics,
+                    generic,
+                    traits,
+                    true
+                );
 
                 self.impl_generics = to_string(&generics);
+                self.trait_generics = to_string(&other_generics);
             }
 
             _ => {}

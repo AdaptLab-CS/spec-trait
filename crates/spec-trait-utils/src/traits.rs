@@ -117,10 +117,11 @@ impl TraitBody {
         new_trait
     }
 
+    // TODO: clean unused generics at the end
     fn apply_condition(&mut self, impl_generics: &mut Generics, condition: &WhenCondition) {
         match condition {
             WhenCondition::All(inner) => {
-                let assignable = get_assignable_conditions(inner);
+                let assignable = get_assignable_conditions(inner, &self.generics);
 
                 // pass multiple times to handle chained dependencies
                 for _ in 0..assignable.len() {
@@ -141,7 +142,14 @@ impl TraitBody {
             WhenCondition::Trait(impl_generic, traits) => {
                 let mut generics = str_to_generics(&self.generics);
 
-                apply_trait_condition(self, &mut generics, impl_generics, impl_generic, traits);
+                apply_trait_condition(
+                    self,
+                    &mut generics,
+                    impl_generics,
+                    impl_generic,
+                    traits,
+                    false
+                );
 
                 self.generics = to_string(&generics);
             }
@@ -197,7 +205,7 @@ mod tests {
     fn get_trait_body() -> TraitBody {
         TraitBody::try_from(
             quote! {
-            trait Foo<S: Clone, U: Copy> {
+            trait Foo<S, U> {
                 type Bar;
                 fn foo(&self, arg1: Vec<S>, arg2: U) -> S;
             }
@@ -213,10 +221,7 @@ mod tests {
 
         trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
-        assert_eq!(
-            trait_body.generics.replace(" ", ""),
-            "<S: Clone + Copy, U: Copy>".to_string().replace(" ", "")
-        );
+        assert_eq!(trait_body.generics.replace(" ", ""), "<S, U>".to_string().replace(" ", ""));
     }
 
     #[test]
@@ -227,7 +232,7 @@ mod tests {
 
         trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
-        assert_eq!(trait_body.generics.replace(" ", ""), "<U: Copy>".to_string().replace(" ", ""));
+        assert_eq!(trait_body.generics.replace(" ", ""), "<U>".to_string().replace(" ", ""));
         assert_eq!(
             trait_body.items
                 .into_iter()
@@ -248,10 +253,7 @@ mod tests {
 
         trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
-        assert_eq!(
-            trait_body.generics.replace(" ", ""),
-            "<U: Copy, __W0>".to_string().replace(" ", "")
-        );
+        assert_eq!(trait_body.generics.replace(" ", ""), "<U, __W0>".to_string().replace(" ", ""));
         assert_eq!(
             trait_body.items
                 .into_iter()
@@ -280,7 +282,7 @@ mod tests {
 
         trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
-        assert_eq!(trait_body.generics.replace(" ", ""), "<U: Copy>".to_string().replace(" ", ""));
+        assert_eq!(trait_body.generics.replace(" ", ""), "<U>".to_string().replace(" ", ""));
         assert_eq!(
             trait_body.items
                 .into_iter()
@@ -308,10 +310,7 @@ mod tests {
 
         trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
-        assert_eq!(
-            trait_body.generics.replace(" ", ""),
-            "<S: Clone, U: Copy>".to_string().replace(" ", "")
-        );
+        assert_eq!(trait_body.generics.replace(" ", ""), "<S, U>".to_string().replace(" ", ""));
         assert_eq!(
             trait_body.items
                 .into_iter()

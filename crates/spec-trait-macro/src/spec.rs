@@ -1,5 +1,6 @@
 use crate::annotations::AnnotationBody;
 use crate::vars::VarBody;
+use spec_trait_utils::parsing::get_generics;
 use spec_trait_utils::types::{ get_concrete_type, types_equal, Aliases };
 use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
@@ -88,7 +89,9 @@ fn satisfies_condition(
             let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
             let concrete_type_var = var.vars
                 .iter()
-                .find(|v: &_| types_equal(&concrete_type, &v.concrete_type, &var.aliases));
+                .find(|v: &_|
+                    types_equal(&concrete_type, &v.concrete_type, &var.generics, &var.aliases)
+                );
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.entry(generic.clone()).or_default();
@@ -99,20 +102,23 @@ fn satisfies_condition(
                     .as_ref()
                     .is_none_or(
                         |t|
-                            types_equal(&concrete_type, t, &Aliases::default()) &&
+                            types_equal(&concrete_type, t, &var.generics, &Aliases::default()) &&
                             concrete_type.replace("_", "").len() > t.replace("_", "").len()
                     )
             {
                 constraint.type_ = Some(concrete_type.clone());
+                constraint.generics = var.generics.clone();
             }
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
                 generic_var.is_none_or(
-                    |v| !types_equal(&concrete_type, &v.concrete_type, &var.aliases)
+                    |v| !types_equal(&concrete_type, &v.concrete_type, &var.generics, &var.aliases)
                 ) ||
                 // generic parameter is forbidden to be assigned to this type
-                constraint.not_types.iter().any(|t| types_equal(&concrete_type, t, &var.aliases)) ||
+                constraint.not_types
+                    .iter()
+                    .any(|t| types_equal(&concrete_type, t, &var.generics, &var.aliases)) ||
                 // generic parameter should implement a trait that the type does not implement
                 concrete_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
@@ -136,7 +142,7 @@ fn satisfies_condition(
                 constraint.type_.as_ref().is_some_and(|ty| {
                     let concrete_type_var = var.vars
                         .iter()
-                        .find(|v| types_equal(&v.concrete_type, ty, &var.aliases));
+                        .find(|v| types_equal(&v.concrete_type, ty, &var.generics, &var.aliases));
                     concrete_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
 
@@ -209,13 +215,8 @@ impl From<&SpecBody> for TokenStream {
 pub fn get_generics_types(spec: &SpecBody) -> TokenStream {
     let trait_body = spec.trait_.specialized.as_ref().expect("TraitBody not specialized");
 
-    if trait_body.generics.trim().is_empty() {
-        return TokenStream::new();
-    }
-
-    let generics_without_angle_brackets = &trait_body.generics[1..trait_body.generics.len() - 1];
-    let types = generics_without_angle_brackets
-        .split(',')
+    let types = get_generics(&trait_body.generics)
+        .iter()
         .map(|g| get_type(g.trim(), &spec.constraints))
         .map(|t| str_to_type_name(&t))
         .collect::<Vec<_>>();
@@ -236,9 +237,9 @@ fn get_type(generic: &str, constraints: &Constraints) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::vec;
-
     use super::*;
+    use std::vec;
+    use std::collections::HashSet;
     use crate::annotations::Annotation;
     use crate::vars::VarInfo;
     use crate::constraints::Constraint;
@@ -248,6 +249,7 @@ mod tests {
         aliases.insert("MyType".to_string(), vec!["MyOtherType".to_string()]);
         VarBody {
             aliases,
+            generics: vec!["T".into()].into_iter().collect(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
                 concrete_type: "MyType".into(),
@@ -257,7 +259,7 @@ mod tests {
     }
 
     fn get_impl_body(condition: Option<WhenCondition>) -> ImplBody {
-        let impl_ = quote! { impl <T> MyTrait<T> for MyType { fn foo(&self, my_arg: T) {} } };
+        let impl_ = quote! { impl <T, U> MyTrait<T> for MyType { fn foo(&self, my_arg: T) {} } };
         ImplBody::try_from((impl_, condition)).unwrap()
     }
 
@@ -345,6 +347,7 @@ mod tests {
         );
         let var = VarBody {
             aliases: Aliases::default(),
+            generics: vec!["T".into()].into_iter().collect(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
                 concrete_type: "Vec<MyType>".into(),
@@ -410,6 +413,7 @@ mod tests {
             spec_body.constraints.get("T".into()),
             Some(
                 &(Constraint {
+                    generics: HashSet::new(),
                     type_: Some("MyType".into()),
                     traits: vec![],
                     not_types: vec![],
@@ -437,6 +441,7 @@ mod tests {
             spec_body.constraints.get("T".into()),
             Some(
                 &(Constraint {
+                    generics: HashSet::new(),
                     type_: Some("MyType".into()),
                     traits: vec![],
                     not_types: vec![],
@@ -474,5 +479,75 @@ mod tests {
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "No valid implementation found");
+    }
+
+    #[test]
+    fn impl_with_wildcard() {
+        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "Vec<_>".into())))];
+        let traits = vec![get_trait_body(&impls[0])];
+        let mut annotations = get_annotation_body();
+        annotations.args_types = vec!["Vec<MyType>".to_string()];
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_ok());
+        let spec_body = result.unwrap();
+        assert_eq!(spec_body.impl_.trait_name, "MyTrait");
+        assert_eq!(
+            spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
+            "Vec<_>".to_string()
+        );
+    }
+
+    #[test]
+    fn impl_with_generic() {
+        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "Vec<U>".into())))];
+        let traits = vec![get_trait_body(&impls[0])];
+        let mut annotations = get_annotation_body();
+        annotations.args_types = vec!["Vec<MyType>".to_string()];
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_ok());
+        let spec_body = result.unwrap();
+        println!("{:?}", spec_body);
+        assert_eq!(spec_body.impl_.trait_name, "MyTrait");
+        assert_eq!(
+            spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
+            "Vec<U>".to_string()
+        );
+    }
+
+    #[test]
+    fn impl_with_conditioned_generics() {
+        let impls = vec![
+            get_impl_body(
+                Some(
+                    WhenCondition::All(
+                        vec![
+                            WhenCondition::Type("T".into(), "Vec<U>".into()),
+                            WhenCondition::Trait("U".into(), vec!["MyTrait".into()])
+                        ]
+                    )
+                )
+            )
+        ];
+        let traits = vec![get_trait_body(&impls[0])];
+        let mut annotations = get_annotation_body();
+        annotations.args_types = vec!["Vec<MyType>".to_string()];
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(result.is_ok());
+        let spec_body = result.unwrap();
+        println!("{:?}", spec_body);
+        assert_eq!(spec_body.impl_.trait_name, "MyTrait");
+        assert_eq!(
+            spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
+            "Vec<U>".to_string()
+        );
+        assert!(
+            spec_body.constraints.get("U".into()).unwrap().traits.contains(&"MyTrait".to_string())
+        );
     }
 }

@@ -5,7 +5,7 @@ use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
 use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
 use crate::conversions::{ str_to_type_name, trait_condition_to_generic_predicate };
-use crate::parsing::handle_type_predicate;
+use crate::parsing::{ find_type_param_mut, get_generics, handle_type_predicate };
 use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
 use crate::conditions::WhenCondition;
 
@@ -15,7 +15,11 @@ pub trait Specializable {
     fn handle_items_replace<V: VisitMut>(&mut self, replacer: &mut V);
 }
 
-pub fn get_assignable_conditions(conditions: &[WhenCondition]) -> Vec<WhenCondition> {
+pub fn get_assignable_conditions(
+    conditions: &[WhenCondition],
+    generics: &str
+) -> Vec<WhenCondition> {
+    let generics = get_generics(generics);
     conditions
         .iter()
         .filter_map(|c| {
@@ -26,7 +30,7 @@ pub fn get_assignable_conditions(conditions: &[WhenCondition]) -> Vec<WhenCondit
                     let most_specific = types.last() == Some(t);
                     let diff_types = types
                         .iter()
-                        .any(|other_t| !types_equal(t, other_t, &Aliases::default()));
+                        .any(|other_t| !types_equal(t, other_t, &generics, &Aliases::default()));
 
                     if diff_types || !most_specific {
                         None
@@ -57,19 +61,30 @@ fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]
 pub fn apply_trait_condition<T: Specializable>(
     target: &mut T,
     generics: &mut Generics,
-    other_generics: &Generics,
+    other_generics: &mut Generics,
     impl_generic: &str,
-    traits: &Vec<String>
+    traits: &Vec<String>,
+    add_bounds: bool
 ) {
     let item_generic = target
         .resolve_item_generic(other_generics, impl_generic)
         .unwrap_or_else(|| impl_generic.to_string());
 
     let predicate = trait_condition_to_generic_predicate(
-        &WhenCondition::Trait(item_generic, traits.clone())
+        &WhenCondition::Trait(item_generic.clone(), traits.clone())
     );
 
-    handle_type_predicate(&predicate, generics);
+    if add_bounds {
+        handle_type_predicate(&predicate, generics);
+    } else {
+        if find_type_param_mut(generics, &item_generic).is_none() {
+            add_generic(generics, &item_generic);
+        }
+    }
+
+    if find_type_param_mut(other_generics, &item_generic).is_none() {
+        add_generic(other_generics, &item_generic);
+    }
 }
 
 struct TypeReplacer {
@@ -142,7 +157,7 @@ fn collect_generics(generics: &Generics) -> HashSet<String> {
         .collect::<HashSet<_>>()
 }
 
-fn add_generic(generics: &mut Generics, generic: &str) {
+pub fn add_generic(generics: &mut Generics, generic: &str) {
     generics.params.push(
         GenericParam::Type(TypeParam {
             attrs: vec![],

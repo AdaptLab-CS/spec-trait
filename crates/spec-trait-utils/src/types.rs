@@ -1,6 +1,15 @@
 use std::collections::{ HashMap, HashSet };
 use crate::conversions::{ str_to_type_name, to_string };
-use syn::{ Type, TypeTuple, TypeReference, TypeArray, PathArguments, GenericArgument, TypeSlice };
+use syn::{
+    Type,
+    TypeTuple,
+    TypeReference,
+    TypeArray,
+    PathArguments,
+    GenericArgument,
+    TypeSlice,
+    Expr,
+};
 
 pub type Aliases = HashMap<String, Vec<String>>;
 
@@ -80,15 +89,22 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
     }
 }
 
+type Generics = HashSet<String>;
+type GenericsMap = HashMap<String, Option<String>>;
+
 /// types can be something like: "T", "&T", "U<T>", "(T, T)", "&[T]"
 /// each of the "T" can be a type or a "_", which means any type
-pub fn types_equal(type1: &str, type2: &str, aliases: &Aliases) -> bool {
+pub fn types_equal(type1: &str, type2: &str, generics: &Generics, aliases: &Aliases) -> bool {
     let t1 = str_to_type_name(&get_concrete_type(type1, aliases));
     let t2 = str_to_type_name(&get_concrete_type(type2, aliases));
-    same_type(&t1, &t2)
+    let mut generics_map = generics
+        .iter()
+        .map(|g| (g.clone(), None))
+        .collect();
+    same_type(&t1, &t2, &mut generics_map)
 }
 
-fn same_type(t1: &Type, t2: &Type) -> bool {
+fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
     let t1 = unwrap_paren(t1);
     let t2 = unwrap_paren(t2);
 
@@ -104,20 +120,24 @@ fn same_type(t1: &Type, t2: &Type) -> bool {
                 tuple1.elems
                     .iter()
                     .zip(&tuple2.elems)
-                    .all(|(elem1, elem2)| same_type(elem1, elem2))
+                    .all(|(elem1, elem2)| same_type(elem1, elem2, generics))
         }
 
         // `&T`, `&_`
-        (Type::Reference(ref1), Type::Reference(ref2)) => { same_type(&ref1.elem, &ref2.elem) }
+        (Type::Reference(ref1), Type::Reference(ref2)) => {
+            same_type(&ref1.elem, &ref2.elem, generics)
+        }
 
         // `[T]`, `[_]`
-        (Type::Slice(slice1), Type::Slice(slice2)) => { same_type(&slice1.elem, &slice2.elem) }
+        (Type::Slice(slice1), Type::Slice(slice2)) => {
+            same_type(&slice1.elem, &slice2.elem, generics)
+        }
 
         // `[T; N]`, `[_; N]`, `[T; _]`, `[_; _]`
         (Type::Array(array1), Type::Array(array2)) => {
-            same_type(&array1.elem, &array2.elem) &&
-                (matches!(array1.len, syn::Expr::Infer(_)) ||
-                    matches!(array2.len, syn::Expr::Infer(_)) ||
+            same_type(&array1.elem, &array2.elem, generics) &&
+                (matches!(array1.len, Expr::Infer(_)) ||
+                    matches!(array2.len, Expr::Infer(_)) ||
                     to_string(&array1.len) == to_string(&array2.len))
         }
 
@@ -128,11 +148,15 @@ fn same_type(t1: &Type, t2: &Type) -> bool {
                     .iter()
                     .zip(&path2.path.segments)
                     .all(|(seg1, seg2)| {
-                        seg1.ident == seg2.ident &&
+                        check_equal_and_assign_generic(
+                            &seg1.ident.to_string(),
+                            &seg2.ident.to_string(),
+                            generics
+                        ) &&
                             (match (&seg1.arguments, &seg2.arguments) {
                                 (
-                                    syn::PathArguments::AngleBracketed(args1),
-                                    syn::PathArguments::AngleBracketed(args2),
+                                    PathArguments::AngleBracketed(args1),
+                                    PathArguments::AngleBracketed(args2),
                                 ) =>
                                     args1.args
                                         .iter()
@@ -140,9 +164,9 @@ fn same_type(t1: &Type, t2: &Type) -> bool {
                                         .all(|(arg1, arg2)| {
                                             match (arg1, arg2) {
                                                 (
-                                                    syn::GenericArgument::Type(t1),
-                                                    syn::GenericArgument::Type(t2),
-                                                ) => same_type(t1, t2),
+                                                    GenericArgument::Type(t1),
+                                                    GenericArgument::Type(t2),
+                                                ) => same_type(t1, t2, generics),
                                                 _ => false,
                                             }
                                         }),
@@ -157,6 +181,39 @@ fn same_type(t1: &Type, t2: &Type) -> bool {
 
 fn unwrap_paren(ty: &Type) -> &Type {
     if let Type::Paren(paren) = ty { unwrap_paren(&paren.elem) } else { ty }
+}
+
+fn check_equal_and_assign_generic(t1: &str, t2: &str, generics: &mut GenericsMap) -> bool {
+    if t1 == t2 || t1 == "_" || t2 == "_" {
+        return true;
+    }
+
+    let t1_generic = generics.get(t1).cloned();
+    let t2_generic = generics.get(t2).cloned();
+
+    if
+        t1_generic.is_some_and(|v| {
+            v.clone().is_none_or(|v|
+                same_type(&str_to_type_name(&v), &str_to_type_name(t2), generics)
+            )
+        })
+    {
+        generics.insert(t1.to_string(), Some(t2.to_string()));
+        return true;
+    }
+
+    if
+        t2_generic.is_some_and(|v| {
+            v.clone().is_none_or(|v|
+                same_type(&str_to_type_name(&v), &str_to_type_name(t1), generics)
+            )
+        })
+    {
+        generics.insert(t2.to_string(), Some(t1.to_string()));
+        return true;
+    }
+
+    return false;
 }
 
 /// Replaces all occurrences of `prev` in the given type with `new`.
@@ -337,134 +394,210 @@ mod tests {
 
     #[test]
     fn compare_types_simple() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("_");
         let t2 = str_to_type_name("u8");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("u8");
         let t2 = str_to_type_name("_");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("_");
         let t2 = str_to_type_name("_");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("T");
+        let t2 = str_to_type_name("u8");
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("T");
+        let t2 = str_to_type_name("T");
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("T");
+        let t2 = str_to_type_name("_");
+        assert!(same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_tuples() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("(u8, _)");
         let t2 = str_to_type_name("(u8, i32)");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("(u8, T)");
+        let t2 = str_to_type_name("(u8, i32)");
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("(u8, i32)");
         let t2 = str_to_type_name("(u8, i32)");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("(u8, i32)");
         let t2 = str_to_type_name("(u8, f32)");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("(u8, i32)");
+        let t2 = str_to_type_name("(T, T)");
+        assert!(!same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_references() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&u8");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&_");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("&u8");
+        let t2 = str_to_type_name("&T");
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&i8");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_slices() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[u8]");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[_]");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("[u8]");
+        let t2 = str_to_type_name("[T]");
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[i8]");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_arrays() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[u8; 3]");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[u8; 4]");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[_; 3]");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8; _]");
         let t2 = str_to_type_name("[u8; 3]");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[_; _]");
         let t2 = str_to_type_name("[u8; 3]");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("[u8; 3]");
+        let t2 = str_to_type_name("[T; 3]");
+        assert!(same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_parens() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((u8))");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("(u8)");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((i32))");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((_))");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("((u8))");
+        let t2 = str_to_type_name("((T))");
+        assert!(same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_paths() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("Vec<u8>");
         let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("Vec<_>");
         let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("Vec<T>");
+        let t2 = str_to_type_name("Vec<u8>");
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("Vec<u8>");
         let t2 = str_to_type_name("Vec<i32>");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_nested() {
+        let mut g = GenericsMap::from(
+            [("T".to_string(), None)].into_iter().collect::<GenericsMap>()
+        );
+
         let t1 = str_to_type_name("Option<(u8, _)>");
         let t2 = str_to_type_name("Option<(u8, i32)>");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("Result<Vec<_>, _>");
         let t2 = str_to_type_name("Result<Vec<u8>, String>");
-        assert!(same_type(&t1, &t2));
+        assert!(same_type(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("Result<Vec<u8>, String>");
         let t2 = str_to_type_name("Result<Vec<i32>, String>");
-        assert!(!same_type(&t1, &t2));
+        assert!(!same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("Result<Vec<u8>, String>");
+        let t2 = str_to_type_name("Result<T, T>");
+        assert!(!same_type(&t1, &t2, &mut g));
     }
 
     #[test]
