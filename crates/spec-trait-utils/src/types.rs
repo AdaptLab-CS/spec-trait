@@ -93,15 +93,32 @@ type Generics = HashSet<String>;
 type GenericsMap = HashMap<String, Option<String>>;
 
 /// types can be something like: "T", "&T", "U<T>", "(T, T)", "&[T]"
-/// each of the "T" can be a type or a "_", which means any type
-pub fn types_equal(type1: &str, type2: &str, generics: &Generics, aliases: &Aliases) -> bool {
+/// each of the "T" can be a type, a generic or a "_", which means any type
+pub fn types_equal_generic_constraints(
+    type1: &str,
+    type2: &str,
+    generics: &Generics,
+    aliases: &Aliases
+) -> Option<GenericsMap> {
     let t1 = str_to_type_name(&get_concrete_type(type1, aliases));
     let t2 = str_to_type_name(&get_concrete_type(type2, aliases));
+
     let mut generics_map = generics
         .iter()
         .map(|g| (g.clone(), None))
         .collect();
-    same_type(&t1, &t2, &mut generics_map)
+
+    if same_type(&t1, &t2, &mut generics_map) {
+        Some(generics_map)
+    } else {
+        None
+    }
+}
+
+/// types can be something like: "T", "&T", "U<T>", "(T, T)", "&[T]"
+/// each of the "T" can be a type, a generic or a "_", which means any type
+pub fn types_equal(type1: &str, type2: &str, generics: &Generics, aliases: &Aliases) -> bool {
+    types_equal_generic_constraints(type1, type2, generics, aliases).is_some()
 }
 
 fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
@@ -143,6 +160,32 @@ fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
 
         // T, `T<U>`, `T<_>`
         (Type::Path(path1), Type::Path(path2)) if path1.qself.is_none() && path2.qself.is_none() => {
+            if path1.path.segments.len() == 1 {
+                let key = path1.path.segments.last().unwrap().ident.to_string();
+                if let Some(existing) = generics.get(&key).cloned() {
+                    if let Some(existing_val) = existing {
+                        let existing_ty = str_to_type_name(&existing_val);
+                        return same_type(&existing_ty, t2, generics);
+                    } else {
+                        generics.insert(key.clone(), Some(to_string(t2)));
+                        return true;
+                    }
+                }
+            }
+
+            if path2.path.segments.len() == 1 {
+                let key = path2.path.segments.last().unwrap().ident.to_string();
+                if let Some(existing) = generics.get(&key).cloned() {
+                    if let Some(existing_val) = existing {
+                        let existing_ty = str_to_type_name(&existing_val);
+                        return same_type(t1, &existing_ty, generics);
+                    } else {
+                        generics.insert(key.clone(), Some(to_string(t1)));
+                        return true;
+                    }
+                }
+            }
+
             path1.path.segments.len() == path2.path.segments.len() &&
                 path1.path.segments
                     .iter()
@@ -322,6 +365,51 @@ pub fn replace_infers(
 
         _ => {}
     }
+}
+
+/// Collect all inner generic names (that appear in `generics`) from a parsed `Type`.
+/// Traverses paths, angle-bracketed args, references, tuples, arrays, slices and parens.
+/// Preserves discovery order and deduplicates.
+pub fn extract_inners_from_type(ty: &Type, generics: &Generics, seen: &mut Generics) {
+    match unwrap_paren(ty) {
+        Type::Path(type_path) if type_path.qself.is_none() => {
+            for seg in &type_path.path.segments {
+                let ident = seg.ident.to_string();
+                if generics.contains(&ident) {
+                    seen.insert(ident.clone());
+                }
+                if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                    for arg in &args.args {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            extract_inners_from_type(inner_ty, generics, seen);
+                        }
+                    }
+                }
+            }
+        }
+
+        Type::Reference(reference) => extract_inners_from_type(&reference.elem, generics, seen),
+
+        Type::Tuple(tuple) => {
+            for elem in &tuple.elems {
+                extract_inners_from_type(elem, generics, seen);
+            }
+        }
+
+        Type::Slice(slice) => extract_inners_from_type(&slice.elem, generics, seen),
+
+        Type::Array(array) => extract_inners_from_type(&array.elem, generics, seen),
+
+        _ => {}
+    }
+}
+
+/// Parse a type string and return all inner generic names that belong to `generics`.
+pub fn extract_inners(type_str: &str, generics: &Generics) -> Vec<String> {
+    let parsed = str_to_type_name(type_str);
+    let mut seen = HashSet::new();
+    extract_inners_from_type(&parsed, generics, &mut seen);
+    seen.into_iter().collect()
 }
 
 #[cfg(test)]
@@ -568,7 +656,16 @@ mod tests {
         let t2 = str_to_type_name("Vec<u8>");
         assert!(same_type(&t1, &t2, &mut g));
 
+        let t1 = str_to_type_name("_");
+        let t2 = str_to_type_name("Vec<u8>");
+        assert!(same_type(&t1, &t2, &mut g));
+
         let t1 = str_to_type_name("Vec<T>");
+        let t2 = str_to_type_name("Vec<u8>");
+        assert!(same_type(&t1, &t2, &mut g));
+
+        g.insert("T".to_string(), None);
+        let t1 = str_to_type_name("T");
         let t2 = str_to_type_name("Vec<u8>");
         assert!(same_type(&t1, &t2, &mut g));
 

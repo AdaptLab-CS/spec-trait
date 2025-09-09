@@ -132,6 +132,7 @@ fn satisfies_condition(
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.entry(generic.clone()).or_default();
             constraint.traits.extend(traits.clone());
+            constraint.generics = var.generics.clone();
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the trait does not match
@@ -540,7 +541,6 @@ mod tests {
 
         assert!(result.is_ok());
         let spec_body = result.unwrap();
-        println!("{:?}", spec_body);
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
             spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
@@ -549,5 +549,28 @@ mod tests {
         assert!(
             spec_body.constraints.get("U".into()).unwrap().traits.contains(&"MyTrait".to_string())
         );
+    }
+
+    #[test]
+    fn impl_with_conditioned_generics_not_valid() {
+        let impls = vec![
+            get_impl_body(
+                Some(
+                    WhenCondition::All(
+                        vec![
+                            WhenCondition::Type("T".into(), "Vec<U>".into()),
+                            WhenCondition::Trait("U".into(), vec!["MyOtherTrait".into()])
+                        ]
+                    )
+                )
+            )
+        ];
+        let traits = vec![get_trait_body(&impls[0])];
+        let mut annotations = get_annotation_body();
+        annotations.args_types = vec!["Vec<MyType>".to_string()];
+
+        let result = SpecBody::try_from((&impls, &traits, &annotations));
+
+        assert!(!result.is_ok());
     }
 }

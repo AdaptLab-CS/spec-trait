@@ -6,7 +6,12 @@ use spec_trait_utils::parsing::get_generics;
 use spec_trait_utils::traits::TraitBody;
 use syn::{ FnArg, TraitItemFn };
 use crate::annotations::{ Annotation, AnnotationBody };
-use spec_trait_utils::types::{ get_concrete_type, types_equal, Aliases };
+use spec_trait_utils::types::{
+    get_concrete_type,
+    types_equal,
+    types_equal_generic_constraints,
+    Aliases,
+};
 use crate::SpecBody;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,6 +24,7 @@ pub struct VarInfo {
     pub traits: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct VarBody {
     /// map from concrete type to type aliases
     pub aliases: Aliases,
@@ -32,7 +38,7 @@ impl From<&SpecBody> for VarBody {
     fn from(spec: &SpecBody) -> Self {
         let aliases = get_type_aliases(&spec.annotations.annotations);
         let generics = get_generics(&spec.impl_.impl_generics);
-        let vars = get_vars(&spec.annotations, &spec.impl_, &spec.trait_, &aliases, &generics);
+        let vars = get_vars(&spec.annotations, &spec.impl_, &spec.trait_, &aliases);
         VarBody { aliases, generics, vars }
     }
 }
@@ -53,25 +59,50 @@ fn get_vars(
     ann: &AnnotationBody,
     impl_: &ImplBody,
     trait_: &TraitBody,
-    aliases: &Aliases,
-    generics: &HashSet<String>
+    aliases: &Aliases
 ) -> Vec<VarInfo> {
     let trait_fn = trait_.find_fn(&ann.fn_, ann.args.len()).unwrap();
     let param_types = get_param_types(&trait_fn);
 
+    let generics = get_generics(&trait_.generics);
+
     ann.args_types
-        .iter()
+        .clone()
+        .into_iter()
         .zip(param_types)
-        .map(|(concrete_type, trait_type_definition)| {
-            VarInfo {
-                impl_generic: impl_
-                    .get_corresponding_generic(
-                        &str_to_generics(&trait_.generics),
-                        &trait_type_definition
-                    )
-                    .unwrap_or_default(),
-                concrete_type: get_concrete_type(concrete_type, aliases),
-                traits: get_type_traits(concrete_type, &ann.annotations, aliases, generics),
+        .flat_map(|(concrete_type, trait_type_definition)| {
+            let mut res = HashSet::new();
+            res.insert((concrete_type.clone(), trait_type_definition.clone()));
+
+            let constrained_generics = types_equal_generic_constraints(
+                &concrete_type,
+                &trait_type_definition,
+                &generics,
+                aliases
+            );
+
+            if let Some(generics_map) = constrained_generics {
+                for (generic, constraint) in generics_map {
+                    if let Some(constraint) = constraint {
+                        res.insert((constraint, generic));
+                    }
+                }
+            }
+            res
+        })
+        .filter_map(|(concrete_type, trait_type_definition)| {
+            let impl_generic = impl_.get_corresponding_generic(
+                &str_to_generics(&trait_.generics),
+                &trait_type_definition
+            );
+            if let Some(impl_generic) = impl_generic {
+                Some(VarInfo {
+                    impl_generic,
+                    concrete_type: get_concrete_type(&concrete_type, aliases),
+                    traits: get_type_traits(&concrete_type, &ann.annotations, aliases),
+                })
+            } else {
+                None
             }
         })
         .collect()
@@ -95,16 +126,11 @@ fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
 }
 
 /// Get the traits associated with a type from annotations.
-fn get_type_traits(
-    type_: &str,
-    ann: &[Annotation],
-    aliases: &Aliases,
-    generics: &HashSet<String>
-) -> Vec<String> {
+fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<String> {
     ann.iter()
         .flat_map(|a| {
             match a {
-                Annotation::Trait(t, traits) if types_equal(t, type_, generics, aliases) =>
+                Annotation::Trait(t, traits) if types_equal(t, type_, &HashSet::new(), aliases) =>
                     traits.clone(),
                 _ => vec![],
             }
@@ -151,12 +177,11 @@ mod tests {
         ];
         let mut aliases = Aliases::new();
         aliases.insert("u32".into(), vec!["MyType".into()]);
-        let generics = HashSet::new();
 
-        let result = get_type_traits("u32", &ann, &aliases, &generics);
+        let result = get_type_traits("u32", &ann, &aliases);
         assert_eq!(result, vec!["Copy".to_string(), "Clone".to_string(), "Debug".to_string()]);
 
-        let result = get_type_traits("Vec<_>", &ann, &aliases, &generics);
+        let result = get_type_traits("Vec<_>", &ann, &aliases);
         assert_eq!(result, vec!["Debug".to_string()]);
     }
 
@@ -164,14 +189,16 @@ mod tests {
     fn test_get_vars() {
         let trait_body = TraitBody::try_from(
             syn
-                ::parse_str::<TokenStream>("trait MyTrait<A> { fn foo(&self, x: A, y: u32); }")
+                ::parse_str::<TokenStream>(
+                    "trait MyTrait<A, B> { fn foo(&self, x: A, y: u32, z: Vec<B>); }"
+                )
                 .unwrap()
         ).unwrap();
 
         let impl_body = ImplBody::try_from((
             syn
                 ::parse_str::<TokenStream>(
-                    "impl<T> MyTrait<T> for MyType { fn foo(&self, x: T, y: u32) {} }"
+                    "impl<T, U: Debug> MyTrait<T, U> for MyType { fn foo(&self, x: T, y: u32, z: Vec<U>) {} }"
                 )
                 .unwrap(),
             None,
@@ -179,17 +206,16 @@ mod tests {
 
         let ann = AnnotationBody {
             fn_: "foo".to_string(),
-            args_types: vec!["i32".to_string(), "u32".to_string()],
-            args: vec!["1i32".to_string(), "2u32".to_string()],
+            args_types: vec!["i32".to_string(), "u32".to_string(), "Vec<i32>".to_string()],
+            args: vec!["1i32".to_string(), "2u32".to_string(), "vec![]".to_string()],
             var: "x".to_string(),
             var_type: "MyType".to_string(),
             annotations: vec![Annotation::Trait("i32".into(), vec!["Debug".into()])],
         };
 
         let aliases = Aliases::new();
-        let generics = HashSet::new();
 
-        let result = get_vars(&ann, &impl_body, &trait_body, &aliases, &generics);
+        let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0], VarInfo {
@@ -198,9 +224,9 @@ mod tests {
             traits: vec!["Debug".to_string()],
         });
         assert_eq!(result[1], VarInfo {
-            impl_generic: "".to_string(),
-            concrete_type: "u32".to_string(),
-            traits: vec![],
+            impl_generic: "U".to_string(),
+            concrete_type: "i32".to_string(),
+            traits: vec!["Debug".to_string()],
         });
     }
 }
