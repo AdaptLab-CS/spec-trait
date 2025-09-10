@@ -189,6 +189,7 @@ fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<St
 mod tests {
     use super::*;
     use proc_macro2::TokenStream;
+    use spec_trait_utils::conditions::WhenCondition;
 
     #[test]
     fn test_get_type_aliases() {

@@ -143,7 +143,7 @@ fn remove_generic(generics: &mut Generics, generic: &str) {
         .collect();
 }
 
-fn collect_generics(generics: &Generics) -> HashSet<String> {
+pub fn collect_generics(generics: &Generics) -> HashSet<String> {
     generics.params
         .iter()
         .filter_map(|p| {

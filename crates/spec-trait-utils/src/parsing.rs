@@ -15,7 +15,7 @@ use syn::{
 use syn::parse::ParseStream;
 use quote::ToTokens;
 use crate::conversions::{ str_to_generics, to_string };
-use crate::specialize::add_generic;
+use crate::specialize::{ add_generic, collect_generics };
 
 pub trait ParseTypeOrTrait {
     fn from_type(ident: String, type_name: String) -> Self;
@@ -155,18 +155,9 @@ fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Gener
     }
 }
 
-// TODO: unite with collect_generics
 pub fn get_generics(generics_str: &str) -> HashSet<String> {
     let generics = str_to_generics(generics_str);
-    generics.params
-        .iter()
-        .filter_map(|param| {
-            match param {
-                GenericParam::Type(tp) => Some(tp.ident.to_string()),
-                _ => None,
-            }
-        })
-        .collect()
+    collect_generics(&generics)
 }
 
 #[cfg(test)]
