@@ -262,7 +262,7 @@ fn check_equal_and_assign_generic(t1: &str, t2: &str, generics: &mut GenericsMap
         return true;
     }
 
-    return false;
+    false
 }
 
 /// Replaces all occurrences of `prev` in the given type with `new`.

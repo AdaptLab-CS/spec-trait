@@ -4,7 +4,6 @@ use spec_trait_utils::conversions::{ str_to_generics, str_to_type_name, to_strin
 use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::get_generics;
 use spec_trait_utils::traits::TraitBody;
-use spec_trait_utils::conditions::WhenCondition;
 use syn::{ FnArg, TraitItemFn };
 use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
@@ -66,10 +65,10 @@ fn get_vars(
     get_generics(&impl_.impl_generics)
         .iter()
         .flat_map(|g| {
-            match trait_.get_corresponding_generic(&str_to_generics(&impl_.impl_generics), &g) {
+            match trait_.get_corresponding_generic(&str_to_generics(&impl_.impl_generics), g) {
                 // get type
                 Some(trait_generic) =>
-                    get_generic_constraints(&trait_generic, &trait_, &impl_, &ann, aliases),
+                    get_generic_constraints(&trait_generic, trait_, impl_, ann, aliases),
 
                 // get from specialized instead
                 None => {
@@ -78,19 +77,19 @@ fn get_vars(
                         .unwrap()
                         .get_corresponding_generic(
                             &str_to_generics(&impl_.specialized.as_ref().unwrap().impl_generics),
-                            &g
+                            g
                         );
 
                     if let Some(trait_generic) = trait_generic {
                         get_generic_constraints(
                             &trait_generic,
-                            &trait_.specialized.as_ref().unwrap(),
-                            &impl_.specialized.as_ref().unwrap(),
-                            &ann,
+                            trait_.specialized.as_ref().unwrap(),
+                            impl_.specialized.as_ref().unwrap(),
+                            ann,
                             aliases
                         )
                     } else {
-                        return vec![];
+                        vec![]
                     }
                 }
             }
@@ -132,7 +131,7 @@ fn get_generic_constraints(
             let mut param_type = str_to_type_name(p);
             let original = param_type.clone();
             let replacement = str_to_type_name("__GENERIC__");
-            replace_type(&mut param_type, &trait_generic, &replacement);
+            replace_type(&mut param_type, trait_generic, &replacement);
             if to_string(&param_type) != to_string(&original) {
                 Some((i, to_string(&original)))
             } else {
@@ -147,8 +146,8 @@ fn get_generic_constraints(
     let mut res = HashSet::new();
 
     let constrained_generics = types_equal_generic_constraints(
-        &concrete_type,
-        &trait_type_definition,
+        concrete_type,
+        trait_type_definition,
         &get_generics(&trait_.generics),
         aliases
     );
@@ -164,14 +163,13 @@ fn get_generic_constraints(
         }
     }
 
-    return res
-        .into_iter()
+    res.into_iter()
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
             concrete_type: get_concrete_type(&constraint, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>()
 }
 
 /// Get the traits associated with a type from annotations.

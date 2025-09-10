@@ -63,7 +63,7 @@ pub fn apply_trait_condition<T: Specializable>(
     generics: &mut Generics,
     other_generics: &mut Generics,
     impl_generic: &str,
-    traits: &Vec<String>,
+    traits: &[String],
     add_bounds: bool
 ) {
     let item_generic = target
@@ -71,15 +71,13 @@ pub fn apply_trait_condition<T: Specializable>(
         .unwrap_or_else(|| impl_generic.to_string());
 
     let predicate = trait_condition_to_generic_predicate(
-        &WhenCondition::Trait(item_generic.clone(), traits.clone())
+        &WhenCondition::Trait(item_generic.clone(), traits.to_vec())
     );
 
     if add_bounds {
         handle_type_predicate(&predicate, generics);
-    } else {
-        if find_type_param_mut(generics, &item_generic).is_none() {
-            add_generic(generics, &item_generic);
-        }
+    } else if find_type_param_mut(generics, &item_generic).is_none() {
+        add_generic(generics, &item_generic);
     }
 
     if find_type_param_mut(other_generics, &item_generic).is_none() {
