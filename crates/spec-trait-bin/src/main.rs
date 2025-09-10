@@ -1,4 +1,5 @@
 use spec_trait_macro::{ spec, when };
+use std::fmt::Debug;
 
 struct ZST;
 struct ZST2;
@@ -102,10 +103,32 @@ impl<T, U> Foo2<T, U> for ZST {
 }
 
 // ZST - Foo3
+
 #[when(T = String)]
 impl<T> Foo3<T> for ZST {
     fn foo(&self, x: T, y: String) {
         println!("Foo3 for ZST where T is String");
+    }
+}
+
+#[when(all(T = Vec<U>, U = String))]
+impl<T, U> Foo3<T> for ZST {
+    fn foo(&self, x: T, y: String) {
+        println!("Foo3 impl ZST where T is Vec<String>");
+    }
+}
+
+// #[when(T = Vec<U>)] // TODO: fix
+// impl<T, U> Foo3<T> for ZST {
+//     fn foo(&self, x: T, y: String) {
+//         println!("Foo3 impl ZST where T is Vec<U> and U implements Debug");
+//     }
+// }
+
+#[when(all(T = Vec<U>, U: Debug))] // TODO: fix
+impl<T, U> Foo3<T> for ZST {
+    fn foo(&self, x: T, y: String) {
+        println!("Foo3 impl ZST where T is Vec<U> and U implements Debug");
     }
 }
 
@@ -171,7 +194,7 @@ fn main() {
     spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType }
     spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }
     spec! { zst.foo((1, 2)); ZST; [(i32, i32)] }
-    spec! { zst.foo(&[1i32]); ZST; [&[i32]] }
+    spec! { zst.foo(&[1i32]); ZST; [&[i32]] } 
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }
     spec! { zst.foo(1i8); ZST; [i8] }
@@ -183,6 +206,8 @@ fn main() {
 
     // ZST - Foo3
     spec! { zst.foo("hello".to_string(), "world".to_string()); ZST; [String, String] }
+    // spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String] }
+    spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String]; String: Debug }
 
     // ZST2 - Foo
     spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }

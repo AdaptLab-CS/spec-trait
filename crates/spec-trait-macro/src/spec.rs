@@ -511,7 +511,6 @@ mod tests {
 
         assert!(result.is_ok());
         let spec_body = result.unwrap();
-        println!("{:?}", spec_body);
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
             spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
