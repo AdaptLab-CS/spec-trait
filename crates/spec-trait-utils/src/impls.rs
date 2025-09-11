@@ -6,16 +6,12 @@ use crate::conversions::{
     to_hash,
     to_string,
     tokens_to_impl,
+    trait_condition_to_generic_predicate,
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
-use crate::parsing::parse_generics;
-use crate::specialize::{
-    apply_trait_condition,
-    apply_type_condition,
-    get_assignable_conditions,
-    Specializable,
-};
+use crate::parsing::{ handle_type_predicate, parse_generics };
+use crate::specialize::{ apply_type_condition, get_assignable_conditions, Specializable };
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use syn::{ Attribute, GenericParam, Generics, ItemImpl };
@@ -149,21 +145,13 @@ impl ImplBody {
                 self.trait_generics = to_string(&other_generics);
             }
 
-            WhenCondition::Trait(generic, traits) => {
+            WhenCondition::Trait(_, _) => {
                 let mut generics = str_to_generics(&self.impl_generics);
-                let mut other_generics = str_to_generics(&self.trait_generics);
+                let predicate = trait_condition_to_generic_predicate(&condition);
 
-                apply_trait_condition(
-                    self,
-                    &mut generics,
-                    &mut other_generics,
-                    generic,
-                    traits,
-                    true
-                );
+                handle_type_predicate(&predicate, &mut generics);
 
                 self.impl_generics = to_string(&generics);
-                self.trait_generics = to_string(&other_generics);
             }
 
             _ => {}

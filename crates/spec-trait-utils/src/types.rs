@@ -356,20 +356,23 @@ pub fn replace_infers(
 
         // _
         Type::Infer(_) => {
-            let name = loop {
-                let candidate = format!("__W{}", *counter);
-                *counter += 1;
-
-                if generics.insert(candidate.clone()) {
-                    break candidate;
-                }
-            };
-
+            let name = get_unique_generic_name(generics, counter);
             *ty = str_to_type_name(&name);
             new_generics.push(name);
         }
 
         _ => {}
+    }
+}
+
+pub fn get_unique_generic_name(generics: &mut HashSet<String>, counter: &mut usize) -> String {
+    loop {
+        let candidate = format!("__G_{}__", *counter);
+        *counter += 1;
+
+        if generics.insert(candidate.clone()) {
+            return candidate;
+        }
     }
 }
 

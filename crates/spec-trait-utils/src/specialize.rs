@@ -4,8 +4,8 @@ use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
 use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
-use crate::conversions::{ str_to_type_name, trait_condition_to_generic_predicate };
-use crate::parsing::{ find_type_param_mut, get_generics, handle_type_predicate };
+use crate::conversions::{ str_to_type_name, to_string };
+use crate::parsing::get_generics;
 use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
 use crate::conditions::WhenCondition;
 
@@ -58,40 +58,14 @@ fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]
     types
 }
 
-pub fn apply_trait_condition<T: Specializable>(
-    target: &mut T,
-    generics: &mut Generics,
-    other_generics: &mut Generics,
-    impl_generic: &str,
-    traits: &[String],
-    add_bounds: bool
-) {
-    let item_generic = target
-        .resolve_item_generic(other_generics, impl_generic)
-        .unwrap_or_else(|| impl_generic.to_string());
-
-    let predicate = trait_condition_to_generic_predicate(
-        &WhenCondition::Trait(item_generic.clone(), traits.to_vec())
-    );
-
-    if add_bounds {
-        handle_type_predicate(&predicate, generics);
-    } else if find_type_param_mut(generics, &item_generic).is_none() {
-        add_generic(generics, &item_generic);
-    }
-
-    if find_type_param_mut(other_generics, &item_generic).is_none() {
-        add_generic(other_generics, &item_generic);
-    }
-}
-
-struct TypeReplacer {
-    generic: String,
-    type_: Type,
+pub struct TypeReplacer {
+    pub generic: String,
+    pub type_: Type,
 }
 
 impl VisitMut for TypeReplacer {
     fn visit_type_mut(&mut self, node: &mut Type) {
+        println!("replacing {} with {}", self.generic, to_string(&self.type_));
         replace_type(node, &self.generic, &self.type_);
         visit_mut::visit_type_mut(self, node);
     }
@@ -115,7 +89,7 @@ pub fn apply_type_condition<T: Specializable>(
     // replace infers in the type
     let mut new_type = str_to_type_name(type_);
     let mut existing_generics = collect_generics(generics);
-    let mut counter = 0usize;
+    let mut counter = 10; // TODO: fix (get if starting from 0 i get stackoverflow)
     let mut new_generics = vec![];
 
     replace_infers(&mut new_type, &mut existing_generics, &mut counter, &mut new_generics);

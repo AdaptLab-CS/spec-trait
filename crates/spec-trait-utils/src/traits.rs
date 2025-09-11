@@ -2,18 +2,20 @@ use crate::conditions::WhenCondition;
 use crate::conversions::{
     str_to_generics,
     str_to_trait_name,
+    str_to_type_name,
     strs_to_trait_items,
     to_string,
     tokens_to_trait,
 };
 use crate::impls::ImplBody;
-use crate::parsing::parse_generics;
+use crate::parsing::{ get_generics, parse_generics };
 use crate::specialize::{
-    apply_trait_condition,
     apply_type_condition,
     get_assignable_conditions,
     Specializable,
+    TypeReplacer,
 };
+use crate::types::get_unique_generic_name;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use syn::{ GenericParam, Generics };
@@ -106,12 +108,37 @@ impl TraitBody {
         let mut new_trait = self.clone();
         let mut specialized = new_trait.clone();
 
+        // set specialized trait name
         specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
 
+        // replace generics with unique generic name
+        let mut new_generics = vec![];
+        let mut generics = get_generics(&specialized.generics);
+        let mut counter = 0;
+        for generic in specialized.generics
+            .replace("<", "")
+            .replace(">", "")
+            .split(",")
+            .map(|s| s.trim()) {
+            let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
+            let type_ = str_to_type_name(&new_generic_name);
+
+            new_generics.push(type_.clone());
+
+            let mut replacer = TypeReplacer { generic: generic.to_owned(), type_ };
+            specialized.handle_items_replace(&mut replacer);
+        }
+        if !new_generics.is_empty() {
+            specialized.generics = (quote! { <#(#new_generics),*> }).to_string();
+        }
+
+        // apply condition
         if let Some(condition) = &impl_body.condition {
             let mut impl_generics = str_to_generics(&impl_body.trait_generics);
             specialized.apply_condition(&mut impl_generics, condition);
         }
+
+        // TODO: set missing generics
 
         new_trait.specialized = Some(Box::new(specialized));
         new_trait
@@ -135,21 +162,6 @@ impl TraitBody {
                 let mut generics = str_to_generics(&self.generics);
 
                 apply_type_condition(self, &mut generics, impl_generics, impl_generic, type_);
-
-                self.generics = to_string(&generics);
-            }
-
-            WhenCondition::Trait(impl_generic, traits) => {
-                let mut generics = str_to_generics(&self.generics);
-
-                apply_trait_condition(
-                    self,
-                    &mut generics,
-                    impl_generics,
-                    impl_generic,
-                    traits,
-                    false
-                );
 
                 self.generics = to_string(&generics);
             }

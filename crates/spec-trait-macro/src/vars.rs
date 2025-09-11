@@ -338,11 +338,7 @@ mod tests {
 
         let aliases = Aliases::new();
 
-        println!("impl_body: {:#?}", impl_body);
-        println!("trait_body: {:#?}", trait_body);
-
         let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
-        println!("result: {:#?}", result);
 
         assert_eq!(result.len(), 5);
         let t = result
