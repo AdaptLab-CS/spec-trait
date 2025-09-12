@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
@@ -117,7 +115,7 @@ fn remove_generic(generics: &mut Generics, generic: &str) {
         .collect();
 }
 
-pub fn collect_generics(generics: &Generics) -> HashSet<String> {
+pub fn collect_generics<T: FromIterator<String>>(generics: &Generics) -> T {
     generics.params
         .iter()
         .filter_map(|p| {
@@ -126,7 +124,7 @@ pub fn collect_generics(generics: &Generics) -> HashSet<String> {
                 _ => None,
             }
         })
-        .collect::<HashSet<_>>()
+        .collect()
 }
 
 pub fn add_generic(generics: &mut Generics, generic: &str) {

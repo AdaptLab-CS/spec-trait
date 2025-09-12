@@ -118,14 +118,14 @@ impl<T, U> Foo3<T> for ZST {
     }
 }
 
-// #[when(T = Vec<U>)] // TODO: fix
-// impl<T, U> Foo3<T> for ZST {
-//     fn foo(&self, x: T, y: String) {
-//         println!("Foo3 impl ZST where T is Vec<U> and U implements Debug");
-//     }
-// }
+#[when(T = Vec<U>)]
+impl<T, U> Foo3<T> for ZST {
+    fn foo(&self, x: T, y: String) {
+        println!("Foo3 impl ZST where T is Vec<U>");
+    }
+}
 
-#[when(all(T = Vec<U>, U: Debug))] // TODO: fix
+#[when(all(T = Vec<U>, U: Debug))]
 impl<T, U> Foo3<T> for ZST {
     fn foo(&self, x: T, y: String) {
         println!("Foo3 impl ZST where T is Vec<U> and U implements Debug");
@@ -206,7 +206,7 @@ fn main() {
 
     // ZST - Foo3
     spec! { zst.foo("hello".to_string(), "world".to_string()); ZST; [String, String] }
-    // spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String] }
+    spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String] }
     spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String]; String: Debug }
 
     // ZST2 - Foo

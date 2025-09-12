@@ -62,7 +62,7 @@ fn get_vars(
     trait_: &TraitBody,
     aliases: &Aliases
 ) -> Vec<VarInfo> {
-    get_generics(&impl_.impl_generics)
+    get_generics::<Vec<_>>(&impl_.impl_generics)
         .iter()
         .flat_map(|g| {
             match trait_.get_corresponding_generic(&str_to_generics(&impl_.impl_generics), g) {

@@ -10,11 +10,17 @@ use crate::conversions::{
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
-use crate::parsing::{ handle_type_predicate, parse_generics };
-use crate::specialize::{ apply_type_condition, get_assignable_conditions, Specializable };
+use crate::parsing::{ get_generics, handle_type_predicate, parse_generics };
+use crate::specialize::{
+    add_generic,
+    apply_type_condition,
+    get_assignable_conditions,
+    Specializable,
+};
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use syn::{ Attribute, GenericParam, Generics, ItemImpl };
+use std::collections::HashSet;
 use std::fmt::Debug;
 use quote::quote;
 use syn::visit_mut::VisitMut;
@@ -111,11 +117,23 @@ impl ImplBody {
         let mut new_impl = self.clone();
         let mut specialized = new_impl.clone();
 
+        // set specialized trait name
         specialized.trait_name = specialized.get_spec_trait_name();
 
+        // apply condition
         if let Some(condition) = &self.condition {
             specialized.apply_condition(condition);
         }
+
+        // set missing generics
+        let mut trait_generics = str_to_generics(&specialized.trait_generics);
+        let curr_generics = get_generics::<HashSet<_>>(&specialized.trait_generics);
+        for generic in get_generics::<Vec<_>>(&specialized.impl_generics) {
+            if !curr_generics.contains(&generic) {
+                add_generic(&mut trait_generics, &generic);
+            }
+        }
+        specialized.trait_generics = to_string(&trait_generics);
 
         new_impl.specialized = Some(Box::new(specialized));
         new_impl

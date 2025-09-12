@@ -216,7 +216,7 @@ impl From<&SpecBody> for TokenStream {
 pub fn get_generics_types(spec: &SpecBody) -> TokenStream {
     let trait_body = spec.trait_.specialized.as_ref().expect("TraitBody not specialized");
 
-    let types = get_generics(&trait_body.generics)
+    let types = get_generics::<Vec<_>>(&trait_body.generics)
         .iter()
         .map(|g| get_type(g.trim(), &spec.constraints))
         .map(|t| str_to_type_name(&t))

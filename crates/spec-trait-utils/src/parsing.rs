@@ -155,7 +155,7 @@ fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Gener
     }
 }
 
-pub fn get_generics(generics_str: &str) -> HashSet<String> {
+pub fn get_generics<T: FromIterator<String>>(generics_str: &str) -> T {
     let generics = str_to_generics(generics_str);
     collect_generics(&generics)
 }

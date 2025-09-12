@@ -10,6 +10,7 @@ use crate::conversions::{
 use crate::impls::ImplBody;
 use crate::parsing::{ get_generics, parse_generics };
 use crate::specialize::{
+    add_generic,
     apply_type_condition,
     get_assignable_conditions,
     Specializable,
@@ -115,11 +116,8 @@ impl TraitBody {
         let mut new_generics = vec![];
         let mut generics = get_generics(&specialized.generics);
         let mut counter = 0;
-        for generic in specialized.generics
-            .replace("<", "")
-            .replace(">", "")
-            .split(",")
-            .map(|s| s.trim()) {
+
+        for generic in get_generics::<Vec<String>>(&specialized.generics) {
             let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
             let type_ = str_to_type_name(&new_generic_name);
 
@@ -128,6 +126,7 @@ impl TraitBody {
             let mut replacer = TypeReplacer { generic: generic.to_owned(), type_ };
             specialized.handle_items_replace(&mut replacer);
         }
+
         if !new_generics.is_empty() {
             specialized.generics = (quote! { <#(#new_generics),*> }).to_string();
         }
@@ -138,7 +137,20 @@ impl TraitBody {
             specialized.apply_condition(&mut impl_generics, condition);
         }
 
-        // TODO: set missing generics
+        // set missing generics
+        let mut generics = str_to_generics(&specialized.generics);
+        let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
+        let specialized_impl_generics = str_to_generics(impl_generics);
+        for generic in get_generics::<Vec<_>>(impl_generics) {
+            if
+                specialized
+                    .get_corresponding_generic(&specialized_impl_generics, &generic)
+                    .is_none()
+            {
+                add_generic(&mut generics, &generic);
+            }
+        }
+        specialized.generics = to_string(&generics);
 
         new_trait.specialized = Some(Box::new(specialized));
         new_trait
