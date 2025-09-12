@@ -82,14 +82,10 @@ pub fn apply_type_condition<T: Specializable>(
         .resolve_item_generic(other_generics, impl_generic)
         .unwrap_or_else(|| impl_generic.to_string());
 
-    // remove generic
-    remove_generic(generics, &item_generic);
-    remove_generic(other_generics, impl_generic);
-
     // replace infers in the type
     let mut new_type = str_to_type_name(type_);
     let mut existing_generics = collect_generics(generics);
-    let mut counter = 10; // TODO: fix (get if starting from 0 i get stackoverflow)
+    let mut counter = 0;
     let mut new_generics = vec![];
 
     replace_infers(&mut new_type, &mut existing_generics, &mut counter, &mut new_generics);
@@ -99,6 +95,10 @@ pub fn apply_type_condition<T: Specializable>(
         add_generic(generics, &generic);
         add_generic(other_generics, &generic);
     }
+
+    // remove generic
+    remove_generic(generics, &item_generic);
+    remove_generic(other_generics, impl_generic);
 
     // replace generic with type in the items
     let mut replacer = TypeReplacer {
