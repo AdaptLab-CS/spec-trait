@@ -277,7 +277,10 @@ mod tests {
 
         trait_body.apply_condition(&mut impl_trait_generics, &condition);
 
-        assert_eq!(trait_body.generics.replace(" ", ""), "<U, __W0>".to_string().replace(" ", ""));
+        assert_eq!(
+            trait_body.generics.replace(" ", ""),
+            "<U, __G_0__>".to_string().replace(" ", "")
+        );
         assert_eq!(
             trait_body.items
                 .into_iter()
@@ -285,7 +288,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "type Bar;".to_string().replace(" ", ""),
-                "fn foo(&self, arg1: Vec<Vec<__W0>>, arg2: U) -> Vec<__W0>;"
+                "fn foo(&self, arg1: Vec<Vec<__G_0__>>, arg2: U) -> Vec<__G_0__>;"
                     .to_string()
                     .replace(" ", "")
             ]

@@ -63,7 +63,6 @@ pub struct TypeReplacer {
 
 impl VisitMut for TypeReplacer {
     fn visit_type_mut(&mut self, node: &mut Type) {
-        println!("replacing {} with {}", self.generic, to_string(&self.type_));
         replace_type(node, &self.generic, &self.type_);
         visit_mut::visit_type_mut(self, node);
     }

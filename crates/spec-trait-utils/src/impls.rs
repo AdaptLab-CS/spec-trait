@@ -321,11 +321,11 @@ mod tests {
 
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<U: Copy, __W0>".to_string().replace(" ", "")
+            "<U: Copy, __G_0__>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.trait_generics.replace(" ", ""),
-            "<U, __W0>".to_string().replace(" ", "")
+            "<U, __G_0__>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items
@@ -334,7 +334,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "type Bar = ();".to_string().replace(" ", ""),
-                "fn foo(&self, arg1: Vec<Vec<__W0>>, arg2: U) -> Vec<__W0> { let x: Vec<__W0> = arg1[0].clone(); x }"
+                "fn foo(&self, arg1: Vec<Vec<__G_0__>>, arg2: U) -> Vec<__G_0__> { let x: Vec<__G_0__> = arg1[0].clone(); x }"
                     .to_string()
                     .replace(" ", "")
             ]

@@ -130,7 +130,7 @@ fn get_generic_constraints(
         .filter_map(|(i, p)| {
             let mut param_type = str_to_type_name(p);
             let original = param_type.clone();
-            let replacement = str_to_type_name("__GENERIC__");
+            let replacement = str_to_type_name("__G__");
             replace_type(&mut param_type, trait_generic, &replacement);
             if to_string(&param_type) != to_string(&original) {
                 Some((i, to_string(&original)))

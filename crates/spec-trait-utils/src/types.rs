@@ -827,8 +827,8 @@ mod tests {
 
         replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "__W0".to_string().replace(" ", ""));
-        assert_eq!(new_generics, vec!["__W0".to_string()]);
+        assert_eq!(to_string(&ty).replace(" ", ""), "__G_0__".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
@@ -843,9 +843,9 @@ mod tests {
 
         assert_eq!(
             to_string(&ty).replace(" ", ""),
-            "(__W0, Other, __W1)".to_string().replace(" ", "")
+            "(__G_0__, Other, __G_1__)".to_string().replace(" ", "")
         );
-        assert_eq!(new_generics, vec!["__W0".to_string(), "__W1".to_string()]);
+        assert_eq!(new_generics, vec!["__G_0__".to_string(), "__G_1__".to_string()]);
     }
 
     #[test]
@@ -857,8 +857,8 @@ mod tests {
 
         replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "&__W0".to_string().replace(" ", ""));
-        assert_eq!(new_generics, vec!["__W0".to_string()]);
+        assert_eq!(to_string(&ty).replace(" ", ""), "&__G_0__".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
@@ -870,8 +870,8 @@ mod tests {
 
         replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "[__W0; 3]".to_string().replace(" ", ""));
-        assert_eq!(new_generics, vec!["__W0".to_string()]);
+        assert_eq!(to_string(&ty).replace(" ", ""), "[__G_0__; 3]".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
@@ -883,8 +883,8 @@ mod tests {
 
         replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "&[__W0]".to_string().replace(" ", ""));
-        assert_eq!(new_generics, vec!["__W0".to_string()]);
+        assert_eq!(to_string(&ty).replace(" ", ""), "&[__G_0__]".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
@@ -896,8 +896,8 @@ mod tests {
 
         replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "(__W0)".to_string().replace(" ", ""));
-        assert_eq!(new_generics, vec!["__W0".to_string()]);
+        assert_eq!(to_string(&ty).replace(" ", ""), "(__G_0__)".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
@@ -909,8 +909,8 @@ mod tests {
 
         replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "Option<__W0>".to_string().replace(" ", ""));
-        assert_eq!(new_generics, vec!["__W0".to_string()]);
+        assert_eq!(to_string(&ty).replace(" ", ""), "Option<__G_0__>".to_string().replace(" ", ""));
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
@@ -924,8 +924,8 @@ mod tests {
 
         assert_eq!(
             to_string(&ty).replace(" ", ""),
-            "Option<(__W0, &[__W1])>".to_string().replace(" ", "")
+            "Option<(__G_0__, &[__G_1__])>".to_string().replace(" ", "")
         );
-        assert_eq!(new_generics, vec!["__W0".to_string(), "__W1".to_string()]);
+        assert_eq!(new_generics, vec!["__G_0__".to_string(), "__G_1__".to_string()]);
     }
 }
