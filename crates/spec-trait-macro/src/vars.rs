@@ -124,6 +124,7 @@ fn get_generic_constraints(
     let trait_fn = trait_.find_fn(&ann.fn_, ann.args.len()).unwrap();
     let param_types = get_param_types(&trait_fn);
 
+    // find all params that use the generic
     let params_with_trait_generic = param_types
         .iter()
         .enumerate()
@@ -139,6 +140,11 @@ fn get_generic_constraints(
             }
         })
         .collect::<Vec<_>>();
+
+    // generic passed but not used
+    if params_with_trait_generic.is_empty() {
+        return vec![];
+    }
 
     let (pos, trait_type_definition) = params_with_trait_generic.first().unwrap();
     let concrete_type = &ann.args_types[*pos];
