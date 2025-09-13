@@ -2,7 +2,7 @@ use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
 use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
-use crate::conversions::{ str_to_type_name, to_string };
+use crate::conversions::str_to_type_name;
 use crate::parsing::get_generics;
 use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
 use crate::conditions::WhenCondition;
@@ -106,7 +106,7 @@ pub fn apply_type_condition<T: Specializable>(
     target.handle_items_replace(&mut replacer);
 }
 
-fn remove_generic(generics: &mut Generics, generic: &str) {
+pub fn remove_generic(generics: &mut Generics, generic: &str) {
     generics.params = generics.params
         .clone()
         .into_iter()
@@ -137,4 +137,114 @@ pub fn add_generic(generics: &mut Generics, generic: &str) {
             default: None,
         })
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::conversions::{ str_to_generics, to_string };
+    use syn::{ Type, Generics };
+
+    #[test]
+    fn collect_add_remove_generics() {
+        let mut gens = str_to_generics("<T, U: Trait>");
+        let collected: Vec<_> = collect_generics(&gens);
+        assert_eq!(collected, vec!["T".to_string(), "U".to_string()]);
+
+        remove_generic(&mut gens, "T");
+        let collected: Vec<_> = collect_generics(&gens);
+        assert_eq!(collected, vec!["U".to_string()]);
+
+        add_generic(&mut gens, "V");
+        let collected: Vec<_> = collect_generics(&gens);
+        assert_eq!(collected, vec!["U".to_string(), "V".to_string()]);
+    }
+
+    #[test]
+    fn type_replacer() {
+        let mut replacer = TypeReplacer { generic: "T".into(), type_: str_to_type_name("u32") };
+        let mut type_ = str_to_type_name("Vec<T>");
+
+        replacer.visit_type_mut(&mut type_);
+
+        assert_eq!(to_string(&type_).replace(" ", ""), "Vec<u32>");
+    }
+
+    struct TestTarget {
+        pub type_: Type,
+    }
+
+    impl Specializable for TestTarget {
+        fn resolve_item_generic(&self, _: &Generics, _: &str) -> Option<String> {
+            Some("T".to_string())
+        }
+
+        fn handle_items_replace<V: visit_mut::VisitMut>(&mut self, replacer: &mut V) {
+            replacer.visit_type_mut(&mut self.type_);
+        }
+    }
+
+    #[test]
+    fn test_apply_type_condition() {
+        let mut target = TestTarget { type_: str_to_type_name("T") };
+        let mut generics = str_to_generics("<T>");
+        let mut other_generics = str_to_generics("<T>");
+        let impl_generic = "T";
+        let type_ = "String";
+
+        apply_type_condition(&mut target, &mut generics, &mut other_generics, impl_generic, type_);
+
+        assert_eq!(to_string(&target.type_), type_.to_string());
+
+        let remaining: Vec<_> = collect_generics(&generics);
+        assert!(remaining.is_empty());
+
+        let remaining_other: Vec<_> = collect_generics(&other_generics);
+        assert!(remaining_other.is_empty());
+    }
+
+    #[test]
+    fn get_assignable_conditions_simple() {
+        let conditions = vec![
+            WhenCondition::Trait("T".into(), vec!["Clone".into()]),
+            WhenCondition::Type("T".into(), "String".into())
+        ];
+
+        let res = get_assignable_conditions(&conditions, "<T>");
+
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
+    fn get_assignable_conditions_conflicting_types() {
+        let conditions = vec![
+            WhenCondition::Trait("T".into(), vec!["Copy".into()]),
+            WhenCondition::Type("T".into(), "A".into()),
+            WhenCondition::Type("T".into(), "B".into())
+        ];
+
+        let res = get_assignable_conditions(&conditions, "<T>");
+
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0], WhenCondition::Trait("T".into(), vec!["Copy".into()]));
+    }
+
+    #[test]
+    fn get_generic_types_from_conditions_ordering_and_filtering() {
+        let conditions = vec![
+            WhenCondition::Type("T".into(), "A".into()),
+            WhenCondition::Type("T".into(), "Vec<_>".into()),
+            WhenCondition::Type("T".into(), "Vec<String>".into()),
+            WhenCondition::Type("U".into(), "Foo".into())
+        ];
+
+        let types_t = get_generic_types_from_conditions("T", &conditions);
+        assert_eq!(types_t, vec!["A".to_string(), "Vec<_>".to_string(), "Vec<String>".to_string()]);
+
+        let types_u = get_generic_types_from_conditions("U", &conditions);
+        assert_eq!(types_u, vec!["Foo".to_string()]);
+
+        let types_v = get_generic_types_from_conditions("V", &conditions);
+        assert!(types_v.is_empty());
+    }
 }

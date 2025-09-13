@@ -135,11 +135,13 @@ impl ImplBody {
         }
         specialized.trait_generics = to_string(&trait_generics);
 
+        // TODO: clean unused generics
+
         new_impl.specialized = Some(Box::new(specialized));
         new_impl
     }
 
-    // TODO: clean unused generics at the end
+    /// apply a condition to the impl body, modifying its generics and items
     fn apply_condition(&mut self, condition: &WhenCondition) {
         match condition {
             WhenCondition::All(inner) => {
@@ -165,7 +167,7 @@ impl ImplBody {
 
             WhenCondition::Trait(_, _) => {
                 let mut generics = str_to_generics(&self.impl_generics);
-                let predicate = trait_condition_to_generic_predicate(&condition);
+                let predicate = trait_condition_to_generic_predicate(condition);
 
                 handle_type_predicate(&predicate, &mut generics);
 

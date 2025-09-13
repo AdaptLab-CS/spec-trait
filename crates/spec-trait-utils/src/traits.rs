@@ -13,6 +13,7 @@ use crate::specialize::{
     add_generic,
     apply_type_condition,
     get_assignable_conditions,
+    remove_generic,
     Specializable,
     TypeReplacer,
 };
@@ -89,6 +90,7 @@ impl Specializable for TraitBody {
 }
 
 impl TraitBody {
+    /// find a function in the trait with same name and number of arguments
     pub fn find_fn(&self, fn_name: &str, args_len: usize) -> Option<TraitItemFn> {
         let fns = strs_to_trait_items(&self.items);
 
@@ -113,23 +115,7 @@ impl TraitBody {
         specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
 
         // replace generics with unique generic name
-        let mut new_generics = vec![];
-        let mut generics = get_generics(&specialized.generics);
-        let mut counter = 0;
-
-        for generic in get_generics::<Vec<String>>(&specialized.generics) {
-            let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
-            let type_ = str_to_type_name(&new_generic_name);
-
-            new_generics.push(type_.clone());
-
-            let mut replacer = TypeReplacer { generic: generic.to_owned(), type_ };
-            specialized.handle_items_replace(&mut replacer);
-        }
-
-        if !new_generics.is_empty() {
-            specialized.generics = (quote! { <#(#new_generics),*> }).to_string();
-        }
+        specialized.replace_generics_names();
 
         // apply condition
         if let Some(condition) = &impl_body.condition {
@@ -152,11 +138,13 @@ impl TraitBody {
         }
         specialized.generics = to_string(&generics);
 
+        // TODO: clean unused generics
+
         new_trait.specialized = Some(Box::new(specialized));
         new_trait
     }
 
-    // TODO: clean unused generics at the end
+    /// apply a condition to the trait body, modifying its generics and items
     fn apply_condition(&mut self, impl_generics: &mut Generics, condition: &WhenCondition) {
         match condition {
             WhenCondition::All(inner) => {
@@ -180,6 +168,27 @@ impl TraitBody {
 
             _ => {}
         }
+    }
+
+    /// replace generics in the trait with unique names
+    fn replace_generics_names(&mut self) {
+        let mut trait_generics = str_to_generics(&self.generics);
+
+        let mut counter = 0;
+        let mut generics = get_generics(&self.generics);
+
+        for generic in get_generics::<Vec<_>>(&self.generics) {
+            let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
+
+            add_generic(&mut trait_generics, &new_generic_name);
+            remove_generic(&mut trait_generics, &generic);
+
+            let type_ = str_to_type_name(&new_generic_name);
+            let mut replacer = TypeReplacer { generic: generic.to_owned(), type_ };
+            self.handle_items_replace(&mut replacer);
+        }
+
+        self.generics = to_string(&trait_generics);
     }
 
     /**
@@ -207,6 +216,7 @@ impl TraitBody {
     }
 }
 
+/// count the number of arguments in a function signature
 fn count_fn_args(inputs: &Punctuated<FnArg, Comma>) -> usize {
     inputs
         .iter()
