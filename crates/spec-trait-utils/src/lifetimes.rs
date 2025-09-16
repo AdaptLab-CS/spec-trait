@@ -6,6 +6,11 @@ use crate::parsing::get_generics;
 
 /// assert that all lifetimes constraints in impls follow the rules
 pub fn assert_constraints(impls: &[ImplBody]) {
+    assert_impl_lifetimes(impls);
+}
+
+/// Rule 2: in every spec we must have the same lifetimes costraints as in the default spec, so every generic parameter `T` can either have no lifetime constraint in every spec or have the same constraint (generic `'a` or `'static`) in each one of them.
+fn assert_impl_lifetimes(impls: &[ImplBody]) {
     for impl_ in impls {
         let violating = impls.iter().find(|other| {
             let lifetimes_a = get_lifetimes(&impl_);
@@ -16,13 +21,13 @@ pub fn assert_constraints(impls: &[ImplBody]) {
             same_impl && lifetimes_a != lifetimes_b
         });
 
-        if let Some(v) = violating {
+        if let Some(other) = violating {
             panic!(
-                "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{}' vs '{}'",
+                "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{:?}' vs '{:?}'",
                 impl_.type_name,
                 impl_.trait_name,
-                impl_.impl_generics,
-                v.impl_generics
+                get_lifetimes(&impl_),
+                get_lifetimes(&other)
             );
         }
     }
@@ -113,5 +118,114 @@ mod tests {
         ];
 
         assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn assert_impl_lifetimes_simple() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'a>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "MyType".to_string(),
+            trait_name: "MyTrait".to_string(),
+            ..Default::default()
+        };
+        let b = ImplBody {
+            impl_generics: "<'a, T: 'a>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "MyType".to_string(),
+            trait_name: "MyTrait".to_string(),
+            ..Default::default()
+        };
+
+        assert_impl_lifetimes(&[a, b]);
+    }
+
+    #[test]
+    fn assert_impl_lifetimes_different_order() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'a, U: 'static>".to_string(),
+            trait_generics: "<T, U>".to_string(),
+            type_name: "MyType".to_string(),
+            trait_name: "MyTrait".to_string(),
+            ..Default::default()
+        };
+        let b = ImplBody {
+            impl_generics: "<'a, T: 'static, U: 'a>".to_string(),
+            trait_generics: "<U, T>".to_string(),
+            type_name: "MyType".to_string(),
+            trait_name: "MyTrait".to_string(),
+            ..Default::default()
+        };
+
+        assert_impl_lifetimes(&[a, b]);
+    }
+
+    #[test]
+    fn assert_impl_lifetimes_different_type_or_trait() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'a>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "TypeA".to_string(),
+            trait_name: "Trait".to_string(),
+            ..Default::default()
+        };
+        let b = ImplBody {
+            impl_generics: "<'static, T: 'static>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "TypeB".to_string(),
+            trait_name: "Trait".to_string(),
+            ..Default::default()
+        };
+        let c = ImplBody {
+            impl_generics: "<'static, T: 'static>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "TypeA".to_string(),
+            trait_name: "OtherTrait".to_string(),
+            ..Default::default()
+        };
+
+        assert_impl_lifetimes(&[a, b, c]);
+    }
+
+    #[test]
+    #[should_panic(expected = "conflicting lifetimes constraints")]
+    fn assert_impl_lifetimes_conflict() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'a>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "X".to_string(),
+            trait_name: "Y".to_string(),
+            ..Default::default()
+        };
+        let b = ImplBody {
+            impl_generics: "<'static, T: 'static>".to_string(),
+            trait_generics: "<T>".to_string(),
+            type_name: "X".to_string(),
+            trait_name: "Y".to_string(),
+            ..Default::default()
+        };
+
+        assert_impl_lifetimes(&[a, b]);
+    }
+
+    #[test]
+    #[should_panic(expected = "conflicting lifetimes constraints")]
+    fn assert_impl_lifetimes_different_order_conflict() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'a, U: 'static>".to_string(),
+            trait_generics: "<T, U>".to_string(),
+            type_name: "MyType".to_string(),
+            trait_name: "MyTrait".to_string(),
+            ..Default::default()
+        };
+        let b = ImplBody {
+            impl_generics: "<'a, T: 'a, U: 'static>".to_string(),
+            trait_generics: "<U, T>".to_string(),
+            type_name: "MyType".to_string(),
+            trait_name: "MyTrait".to_string(),
+            ..Default::default()
+        };
+
+        assert_impl_lifetimes(&[a, b]);
     }
 }
