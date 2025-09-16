@@ -213,49 +213,6 @@ pub fn break_attr(impl_: &ItemImpl) -> (ItemImpl, Vec<Attribute>) {
     (impl_no_attrs, attrs)
 }
 
-pub fn assert_lifetimes_constraints(impls: &[ImplBody]) {
-    for impl_ in impls {
-        let violating = impls.iter().find(|other| {
-            let a = str_to_generics(&impl_.impl_generics);
-            let b = str_to_generics(&other.impl_generics);
-
-            let lifetimes_a = a.params
-                .iter()
-                .filter_map(|p| {
-                    match p {
-                        GenericParam::Lifetime(ld) => Some(to_string(ld)),
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            let lifetimes_b = b.params
-                .iter()
-                .filter_map(|p| {
-                    match p {
-                        GenericParam::Lifetime(ld) => Some(to_string(ld)),
-                        _ => None,
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            impl_.type_name == other.type_name &&
-                impl_.trait_name == other.trait_name &&
-                lifetimes_a != lifetimes_b
-        });
-
-        if let Some(v) = violating {
-            panic!(
-                "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{}' vs '{}'",
-                impl_.type_name,
-                impl_.trait_name,
-                impl_.impl_generics,
-                v.impl_generics
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

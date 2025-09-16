@@ -6,4 +6,5 @@ pub mod impls;
 pub mod conversions;
 pub mod parsing;
 pub mod types;
+pub mod lifetimes;
 mod specialize;
