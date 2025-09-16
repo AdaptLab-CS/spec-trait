@@ -6,11 +6,12 @@ use crate::parsing::get_generics;
 
 /// assert that all lifetimes constraints in impls follow the rules
 pub fn assert_constraints(impls: &[ImplBody]) {
-    assert_impl_lifetimes(impls);
+    assert_consistency(impls);
+    assert_uniqueness(impls);
 }
 
 /// Rule 2: in every spec we must have the same lifetimes costraints as in the default spec, so every generic parameter `T` can either have no lifetime constraint in every spec or have the same constraint (generic `'a` or `'static`) in each one of them.
-fn assert_impl_lifetimes(impls: &[ImplBody]) {
+fn assert_consistency(impls: &[ImplBody]) {
     for impl_ in impls {
         let violating = impls.iter().find(|other| {
             let lifetimes_a = get_lifetimes(&impl_);
@@ -29,6 +30,31 @@ fn assert_impl_lifetimes(impls: &[ImplBody]) {
                 get_lifetimes(&impl_),
                 get_lifetimes(&other)
             );
+        }
+    }
+}
+
+/// Rule 5: no generic lifetime can be associated with more than one generic type parameter in the same spec.
+fn assert_uniqueness(impls: &[ImplBody]) {
+    for impl_ in impls {
+        let lifetimes = parse_generics_lifetimes(&str_to_generics(&impl_.impl_generics));
+
+        for (t, lt) in lifetimes.iter() {
+            let violating = lifetimes
+                .iter()
+                .find(|(other_t, other_lt)| { t != other_t && lt.is_some() && lt == other_lt });
+
+            if let Some((other_t, other_lt)) = violating {
+                panic!(
+                    "Impl for type '{}' and trait '{}' has repeated lifetime constraint: '{}: {}' and '{}: {}'",
+                    impl_.type_name,
+                    impl_.trait_name,
+                    t,
+                    lt.as_ref().unwrap_or(&"".to_string()),
+                    other_t,
+                    other_lt.as_ref().unwrap_or(&"".to_string())
+                );
+            }
         }
     }
 }
@@ -121,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn assert_impl_lifetimes_simple() {
+    fn assert_consistency_simple() {
         let a = ImplBody {
             impl_generics: "<'a, T: 'a>".to_string(),
             trait_generics: "<T>".to_string(),
@@ -137,11 +163,11 @@ mod tests {
             ..Default::default()
         };
 
-        assert_impl_lifetimes(&[a, b]);
+        assert_consistency(&[a, b]);
     }
 
     #[test]
-    fn assert_impl_lifetimes_different_order() {
+    fn assert_consistency_different_order() {
         let a = ImplBody {
             impl_generics: "<'a, T: 'a, U: 'static>".to_string(),
             trait_generics: "<T, U>".to_string(),
@@ -157,11 +183,11 @@ mod tests {
             ..Default::default()
         };
 
-        assert_impl_lifetimes(&[a, b]);
+        assert_consistency(&[a, b]);
     }
 
     #[test]
-    fn assert_impl_lifetimes_different_type_or_trait() {
+    fn assert_consistency_different_type_or_trait() {
         let a = ImplBody {
             impl_generics: "<'a, T: 'a>".to_string(),
             trait_generics: "<T>".to_string(),
@@ -184,12 +210,12 @@ mod tests {
             ..Default::default()
         };
 
-        assert_impl_lifetimes(&[a, b, c]);
+        assert_consistency(&[a, b, c]);
     }
 
     #[test]
     #[should_panic(expected = "conflicting lifetimes constraints")]
-    fn assert_impl_lifetimes_conflict() {
+    fn assert_consistency_conflict() {
         let a = ImplBody {
             impl_generics: "<'a, T: 'a>".to_string(),
             trait_generics: "<T>".to_string(),
@@ -205,12 +231,12 @@ mod tests {
             ..Default::default()
         };
 
-        assert_impl_lifetimes(&[a, b]);
+        assert_consistency(&[a, b]);
     }
 
     #[test]
     #[should_panic(expected = "conflicting lifetimes constraints")]
-    fn assert_impl_lifetimes_different_order_conflict() {
+    fn assert_consistency_different_order_conflict() {
         let a = ImplBody {
             impl_generics: "<'a, T: 'a, U: 'static>".to_string(),
             trait_generics: "<T, U>".to_string(),
@@ -226,6 +252,48 @@ mod tests {
             ..Default::default()
         };
 
-        assert_impl_lifetimes(&[a, b]);
+        assert_consistency(&[a, b]);
+    }
+
+    #[test]
+    fn assert_uniqueness_simple() {
+        let a = ImplBody {
+            impl_generics: "<'a, 'b, T: 'a, U: 'b, V: 'static>".to_string(),
+            ..Default::default()
+        };
+
+        assert_uniqueness(&[a]);
+    }
+
+    #[test]
+    #[should_panic(expected = "repeated lifetime constraint")]
+    fn assert_uniqueness_conflict_simple() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'a, U: 'a>".to_string(),
+            ..Default::default()
+        };
+
+        assert_uniqueness(&[a]);
+    }
+
+    #[test]
+    #[should_panic(expected = "repeated lifetime constraint")]
+    fn assert_uniqueness_conflict_static() {
+        let a = ImplBody {
+            impl_generics: "<'a, T: 'static, U: 'static, V>".to_string(),
+            ..Default::default()
+        };
+
+        assert_uniqueness(&[a]);
+    }
+
+    #[test]
+    fn assert_uniqueness_ignores_none() {
+        let a = ImplBody {
+            impl_generics: "<T, U, V: 'a>".to_string(),
+            ..Default::default()
+        };
+
+        assert_uniqueness(&[a]);
     }
 }
