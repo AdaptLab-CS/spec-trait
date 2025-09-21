@@ -14,8 +14,8 @@ pub fn assert_constraints(impls: &[ImplBody]) {
 fn assert_consistency(impls: &[ImplBody]) {
     for impl_ in impls {
         let violating = impls.iter().find(|other| {
-            let lifetimes_a = get_lifetimes(&impl_);
-            let lifetimes_b = get_lifetimes(&other);
+            let lifetimes_a = get_lifetimes(impl_);
+            let lifetimes_b = get_lifetimes(other);
 
             let same_impl =
                 impl_.type_name == other.type_name && impl_.trait_name == other.trait_name;
@@ -27,8 +27,8 @@ fn assert_consistency(impls: &[ImplBody]) {
                 "Impl for type '{}' and trait '{}' has conflicting lifetimes constraints: '{:?}' vs '{:?}'",
                 impl_.type_name,
                 impl_.trait_name,
-                get_lifetimes(&impl_),
-                get_lifetimes(&other)
+                get_lifetimes(impl_),
+                get_lifetimes(other)
             );
         }
     }
@@ -91,7 +91,7 @@ fn parse_generics_lifetimes(generics: &Generics) -> Vec<(String, Option<String>)
                             if let syn::TypeParamBound::Lifetime(lt) = b {
                                 Some((tp.ident.to_string(), Some(to_string(lt))))
                             } else {
-                                Some((tp.ident.to_string(), None))
+                                None
                             }
                         })
                         .or(Some((tp.ident.to_string(), None)))
