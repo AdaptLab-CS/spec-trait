@@ -13,6 +13,7 @@ use quote::quote;
 use crate::spec::SpecBody;
 
 // TODO: check support to other cases
+// TODO: allow blanket impls specialization
 /**
 `attr` is a condition in one of these forms:
 - `T: TraitName`
@@ -29,7 +30,6 @@ use crate::spec::SpecBody;
 
 `item` is an implementation of a trait for a type:
 - `impl<T> TraitName<T> for TypeName { ... }`
-- `impl<T> TraitName for TypeName<T> { ... }`
 
 # Examples
 ```ignore

@@ -265,6 +265,15 @@ fn check_equal_and_assign_generic(t1: &str, t2: &str, generics: &mut GenericsMap
     false
 }
 
+pub fn type_contains(ty: &Type, generic: &str) -> bool {
+    let mut type_ = ty.clone();
+    let replacement = str_to_type_name("__G__");
+
+    replace_type(&mut type_, generic, &replacement);
+
+    to_string(&type_) != to_string(ty)
+}
+
 /// Replaces all occurrences of `prev` in the given type with `new`.
 pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
     match ty {
@@ -374,51 +383,6 @@ pub fn get_unique_generic_name(generics: &mut HashSet<String>, counter: &mut usi
             return candidate;
         }
     }
-}
-
-/// Collect all inner generic names (that appear in `generics`) from a parsed `Type`.
-/// Traverses paths, angle-bracketed args, references, tuples, arrays, slices and parens.
-/// Preserves discovery order and deduplicates.
-pub fn extract_inners_from_type(ty: &Type, generics: &Generics, seen: &mut Generics) {
-    match unwrap_paren(ty) {
-        Type::Path(type_path) if type_path.qself.is_none() => {
-            for seg in &type_path.path.segments {
-                let ident = seg.ident.to_string();
-                if generics.contains(&ident) {
-                    seen.insert(ident.clone());
-                }
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    for arg in &args.args {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            extract_inners_from_type(inner_ty, generics, seen);
-                        }
-                    }
-                }
-            }
-        }
-
-        Type::Reference(reference) => extract_inners_from_type(&reference.elem, generics, seen),
-
-        Type::Tuple(tuple) => {
-            for elem in &tuple.elems {
-                extract_inners_from_type(elem, generics, seen);
-            }
-        }
-
-        Type::Slice(slice) => extract_inners_from_type(&slice.elem, generics, seen),
-
-        Type::Array(array) => extract_inners_from_type(&array.elem, generics, seen),
-
-        _ => {}
-    }
-}
-
-/// Parse a type string and return all inner generic names that belong to `generics`.
-pub fn extract_inners(type_str: &str, generics: &Generics) -> Vec<String> {
-    let parsed = str_to_type_name(type_str);
-    let mut seen = HashSet::new();
-    extract_inners_from_type(&parsed, generics, &mut seen);
-    seen.into_iter().collect()
 }
 
 #[cfg(test)]
@@ -730,6 +694,24 @@ mod tests {
         let t1 = str_to_type_name("Result<Vec<u8>, String>");
         let t2 = str_to_type_name("Result<T, T>");
         assert!(!same_type(&t1, &t2, &mut g));
+    }
+
+    #[test]
+    fn contains_type_true() {
+        let types = vec!["T", "(T, Other)", "&T", "[T; 3]", "&[T]", "(T)", "Other<T>", "T<Other>"];
+        for ty in types {
+            let type_ = str_to_type_name(ty);
+            assert!(type_contains(&type_, "T"));
+        }
+    }
+
+    #[test]
+    fn contains_type_false() {
+        let types = vec!["T", "(T, Other)", "&T", "[T; 3]", "&[T]", "(T)", "Other<T>", "T<VOther>"];
+        for ty in types {
+            let type_ = str_to_type_name(ty);
+            assert!(!type_contains(&type_, "U"));
+        }
     }
 
     #[test]

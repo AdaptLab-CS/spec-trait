@@ -8,7 +8,7 @@ use syn::{ FnArg, TraitItemFn };
 use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
     get_concrete_type,
-    replace_type,
+    type_contains,
     types_equal,
     types_equal_generic_constraints,
     Aliases,
@@ -148,17 +148,7 @@ fn get_generic_constraints_from_trait(
     let params_with_trait_generic = param_types
         .iter()
         .enumerate()
-        .filter_map(|(i, p)| {
-            let mut param_type = str_to_type_name(p);
-            let original = param_type.clone();
-            let replacement = str_to_type_name("__G__");
-            replace_type(&mut param_type, trait_generic, &replacement);
-            if to_string(&param_type) != to_string(&original) {
-                Some((i, to_string(&original)))
-            } else {
-                None
-            }
-        })
+        .filter(|(_, p)| type_contains(&str_to_type_name(p), trait_generic))
         .collect::<Vec<_>>();
 
     // generic passed but not used
@@ -204,12 +194,7 @@ fn get_generic_constraints_from_type(
     ann: &AnnotationBody,
     aliases: &Aliases
 ) -> Vec<VarInfo> {
-    let mut param_type = str_to_type_name(&impl_.type_name);
-    let original = param_type.clone();
-    let replacement = str_to_type_name("__G__");
-    replace_type(&mut param_type, impl_generic, &replacement);
-
-    if to_string(&param_type) == to_string(&original) {
+    if !type_contains(&str_to_type_name(&impl_.type_name), impl_generic) {
         return vec![];
     }
 
