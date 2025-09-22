@@ -116,8 +116,9 @@ pub fn spec(item: TokenStream) -> TokenStream {
         "Failed to parse TokenStream into AnnotationBody"
     );
 
+    let aliases = vars::get_type_aliases(&ann.annotations);
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());
-    let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits);
+    let impls = cache::get_impls_by_type_and_traits(&ann.var_type, &traits, &aliases);
 
     let spec_body = SpecBody::try_from((&impls, &traits, &ann)).expect("Specialization failed");
 

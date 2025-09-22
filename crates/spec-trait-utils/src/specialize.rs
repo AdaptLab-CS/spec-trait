@@ -74,7 +74,7 @@ pub fn apply_type_condition<T: Specializable>(
     other_generics: &mut Generics,
     impl_generic: &str,
     type_: &str
-) {
+) -> Type {
     let item_generic = target
         .resolve_item_generic(other_generics, impl_generic)
         .unwrap_or_else(|| impl_generic.to_string());
@@ -104,6 +104,8 @@ pub fn apply_type_condition<T: Specializable>(
     };
 
     target.handle_items_replace(&mut replacer);
+
+    new_type
 }
 
 pub fn remove_generic(generics: &mut Generics, generic: &str) {

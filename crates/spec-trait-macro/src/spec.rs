@@ -64,7 +64,7 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
         None => Some(default),
         // from when macro
         Some(cond) => {
-            let var = VarBody::from(&default);
+            let var = VarBody::from(&default); // TODO: handle conflicting vars
             let (satisfied, constraints) = satisfies_condition(cond, &var, &default.constraints);
 
             if satisfied {
@@ -195,7 +195,7 @@ impl From<&SpecBody> for TokenStream {
     fn from(spec_body: &SpecBody) -> Self {
         let impl_body = spec_body.impl_.specialized.as_ref().expect("ImplBody not specialized");
 
-        let type_ = str_to_type_name(&impl_body.type_name);
+        let type_ = str_to_type_name(&spec_body.annotations.var_type);
         let trait_ = str_to_trait_name(&impl_body.trait_name);
         let generics = get_generics_types(spec_body);
         let fn_ = str_to_expr(&spec_body.annotations.fn_);

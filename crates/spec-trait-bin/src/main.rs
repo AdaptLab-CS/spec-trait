@@ -184,6 +184,29 @@ impl<T: 'static, U> Foo2<T, U> for ZST2 where T: 'static {
     }
 }
 
+// T - Foo
+
+#[when(all(U = MyType, T = i32))]
+impl<T, U> Foo<U> for T {
+    fn foo(&self, x: U) {
+        println!("Foo impl T where T is i32 and U is MyType");
+    }
+}
+
+#[when(all(U = MyType, T = Vec<_>))]
+impl<T, U> Foo<U> for T {
+    fn foo(&self, x: U) {
+        println!("Foo impl T where T is Vec<_> and U is MyType");
+    }
+}
+
+#[when(all(U = &str))]
+impl<T, U> Foo<U> for T {
+    fn foo(&self, x: U) {
+        println!("Foo impl T where U is &str");
+    }
+}
+
 fn main() {
     let zst = ZST;
     let zst2 = ZST2;
@@ -218,4 +241,10 @@ fn main() {
     // ZST2 - Foo2
     spec! { zst2.foo(1u8, 2u8); ZST2; [u8, u8]; u8 = MyType }
     spec! { zst2.foo(1i8, 1i8); ZST2; [i8, i8] }
+
+    // T - Foo
+    spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType }
+    // spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType } // TODO: fix
+    // spec! { 1i32.foo("str"); i32; [&str] } // TODO: fix
+    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix
 }

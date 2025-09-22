@@ -17,6 +17,7 @@ use crate::specialize::{
     get_assignable_conditions,
     Specializable,
 };
+use crate::types::replace_type;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
 use syn::{ Attribute, GenericParam, Generics, ItemImpl };
@@ -159,10 +160,20 @@ impl ImplBody {
                 let mut generics = str_to_generics(&self.impl_generics);
                 let mut other_generics = str_to_generics(&self.trait_generics);
 
-                apply_type_condition(self, &mut generics, &mut other_generics, generic, type_);
+                let new_type = apply_type_condition(
+                    self,
+                    &mut generics,
+                    &mut other_generics,
+                    generic,
+                    type_
+                );
+
+                let mut impl_type = str_to_type_name(&self.type_name);
+                replace_type(&mut impl_type, generic, &new_type);
 
                 self.impl_generics = to_string(&generics);
                 self.trait_generics = to_string(&other_generics);
+                self.type_name = to_string(&impl_type);
             }
 
             WhenCondition::Trait(_, _) => {
@@ -220,7 +231,7 @@ mod tests {
     fn get_impl_body() -> ImplBody {
         ImplBody::try_from((
             quote! {
-            impl <T: Clone, U: Copy> Foo<T, U> for MyType {
+            impl <T: Clone, U: Copy> Foo<T, U> for T {
                 type Bar = ();
                 fn foo(&self, arg1: Vec<T>, arg2: U) -> T {
                     let x: T = arg1[0].clone();
@@ -252,6 +263,7 @@ mod tests {
 
         impl_body.apply_condition(&condition);
 
+        assert_eq!(impl_body.type_name, "String".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
             "<U: Copy>".to_string().replace(" ", "")
@@ -278,6 +290,7 @@ mod tests {
 
         impl_body.apply_condition(&condition);
 
+        assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<__G_0__>".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
             "<U: Copy, __G_0__>".to_string().replace(" ", "")
@@ -313,6 +326,7 @@ mod tests {
 
         impl_body.apply_condition(&condition);
 
+        assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<String>".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
             "<U: Copy>".to_string().replace(" ", "")

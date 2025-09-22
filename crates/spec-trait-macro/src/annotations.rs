@@ -3,7 +3,7 @@ use spec_trait_utils::conversions::to_string;
 use spec_trait_utils::parsing::{ parse_type_or_trait, ParseTypeOrTrait };
 use std::fmt::Debug;
 use syn::parse::{ Parse, ParseStream };
-use syn::{ bracketed, parenthesized, Error, Expr, Ident, Type, Token, token };
+use syn::{ bracketed, parenthesized, token, Error, Expr, Ident, Lit, Token, Type };
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Annotation {
@@ -73,7 +73,13 @@ impl Parse for AnnotationBody {
 }
 
 fn parse_call(input: ParseStream) -> Result<(String, String, Vec<String>), Error> {
-    let var: Ident = input.parse()?;
+    let var = if input.peek(Ident) {
+        to_string(&input.parse::<Ident>()?)
+    } else if input.peek(Lit) {
+        to_string(&input.parse::<Lit>()?)
+    } else {
+        return Err(Error::new(input.span(), "Expected identifier or literal"));
+    };
 
     input.parse::<Token![.]>()?; // consume the '.' token
 
@@ -88,11 +94,11 @@ fn parse_call(input: ParseStream) -> Result<(String, String, Vec<String>), Error
         input.parse::<Token![;]>()?; // consume the ';' token
     }
 
-    Ok((var.to_string(), fn_.to_string(), args.iter().map(to_string).collect()))
+    Ok((var, fn_.to_string(), args.iter().map(to_string).collect()))
 }
 
 fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
-    let var_type: Ident = input.parse()?;
+    let var_type: Type = input.parse()?;
 
     if input.peek(Token![;]) {
         input.parse::<Token![;]>()?; // consume the ';' token
@@ -115,7 +121,7 @@ fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
         input.parse::<Token![;]>()?; // consume the ';' token
     }
 
-    Ok((var_type.to_string(), args_types))
+    Ok((to_string(&var_type), args_types))
 }
 
 fn parse_annotations(input: ParseStream) -> Result<Vec<Annotation>, Error> {
