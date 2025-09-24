@@ -122,7 +122,44 @@ fn satisfies_condition(
                 // generic parameter should implement a trait that the type does not implement
                 concrete_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
-                );
+                ) ||
+                // generic parameter should respect a lifetime that the type does not respect
+                concrete_type_var.is_none_or(|v| {
+                    constraint.lifetime.as_ref().is_some_and(|lt| Some(lt.clone()) != v.lifetime)
+                });
+
+            (!violates_constraints, new_constraints)
+        }
+        WhenCondition::Lifetime(generic, lifetime) => {
+            let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
+
+            let mut new_constraints = constraints.clone();
+            let constraint = new_constraints.entry(generic.clone()).or_default();
+
+            // update the lifetime only if it is more specific than the current one
+            if
+                constraint.lifetime
+                    .as_ref()
+                    .is_none_or(|lt| lt != "'static" && lifetime == "'static")
+            {
+                constraint.lifetime = Some(lifetime.clone());
+                constraint.generics = var.generics.clone();
+            }
+
+            let violates_constraints =
+                // generic parameter is not present in the function parameters or the lifetime does not match
+                generic_var.is_none_or(|v| v.lifetime != Some(lifetime.clone())) ||
+                // generic parameter is forbidden to be assigned to this lifetime
+                constraint.not_lifetimes.iter().any(|lt| lt == lifetime) ||
+                // generic parameter is already assigned to a type that does not respect the lifetime
+                constraint.type_.as_ref().is_some_and(|ty| {
+                    let concrete_type_var = var.vars
+                        .iter()
+                        .find(|v| types_equal(&v.concrete_type, ty, &var.generics, &var.aliases));
+                    concrete_type_var.is_none_or(|v|
+                        v.lifetime.as_ref().is_some_and(|lt| lt != lifetime)
+                    )
+                });
 
             (!violates_constraints, new_constraints)
         }
@@ -161,7 +198,7 @@ fn satisfies_condition(
 
             (satisfied, new_constraints)
         }
-        // returns the most specific of all the consraints that satisfy the inner conditions
+        // returns the most specific of all the constraints that satisfy the inner conditions
         WhenCondition::Any(inner) => {
             let mut satisfied = false;
             let mut new_constraints = constraints.clone();
@@ -255,6 +292,7 @@ mod tests {
                 impl_generic: "T".into(),
                 concrete_type: "MyType".into(),
                 traits: vec!["MyTrait".into()],
+                lifetime: Some("'a".into()),
             }],
         }
     }
@@ -313,6 +351,19 @@ mod tests {
     }
 
     #[test]
+    fn lifetime_not_respected() {
+        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let mut var = get_var_body();
+
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(!satisfies);
+
+        var.vars[0].lifetime = None;
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(!satisfies);
+    }
+
+    #[test]
     fn trait_not_respected() {
         let condition = WhenCondition::Trait("T".into(), vec!["AnotherTrait".into()]);
         let var = get_var_body();
@@ -338,6 +389,21 @@ mod tests {
     }
 
     #[test]
+    fn lifetime_forbidden() {
+        let condition = WhenCondition::All(
+            vec![
+                WhenCondition::Lifetime("T".into(), "'a".into()),
+                WhenCondition::Not(Box::new(WhenCondition::Lifetime("T".into(), "'a".into())))
+            ]
+        );
+        let var = get_var_body();
+
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+
+        assert!(!satisfies);
+    }
+
+    #[test]
     fn most_specific_type() {
         let condition = WhenCondition::All(
             vec![
@@ -353,6 +419,7 @@ mod tests {
                 impl_generic: "T".into(),
                 concrete_type: "Vec<MyType>".into(),
                 traits: vec![],
+                lifetime: None,
             }],
         };
 
@@ -416,8 +483,10 @@ mod tests {
                 &(Constraint {
                     generics: HashSet::new(),
                     type_: Some("MyType".into()),
+                    lifetime: None,
                     traits: vec![],
                     not_types: vec![],
+                    not_lifetimes: vec![],
                     not_traits: vec![],
                 })
             )
@@ -444,8 +513,10 @@ mod tests {
                 &(Constraint {
                     generics: HashSet::new(),
                     type_: Some("MyType".into()),
+                    lifetime: None,
                     traits: vec![],
                     not_types: vec![],
+                    not_lifetimes: vec![],
                     not_traits: vec![],
                 })
             )

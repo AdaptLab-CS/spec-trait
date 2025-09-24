@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use spec_trait_utils::conversions::to_string;
-use spec_trait_utils::parsing::{ parse_type_or_trait, ParseTypeOrTrait };
+use spec_trait_utils::parsing::{ parse_type_or_lifetime_or_trait, ParseTypeOrLifetimeOrTrait };
 use std::fmt::Debug;
 use syn::parse::{ Parse, ParseStream };
 use syn::{ bracketed, parenthesized, token, Error, Expr, Ident, Lit, Token, Type };
@@ -9,6 +9,7 @@ use syn::{ bracketed, parenthesized, token, Error, Expr, Ident, Lit, Token, Type
 pub enum Annotation {
     Trait(String /* type */, Vec<String> /* traits */),
     Alias(String /* type */, String /* alias */),
+    Lifetime(String /* type */, String /* lifetime */),
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -21,12 +22,16 @@ pub struct AnnotationBody {
     pub annotations: Vec<Annotation>,
 }
 
-impl ParseTypeOrTrait for Annotation {
+impl ParseTypeOrLifetimeOrTrait for Annotation {
     fn from_type(ident: String, type_name: String) -> Self {
         Annotation::Alias(ident, type_name)
     }
 
-    fn from_trait(ident: String, traits: Vec<String>) -> Self {
+    fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self {
+        if let Some(_lt) = lifetime {
+            todo!();
+        }
+
         Annotation::Trait(ident, traits)
     }
 }
@@ -34,7 +39,7 @@ impl ParseTypeOrTrait for Annotation {
 impl Parse for Annotation {
     fn parse(input: ParseStream) -> Result<Self, Error> {
         let ty: Type = input.parse()?;
-        parse_type_or_trait(&to_string(&ty), input)
+        parse_type_or_lifetime_or_trait(&to_string(&ty), input)
     }
 }
 

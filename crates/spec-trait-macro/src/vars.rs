@@ -4,7 +4,7 @@ use spec_trait_utils::conversions::{ str_to_generics, str_to_type_name, to_strin
 use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::get_generics;
 use spec_trait_utils::traits::TraitBody;
-use syn::{ FnArg, TraitItemFn };
+use syn::{ FnArg, TraitItemFn, Type };
 use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
     get_concrete_type,
@@ -23,6 +23,8 @@ pub struct VarInfo {
     pub concrete_type: String,
     /// traits implemented by the concrete_type, got from annotations
     pub traits: Vec<String>,
+    /// lifetime for the concrete_type, got from annotations
+    pub lifetime: Option<String>,
 }
 
 #[derive(Debug)]
@@ -183,6 +185,7 @@ fn get_generic_constraints_from_trait(
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
             concrete_type: get_concrete_type(&constraint, aliases),
+            lifetime: get_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
         .collect::<Vec<_>>()
@@ -212,6 +215,7 @@ fn get_generic_constraints_from_type(
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
             concrete_type: get_concrete_type(&constraint, aliases),
+            lifetime: get_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
         .collect::<Vec<_>>()
@@ -228,6 +232,35 @@ fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<St
             }
         })
         .collect()
+}
+
+/// Get the lifetime associated with a type from annotations.
+fn get_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Option<String> {
+    let ty = str_to_type_name(type_);
+
+    let lt_from_ty = match ty {
+        Type::Reference(r) => r.lifetime.map(|lt| lt.to_string()),
+        _ => None,
+    };
+
+    let lt_from_ann = ann
+        .iter()
+        .filter_map(|a| {
+            match a {
+                Annotation::Lifetime(t, lt) if types_equal(t, type_, &HashSet::new(), aliases) =>
+                    Some(lt.clone()),
+                _ => None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let lifetimes = lt_from_ann.into_iter().chain(lt_from_ty).collect::<Vec<_>>();
+
+    if lifetimes.len() > 1 {
+        panic!("Multiple lifetimes found for type {}", type_);
+    }
+
+    lifetimes.into_iter().next()
 }
 
 #[cfg(test)]
@@ -301,7 +334,7 @@ mod tests {
 
         let ann = AnnotationBody {
             fn_: "foo".to_string(),
-            args_types: vec!["i32".to_string(), "u32".to_string(), "Vec<i32>".to_string()],
+            args_types: vec!["i32".to_string(), "u32".to_string(), "Vec<&'static i32>".to_string()],
             args: vec!["1i32".to_string(), "2u32".to_string(), "vec![]".to_string()],
             var: "x".to_string(),
             var_type: "MyType".to_string(),
@@ -331,14 +364,16 @@ mod tests {
                 impl_generic: "T".to_string(),
                 concrete_type: "i32".to_string(),
                 traits: vec!["Debug".to_string()],
+                lifetime: None,
             })
         );
         assert_eq!(
             u,
             &(VarInfo {
                 impl_generic: "U".to_string(),
-                concrete_type: "i32".to_string(),
-                traits: vec!["Debug".to_string()],
+                concrete_type: "& 'static i32".to_string(),
+                traits: vec![],
+                lifetime: Some("'static".to_string()),
             })
         );
         assert_eq!(
@@ -347,6 +382,7 @@ mod tests {
                 impl_generic: "V".to_string(),
                 concrete_type: "MyType".to_string(),
                 traits: vec![],
+                lifetime: None,
             })
         );
     }
@@ -356,7 +392,7 @@ mod tests {
         let impl_body = ImplBody::try_from((
             syn
                 ::parse_str::<TokenStream>(
-                    "impl<T, U, V, W, X, Y> MyTrait<T, U, W, D> for Vec<Y> { fn foo(&self, x: &T, y: (String, X, i32), z: &[U], w: W) {} }"
+                    "impl<T, U, V, W, X, Y> MyTrait<T, U, W, X> for Vec<Y> { fn foo(&self, x: &T, y: (String, X, i32), z: &[U], w: W) {} }"
                 )
                 .unwrap(),
             Some(
@@ -382,22 +418,25 @@ mod tests {
         let ann = AnnotationBody {
             fn_: "foo".to_string(),
             args_types: vec![
-                "&i32".to_string(),
+                "&&i32".to_string(),
                 "(String, u32, i32)".to_string(),
                 "&[u32]".to_string(),
-                "Vec<i32>".to_string()
+                "&'static Vec<i32>".to_string()
             ],
             args: vec!["x".to_string(), "y".to_string(), "z".to_string(), "w".to_string()],
             var: "x".to_string(),
             var_type: "Vec<MyType>".to_string(),
-            annotations: vec![Annotation::Trait("i32".into(), vec!["Debug".into()])],
+            annotations: vec![
+                Annotation::Trait("&i32".into(), vec!["Debug".into()]),
+                Annotation::Lifetime("&i32".into(), "'a".into())
+            ],
         };
 
         let aliases = Aliases::new();
 
         let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
 
-        assert_eq!(result.len(), 6);
+        assert_eq!(result.len(), 5);
         let t = result
             .iter()
             .find(|v| v.impl_generic == "T")
@@ -406,17 +445,14 @@ mod tests {
             .iter()
             .find(|v| v.impl_generic == "U")
             .unwrap();
-        let v = result
-            .iter()
-            .find(|v| v.impl_generic == "V")
-            .unwrap();
+        let v = result.iter().find(|v| v.impl_generic == "V");
         let w = result
             .iter()
             .find(|v| v.impl_generic == "W")
             .unwrap();
-        let d = result
+        let x = result
             .iter()
-            .find(|v| v.impl_generic == "D")
+            .find(|v| v.impl_generic == "X")
             .unwrap();
         let y = result
             .iter()
@@ -426,8 +462,9 @@ mod tests {
             t,
             &(VarInfo {
                 impl_generic: "T".to_string(),
-                concrete_type: "i32".to_string(),
+                concrete_type: "& i32".to_string(),
                 traits: vec!["Debug".to_string()],
+                lifetime: Some("'a".to_string()),
             })
         );
         assert_eq!(
@@ -436,30 +473,26 @@ mod tests {
                 impl_generic: "U".to_string(),
                 concrete_type: "u32".to_string(),
                 traits: vec![],
+                lifetime: None,
             })
         );
-        assert_eq!(
-            v,
-            &(VarInfo {
-                impl_generic: "V".to_string(),
-                concrete_type: "i32".to_string(),
-                traits: vec!["Debug".to_string()],
-            })
-        );
+        assert!(v.is_none());
         assert_eq!(
             w,
             &(VarInfo {
                 impl_generic: "W".to_string(),
-                concrete_type: "Vec < i32 >".to_string(),
+                concrete_type: "& 'static Vec < i32 >".to_string(),
                 traits: vec![],
+                lifetime: Some("'static".to_string()),
             })
         );
         assert_eq!(
-            d,
+            x,
             &(VarInfo {
-                impl_generic: "D".to_string(),
+                impl_generic: "X".to_string(),
                 concrete_type: "u32".to_string(),
                 traits: vec![],
+                lifetime: None,
             })
         );
         assert_eq!(
@@ -468,6 +501,7 @@ mod tests {
                 impl_generic: "Y".to_string(),
                 concrete_type: "MyType".to_string(),
                 traits: vec![],
+                lifetime: None,
             })
         );
     }

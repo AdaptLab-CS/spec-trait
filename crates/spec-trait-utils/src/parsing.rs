@@ -9,24 +9,25 @@ use syn::{
     Type,
     TypeParam,
     WherePredicate,
+    Lifetime,
 };
 use syn::parse::ParseStream;
 use quote::ToTokens;
 use crate::conversions::{ str_to_generics, to_string };
 use crate::specialize::{ add_generic, collect_generics };
 
-pub trait ParseTypeOrTrait {
+pub trait ParseTypeOrLifetimeOrTrait {
     fn from_type(ident: String, type_name: String) -> Self;
-    fn from_trait(ident: String, traits: Vec<String>) -> Self;
+    fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self;
 }
 
 /**
     Parses either a type or a trait based on the next token in the input stream.
     - If it's '=', it parses a type
-    - If it's ':', it parses a trait
+    - If it's ':', it parses a list of traits and a lifetime
     - If neither token is found returns an error
  */
-pub fn parse_type_or_trait<T: ParseTypeOrTrait>(
+pub fn parse_type_or_lifetime_or_trait<T: ParseTypeOrLifetimeOrTrait>(
     ident: &str,
     input: ParseStream
 ) -> Result<T, Error> {
@@ -39,30 +40,40 @@ pub fn parse_type_or_trait<T: ParseTypeOrTrait>(
     }
 }
 
-fn parse_type<T: ParseTypeOrTrait>(ident: &str, input: ParseStream) -> Result<T, Error> {
+fn parse_type<T: ParseTypeOrLifetimeOrTrait>(ident: &str, input: ParseStream) -> Result<T, Error> {
     input.parse::<Token![=]>()?; // consume the '=' token
     let type_name = input.parse::<Type>()?;
     Ok(T::from_type(ident.to_string(), to_string(&type_name)))
 }
 
-fn parse_trait<T: ParseTypeOrTrait>(ident: &str, input: ParseStream) -> Result<T, Error> {
+fn parse_trait<T: ParseTypeOrLifetimeOrTrait>(ident: &str, input: ParseStream) -> Result<T, Error> {
     input.parse::<Token![:]>()?; // Consume the ':' token
 
     let mut traits = vec![];
+    let mut lifetime = None;
 
     while !input.is_empty() && !input.peek(Token![,]) && !input.peek(Token![;]) {
-        traits.push(input.parse::<Ident>()?.to_string());
+        if input.peek(Lifetime) {
+            if lifetime.is_some() {
+                return Err(
+                    Error::new(input.span(), "Multiple lifetimes found, only one is allowed")
+                );
+            }
+            lifetime = Some(input.parse::<Lifetime>()?.to_string());
+        } else {
+            traits.push(input.parse::<Ident>()?.to_string());
+        }
 
         if input.peek(Token![+]) {
             input.parse::<Token![+]>()?; // consume the '+' token
         }
     }
 
-    if traits.is_empty() {
-        return Err(Error::new(input.span(), "Expected at least one trait after ':'"));
+    if traits.is_empty() && lifetime.is_none() {
+        return Err(Error::new(input.span(), "Expected at least one trait or lifetime after ':'"));
     }
 
-    Ok(T::from_trait(ident.to_string(), traits))
+    Ok(T::from_trait(ident.to_string(), traits, lifetime))
 }
 
 /**
@@ -168,23 +179,23 @@ mod tests {
     #[derive(Debug, PartialEq)]
     enum MockTypeOrTrait {
         Type(String, String), // (ident, type_name)
-        Trait(String, Vec<String>), // (ident, traits)
+        Trait(String, Vec<String>, Option<String>), // (ident, traits, lifetime)
     }
 
-    impl ParseTypeOrTrait for MockTypeOrTrait {
+    impl ParseTypeOrLifetimeOrTrait for MockTypeOrTrait {
         fn from_type(ident: String, type_name: String) -> Self {
             MockTypeOrTrait::Type(ident, type_name)
         }
 
-        fn from_trait(ident: String, traits: Vec<String>) -> Self {
-            MockTypeOrTrait::Trait(ident, traits)
+        fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self {
+            MockTypeOrTrait::Trait(ident, traits, lifetime)
         }
     }
 
     impl Parse for MockTypeOrTrait {
         fn parse(input: ParseStream) -> Result<Self, Error> {
             let ident: Ident = input.parse()?;
-            parse_type_or_trait(&ident.to_string(), input)
+            parse_type_or_lifetime_or_trait(&ident.to_string(), input)
         }
     }
 
@@ -198,11 +209,26 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_type_with_lifetime() {
+        let input = quote! { MyType = &'static u32 };
+
+        let result: MockTypeOrTrait = parse2(input).unwrap();
+
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Type("MyType".to_string(), "& 'static u32".to_string())
+        );
+    }
+
+    #[test]
     fn parse_trait_single() {
         let input = quote! { MyType: Clone };
         let result: MockTypeOrTrait = parse2(input).unwrap();
 
-        assert_eq!(result, MockTypeOrTrait::Trait("MyType".to_string(), vec!["Clone".to_string()]));
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Trait("MyType".to_string(), vec!["Clone".to_string()], None)
+        );
     }
 
     #[test]
@@ -214,15 +240,50 @@ mod tests {
             result,
             MockTypeOrTrait::Trait(
                 "MyType".to_string(),
-                vec!["Clone".to_string(), "Debug".to_string()]
+                vec!["Clone".to_string(), "Debug".to_string()],
+                None
             )
         );
     }
 
     #[test]
+    fn parse_lifetime_single() {
+        let input = quote! { MyType: 'a };
+        let result: MockTypeOrTrait = parse2(input).unwrap();
+
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Trait("MyType".to_string(), vec![], Some("'a".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_traits_and_lifetime_multiple() {
+        let input = quote! { MyType: Clone + Debug + 'a };
+        let result: MockTypeOrTrait = parse2(input).unwrap();
+
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Trait(
+                "MyType".to_string(),
+                vec!["Clone".to_string(), "Debug".to_string()],
+                Some("'a".to_string())
+            )
+        );
+    }
+
+    #[test]
+    fn parse_lifetime_multiple() {
+        let input = quote! { MyType: 'a + 'b };
+        let result = parse2::<MockTypeOrTrait>(input);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn parse_trait_empty() {
         let input = quote! { MyType: };
-        let result = syn::parse2::<MockTypeOrTrait>(input);
+        let result = parse2::<MockTypeOrTrait>(input);
 
         assert!(result.is_err());
     }
@@ -230,7 +291,7 @@ mod tests {
     #[test]
     fn parse_type_empty() {
         let input = quote! { MyType = };
-        let result = syn::parse2::<MockTypeOrTrait>(input);
+        let result = parse2::<MockTypeOrTrait>(input);
 
         assert!(result.is_err());
     }
@@ -238,7 +299,7 @@ mod tests {
     #[test]
     fn wrong_token() {
         let input = quote! { MyType ? u32 };
-        let result = syn::parse2::<MockTypeOrTrait>(input);
+        let result = parse2::<MockTypeOrTrait>(input);
 
         assert!(result.is_err());
     }

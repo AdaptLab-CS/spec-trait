@@ -5,12 +5,13 @@ use std::fmt::{ Debug, Display, Formatter, Result as FmtResult };
 use std::hash::{ Hash, Hasher };
 use syn::{ Error, Ident, Token, parenthesized };
 use syn::parse::{ Parse, ParseStream };
-use crate::parsing::{ parse_type_or_trait, ParseTypeOrTrait };
+use crate::parsing::{ parse_type_or_lifetime_or_trait, ParseTypeOrLifetimeOrTrait };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
     Type(String /* generic */, String /* type */),
     Trait(String /* generic */, Vec<String> /* traits */),
+    Lifetime(String /* generic */, String /* lifetime */),
     All(Vec<WhenCondition>),
     Any(Vec<WhenCondition>),
     Not(Box<WhenCondition>),
@@ -30,6 +31,7 @@ impl Display for WhenCondition {
         }
         match self {
             WhenCondition::Type(generic, ty) => write!(f, "{} = {}", generic, ty.replace(" ", "")),
+            WhenCondition::Lifetime(generic, lt) => write!(f, "{}: {}", generic, lt),
             WhenCondition::Trait(generic, traits) => {
                 let mut sorted_traits = traits.to_vec();
                 sorted_traits.sort();
@@ -52,6 +54,8 @@ impl PartialEq for WhenCondition {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (WhenCondition::Type(g1, t1), WhenCondition::Type(g2, t2)) => g1 == g2 && t1 == t2,
+            (WhenCondition::Lifetime(g1, lt1), WhenCondition::Lifetime(g2, lt2)) =>
+                g1 == g2 && lt1 == lt2,
             (WhenCondition::Trait(g1, tr1), WhenCondition::Trait(g2, tr2)) => {
                 g1 == g2 && tr1.iter().collect::<HashSet<_>>() == tr2.iter().collect::<HashSet<_>>()
             }
@@ -65,13 +69,27 @@ impl PartialEq for WhenCondition {
     }
 }
 
-impl ParseTypeOrTrait for WhenCondition {
+impl ParseTypeOrLifetimeOrTrait for WhenCondition {
     fn from_type(ident: String, type_name: String) -> Self {
         WhenCondition::Type(ident, type_name)
     }
 
-    fn from_trait(ident: String, traits: Vec<String>) -> Self {
-        WhenCondition::Trait(ident, traits)
+    fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self {
+        let mut parts: Vec<WhenCondition> = Vec::new();
+
+        if !traits.is_empty() {
+            parts.push(WhenCondition::Trait(ident.clone(), traits));
+        }
+
+        if let Some(lt) = lifetime {
+            parts.push(WhenCondition::Lifetime(ident, lt));
+        }
+
+        match parts.len() {
+            0 => panic!("Expected at least one trait or lifetime"),
+            1 => parts.first().cloned().unwrap(),
+            _ => WhenCondition::All(parts),
+        }
     }
 }
 
@@ -90,7 +108,7 @@ impl Parse for WhenCondition {
 
         match ident.to_string().as_str() {
             "all" | "any" | "not" => parse_aggregation(ident, input),
-            _ => parse_type_or_trait(&ident.to_string(), input),
+            _ => parse_type_or_lifetime_or_trait(&ident.to_string(), input),
         }
     }
 }
@@ -285,6 +303,28 @@ mod tests {
         assert_eq!(
             condition,
             WhenCondition::Trait("T".into(), vec!["Clone".into(), "Debug".into()])
+        );
+    }
+
+    #[test]
+    fn parse_single_lifetime_condition() {
+        let input = quote! { T: 'a };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(condition, WhenCondition::Lifetime("T".into(), "'a".into()));
+    }
+
+    #[test]
+    fn parse_lifetime_and_traits_condition() {
+        let input = quote! { T: Clone + Debug + 'a };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(
+            condition,
+            WhenCondition::All(
+                vec![
+                    WhenCondition::Trait("T".into(), vec!["Clone".into(), "Debug".into()]),
+                    WhenCondition::Lifetime("T".into(), "'a".into())
+                ]
+            )
         );
     }
 

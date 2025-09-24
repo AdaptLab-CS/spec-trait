@@ -4,7 +4,6 @@ mod aliases;
 
 use std::path::Path;
 use spec_trait_utils::cache;
-use spec_trait_utils::lifetimes;
 use spec_trait_utils::env::get_cache_path;
 
 /// It is assumed to be used in `build.rs` or similar context.
@@ -18,7 +17,6 @@ pub fn handle_order() {
         ::get_crates(Path::new("."))
         .into_iter()
         .for_each(|crate_| {
-            lifetimes::assert_constraints(&crate_.content.impls);
             cache::add_crate(&crate_.name, crate_.content);
         });
 }
