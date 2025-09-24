@@ -6,7 +6,6 @@ use std::hash::{ Hash, Hasher };
 use syn::{ Error, Ident, Token, parenthesized };
 use syn::parse::{ Parse, ParseStream };
 use crate::parsing::{ parse_type_or_lifetime_or_trait, ParseTypeOrLifetimeOrTrait };
-use crate::types::{ break_type_lifetime, Aliases };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
@@ -70,13 +69,13 @@ impl PartialEq for WhenCondition {
     }
 }
 
-impl ParseTypeOrLifetimeOrTrait for WhenCondition {
-    fn from_type(ident: String, type_name: String) -> Self {
-        match break_type_lifetime(&type_name, &Aliases::new()) {
-            (type_, Some(lt)) =>
+impl ParseTypeOrLifetimeOrTrait<WhenCondition> for WhenCondition {
+    fn from_type(ident: String, type_name: String, lifetime: Option<String>) -> Self {
+        match lifetime {
+            Some(lt) =>
                 WhenCondition::All(
                     vec![
-                        WhenCondition::Type(ident.clone(), type_),
+                        WhenCondition::Type(ident.clone(), type_name),
                         WhenCondition::Lifetime(ident, lt)
                     ]
                 ),
@@ -118,7 +117,7 @@ impl Parse for WhenCondition {
 
         match ident.to_string().as_str() {
             "all" | "any" | "not" => parse_aggregation(ident, input),
-            _ => parse_type_or_lifetime_or_trait(&ident.to_string(), input),
+            _ => parse_type_or_lifetime_or_trait::<Self, Self>(&ident.to_string(), input),
         }
     }
 }

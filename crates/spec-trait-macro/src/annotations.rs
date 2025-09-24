@@ -22,24 +22,36 @@ pub struct AnnotationBody {
     pub annotations: Vec<Annotation>,
 }
 
-impl ParseTypeOrLifetimeOrTrait for Annotation {
-    fn from_type(ident: String, type_name: String) -> Self {
-        Annotation::Alias(ident, type_name)
+struct Annotations(Vec<Annotation>);
+impl ParseTypeOrLifetimeOrTrait<Annotations> for Annotation {
+    fn from_type(ident: String, type_name: String, lifetime: Option<String>) -> Annotations {
+        match lifetime {
+            Some(lt) =>
+                Annotations(
+                    vec![
+                        Annotation::Alias(ident.clone(), type_name),
+                        Annotation::Lifetime(ident, lt)
+                    ]
+                ),
+            None => Annotations(vec![Annotation::Alias(ident, type_name)]),
+        }
     }
 
-    fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self {
-        if let Some(_lt) = lifetime {
-            todo!();
+    fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Annotations {
+        if let Some(lt) = lifetime {
+            Annotations(
+                vec![Annotation::Trait(ident.clone(), traits), Annotation::Lifetime(ident, lt)]
+            )
+        } else {
+            Annotations(vec![Annotation::Trait(ident, traits)])
         }
-
-        Annotation::Trait(ident, traits)
     }
 }
 
-impl Parse for Annotation {
+impl Parse for Annotations {
     fn parse(input: ParseStream) -> Result<Self, Error> {
         let ty: Type = input.parse()?;
-        parse_type_or_lifetime_or_trait(&to_string(&ty), input)
+        parse_type_or_lifetime_or_trait::<Annotation, Annotations>(&to_string(&ty), input)
     }
 }
 
@@ -130,9 +142,12 @@ fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
 }
 
 fn parse_annotations(input: ParseStream) -> Result<Vec<Annotation>, Error> {
-    input
-        .parse_terminated(Annotation::parse, Token![;])
-        .map(|annotations| annotations.into_iter().collect())
+    input.parse_terminated(Annotations::parse, Token![;]).map(|annotations|
+        annotations
+            .into_iter()
+            .flat_map(|a| a.0)
+            .collect()
+    )
 }
 
 #[cfg(test)]
@@ -169,16 +184,19 @@ mod tests {
     #[test]
     fn arguments_formats() {
         let input =
-            quote! { zst.foo(1, vec![2i8], Vec::new(3), x, (4, 5)); ZST; [i32, Vec<i8>, Vec<i32>, &[i32], (i32, i32)] };
+            quote! { zst.foo(1, vec![2i8], Vec::new(3), x, (4, 5), "a"); ZST; [i32, Vec<i8>, Vec<i32>, &[i32], (i32, i32), &'static str] };
         let result = AnnotationBody::try_from(input).unwrap();
 
         assert_eq!(result.var, "zst");
         assert_eq!(result.fn_, "foo");
-        assert_eq!(result.args, vec!["1", "vec ! [2i8]", "Vec :: new (3)", "x", "(4 , 5)"]);
+        assert_eq!(
+            result.args,
+            vec!["1", "vec ! [2i8]", "Vec :: new (3)", "x", "(4 , 5)", "\"a\""]
+        );
         assert_eq!(result.var_type, "ZST");
         assert_eq!(
             result.args_types,
-            vec!["i32", "Vec < i8 >", "Vec < i32 >", "& [i32]", "(i32 , i32)"]
+            vec!["i32", "Vec < i8 >", "Vec < i32 >", "& [i32]", "(i32 , i32)", "& 'static str"]
         );
         assert!(result.annotations.is_empty());
     }
