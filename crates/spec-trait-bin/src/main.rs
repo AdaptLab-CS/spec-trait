@@ -86,6 +86,20 @@ impl<T> Foo<T> for ZST {
     }
 }
 
+#[when(all(T = &_, T: 'a))]
+impl<'a, T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is &'a _");
+    }
+}
+
+#[when(T = &'static _)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, x: T) {
+        println!("Foo impl ZST where T is &'static _");
+    }
+}
+
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
@@ -217,6 +231,11 @@ fn main() {
     spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }                                                          // -> "Foo impl ZST where T is Vec<_>"
     spec! { zst.foo((1, 2)); ZST; [(i32, i32)] }                                                            // -> "Foo impl ZST where T is (i32, _)"
     spec! { zst.foo(&[1i32]); ZST; [&[i32]] }                                                               // -> "Foo impl ZST where T is &[i32]"
+    spec! { zst.foo(&1i32); ZST; [&'static i32] }                                                           // -> "Foo impl ZST where T is &'static _"
+    // spec! { zst.foo(&1i32); ZST; [&i32]; &i32: 'static } // TODO: fix                                    // -> "Foo impl ZST where T is &'static _"
+    spec! { zst.foo(&1i32); ZST; [&'a i32] }                                                                // -> "Foo impl ZST where T is &'a _"
+    // spec! { zst.foo(&1i32); ZST; [&i32]; &i32: 'a } // TODO: fix                                         // -> "Foo impl ZST where T is &'a _"
+    spec! { zst.foo(&1i32); ZST; [&i32] }                                                                   // -> "Foo impl ZST where T is &'a _"
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }                                                          // -> "Foo impl ZST where T implements Bar"
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }                                                  // -> "Foo impl ZST where T implements Bar and FooBar"
     spec! { zst.foo(1i8); ZST; [i8] }                                                                       // -> "Default Foo for ZST"

@@ -7,7 +7,7 @@ use spec_trait_utils::traits::TraitBody;
 use syn::{ FnArg, TraitItemFn, Type };
 use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
-    get_concrete_type,
+    break_type_lifetime,
     type_contains,
     types_equal,
     types_equal_generic_constraints,
@@ -75,7 +75,7 @@ fn get_vars(
                 aliases
             );
 
-            match trait_.get_corresponding_generic(&str_to_generics(&impl_.impl_generics), g) {
+            match trait_.get_corresponding_generic(&str_to_generics(&impl_.trait_generics), g) {
                 // get type
                 Some(trait_generic) => {
                     let from_trait = get_generic_constraints_from_trait(
@@ -95,7 +95,7 @@ fn get_vars(
                         .as_ref()
                         .unwrap()
                         .get_corresponding_generic(
-                            &str_to_generics(&impl_.specialized.as_ref().unwrap().impl_generics),
+                            &str_to_generics(&impl_.specialized.as_ref().unwrap().trait_generics),
                             g
                         );
 
@@ -184,7 +184,7 @@ fn get_generic_constraints_from_trait(
     res.into_iter()
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
-            concrete_type: get_type_without_lifetime(&constraint, aliases),
+            concrete_type: break_type_lifetime(&constraint, aliases).0,
             lifetime: get_type_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
@@ -214,7 +214,7 @@ fn get_generic_constraints_from_type(
         .filter_map(|(generic, constraint)| constraint.map(|c| (c, generic)))
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
-            concrete_type: get_type_without_lifetime(&constraint, aliases),
+            concrete_type: break_type_lifetime(&constraint, aliases).0,
             lifetime: get_type_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
@@ -261,22 +261,6 @@ fn get_type_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Opti
     }
 
     lifetimes.into_iter().next()
-}
-
-/// Get the type without lifetime.
-fn get_type_without_lifetime(type_: &str, aliases: &Aliases) -> String {
-    let ty = str_to_type_name(&get_concrete_type(type_, aliases));
-
-    let t_no_lt = match ty {
-        Type::Reference(r) => {
-            let mut r_no_lt = r.clone();
-            r_no_lt.lifetime = None;
-            Type::Reference(r_no_lt)
-        }
-        t => t,
-    };
-
-    to_string(&t_no_lt)
 }
 
 #[cfg(test)]
@@ -332,7 +316,7 @@ mod tests {
         let impl_body = ImplBody::try_from((
             syn
                 ::parse_str::<TokenStream>(
-                    "impl<T, U: Debug, V> MyTrait<T, U> for V { fn foo(&self, x: T, y: u32, z: Vec<U>) {} }"
+                    "impl<W, T, U: Debug, V> MyTrait<T, U> for V { fn foo(&self, x: T, y: u32, z: Vec<U>) {} }"
                 )
                 .unwrap(),
             None,

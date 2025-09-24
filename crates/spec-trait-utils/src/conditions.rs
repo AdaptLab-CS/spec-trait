@@ -6,10 +6,11 @@ use std::hash::{ Hash, Hasher };
 use syn::{ Error, Ident, Token, parenthesized };
 use syn::parse::{ Parse, ParseStream };
 use crate::parsing::{ parse_type_or_lifetime_or_trait, ParseTypeOrLifetimeOrTrait };
+use crate::types::{ break_type_lifetime, Aliases };
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
-    Type(String /* generic */, String /* type */),
+    Type(String /* generic */, String /* type (without lifetime) */),
     Trait(String /* generic */, Vec<String> /* traits */),
     Lifetime(String /* generic */, String /* lifetime */),
     All(Vec<WhenCondition>),
@@ -71,11 +72,20 @@ impl PartialEq for WhenCondition {
 
 impl ParseTypeOrLifetimeOrTrait for WhenCondition {
     fn from_type(ident: String, type_name: String) -> Self {
-        WhenCondition::Type(ident, type_name)
+        match break_type_lifetime(&type_name, &Aliases::new()) {
+            (type_, Some(lt)) =>
+                WhenCondition::All(
+                    vec![
+                        WhenCondition::Type(ident.clone(), type_),
+                        WhenCondition::Lifetime(ident, lt)
+                    ]
+                ),
+            _ => WhenCondition::Type(ident, type_name),
+        }
     }
 
     fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self {
-        let mut parts: Vec<WhenCondition> = Vec::new();
+        let mut parts = vec![];
 
         if !traits.is_empty() {
             parts.push(WhenCondition::Trait(ident.clone(), traits));
@@ -322,6 +332,21 @@ mod tests {
             WhenCondition::All(
                 vec![
                     WhenCondition::Trait("T".into(), vec!["Clone".into(), "Debug".into()]),
+                    WhenCondition::Lifetime("T".into(), "'a".into())
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn parse_lifetime_and_type_condition() {
+        let input = quote! { T = &'a str };
+        let condition = WhenCondition::try_from(input).unwrap();
+        assert_eq!(
+            condition,
+            WhenCondition::All(
+                vec![
+                    WhenCondition::Type("T".into(), "& str".into()),
                     WhenCondition::Lifetime("T".into(), "'a".into())
                 ]
             )

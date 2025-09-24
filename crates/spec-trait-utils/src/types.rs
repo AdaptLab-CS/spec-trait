@@ -393,6 +393,23 @@ pub fn get_unique_generic_name(generics: &mut HashSet<String>, counter: &mut usi
     }
 }
 
+pub fn break_type_lifetime(type_: &str, aliases: &Aliases) -> (String, Option<String>) {
+    let ty = str_to_type_name(&get_concrete_type(type_, aliases));
+
+    let mut lt = None;
+    let t_no_lt = match ty {
+        Type::Reference(r) => {
+            lt = r.lifetime.as_ref().map(to_string);
+            let mut r_no_lt = r.clone();
+            r_no_lt.lifetime = None;
+            to_string(&Type::Reference(r_no_lt))
+        }
+        t => to_string(&t),
+    };
+
+    (t_no_lt, lt)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -946,5 +963,28 @@ mod tests {
             "Option<(__G_0__, &[__G_1__])>".to_string().replace(" ", "")
         );
         assert_eq!(new_generics, vec!["__G_0__".to_string(), "__G_1__".to_string()]);
+    }
+
+    #[test]
+    fn break_type_lifetime_simple() {
+        let (t_no_lt, lt) = break_type_lifetime("&'a u8", &get_aliases());
+        assert_eq!(t_no_lt.replace(" ", ""), "&u8".to_string().replace(" ", ""));
+        assert_eq!(lt, Some("'a".to_string()));
+    }
+
+    #[test]
+    fn break_type_lifetime_none() {
+        let (t_no_lt, lt) = break_type_lifetime("&u8", &get_aliases());
+        assert_eq!(t_no_lt.replace(" ", ""), "&u8".to_string().replace(" ", ""));
+        assert_eq!(lt, None);
+
+        let (t_no_lt, lt) = break_type_lifetime("u8", &get_aliases());
+        assert_eq!(t_no_lt.replace(" ", ""), "u8".to_string().replace(" ", ""));
+        assert_eq!(lt, None);
+    }
+
+    #[test]
+    fn break_type_lifetime_nested() {
+        // TODO handle &'a 'b Vec<&'c u8>
     }
 }
