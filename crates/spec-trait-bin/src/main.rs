@@ -79,7 +79,6 @@ impl<T> Foo<T> for ZST {
     }
 }
 
-
 #[when(T = &[i32])]
 impl<T> Foo<T> for ZST {
     fn foo(&self, x: T) {
@@ -164,21 +163,21 @@ impl<T> Foo<T> for ZST2 {
 
 // ZST2 - Foo2
 
-impl<T, U> Foo2<T, U> for ZST2 where T: 'static {
+impl<T, U> Foo2<T, U> for ZST2 {
     fn foo(&self, x: T, y: U) {
         println!("Default Foo2 for ZST2");
     }
 }
 
 #[when(T = MyType)]
-impl<T: 'static, U> Foo2<T, U> for ZST2 {
+impl<T, U> Foo2<T, U> for ZST2 {
     fn foo(&self, x: T, y: U) {
         println!("Foo2 for ZST2 where T is MyType");
     }
 }
 
 #[when(not(T = MyType))]
-impl<T: 'static, U> Foo2<T, U> for ZST2 where T: 'static {
+impl<T, U> Foo2<T, U> for ZST2 {
     fn foo(&self, x: T, y: U) {
         println!("Foo2 for ZST2 where T is not MyType");
     }
@@ -212,39 +211,38 @@ fn main() {
     let zst2 = ZST2;
 
     // ZST - Foo
-    spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType }
-    spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>]; Vec<i32> = MyVecAlias }
-    spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType }
-    spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }
-    spec! { zst.foo((1, 2)); ZST; [(i32, i32)] }
-    spec! { zst.foo(&[1i32]); ZST; [&[i32]] } 
-    spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }
-    spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }
-    spec! { zst.foo(1i8); ZST; [i8] }
+    spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType }                                                          // -> "Foo impl ZST where T is MyType"
+    spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>]; Vec<i32> = MyVecAlias }                                   // -> "Foo impl ZST where T is MyVecAlias"
+    spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType }                                               // -> "Foo impl ZST where T is Vec<u8>"
+    spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>] }                                                          // -> "Foo impl ZST where T is Vec<_>"
+    spec! { zst.foo((1, 2)); ZST; [(i32, i32)] }                                                            // -> "Foo impl ZST where T is (i32, _)"
+    spec! { zst.foo(&[1i32]); ZST; [&[i32]] }                                                               // -> "Foo impl ZST where T is &[i32]"
+    spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  }                                                          // -> "Foo impl ZST where T implements Bar"
+    spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar }                                                  // -> "Foo impl ZST where T implements Bar and FooBar"
+    spec! { zst.foo(1i8); ZST; [i8] }                                                                       // -> "Default Foo for ZST"
 
     // ZST - Foo2
-    spec! { zst.foo(1u8, 2u8); ZST; [u8, u8]; u8 = MyType }
-    spec! { zst.foo(1i32, 1i32); ZST; [i32, i32] }
-
+    spec! { zst.foo(1u8, 2u8); ZST; [u8, u8]; u8 = MyType }                                                 // -> "Foo2 for ZST where T is MyType"
+    spec! { zst.foo(1i32, 1i32); ZST; [i32, i32] }                                                          // -> "Default Foo2 for ZST"
 
     // ZST - Foo3
-    spec! { zst.foo("hello".to_string(), "world".to_string()); ZST; [String, String] }
-    spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String] }
-    spec! { zst.foo(vec!["hello".to_string()], "world".to_string()); ZST; [Vec<String>, String]; String: Debug }
+    spec! { zst.foo("a".to_string(), "b".to_string()); ZST; [String, String] }                              // -> "Foo3 impl ZST where T is String"
+    spec! { zst.foo(vec!["a".to_string()], "b".to_string()); ZST; [Vec<String>, String] }                   // -> "Foo3 impl ZST where T is Vec<U>"
+    spec! { zst.foo(vec!["a".to_string()], "b".to_string()); ZST; [Vec<String>, String]; String: Debug }    // -> "Foo3 impl ZST where T is Vec<U> and U implements Debug"
 
     // ZST2 - Foo
-    spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }
-    spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] } 
-    spec! { zst2.foo(1i32); ZST2; [i32]; i32: Copy  }
-    spec! { zst2.foo(1i32); ZST2; [i32] }
+    spec! { zst2.foo(1u8); ZST2; [u8]; u8 = MyType }                                                        // -> "Foo impl ZST2 where T is MyType"
+    spec! { zst2.foo(vec![1i32]); ZST2; [Vec<i32>] }                                                        // -> "Foo impl ZST2 where T is Vec<i32>"
+    spec! { zst2.foo(1i32); ZST2; [i32]; i32: Copy  }                                                       // -> "Foo impl ZST2 where T implements Copy or Clone"
+    spec! { zst2.foo(1i32); ZST2; [i32] }                                                                   // -> "Default Foo for ZST2"
 
     // ZST2 - Foo2
-    spec! { zst2.foo(1u8, 2u8); ZST2; [u8, u8]; u8 = MyType }
-    spec! { zst2.foo(1i8, 1i8); ZST2; [i8, i8] }
+    spec! { zst2.foo(1u8, 2u8); ZST2; [u8, u8]; u8 = MyType }                                               // -> "Foo2 for ZST2 where T is MyType"
+    spec! { zst2.foo(1i8, 1i8); ZST2; [i8, i8] }                                                            // -> "Foo2 for ZST2 where T is not MyType"
 
     // T - Foo
-    spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType }
-    // spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType } // TODO: fix
-    // spec! { 1i32.foo("str"); i32; [&str] } // TODO: fix
-    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix
+    spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType }                                                         // -> "Foo impl T where T is i32 and U is MyType"
+    // spec! { vec![1i32].foo(1u8); Vec<i32>; [u8]; u8 = MyType } // TODO: fix                              // -> "Foo impl T where T is Vec<_> and U is MyType"
+    // spec! { 1i32.foo("str"); i32; [&str] } // TODO: fix                                                  // -> "Foo impl T where U is &str"                             
+    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                   // -> "Foo impl T where U is &str"                 
 }

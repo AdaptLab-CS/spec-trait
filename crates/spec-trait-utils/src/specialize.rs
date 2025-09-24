@@ -7,6 +7,8 @@ use crate::parsing::get_generics;
 use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
 use crate::conditions::WhenCondition;
 
+// TODO: infer lifetimes as well
+
 pub trait Specializable {
     fn resolve_item_generic(&self, other_generics: &Generics, impl_generic: &str) -> Option<String>;
 

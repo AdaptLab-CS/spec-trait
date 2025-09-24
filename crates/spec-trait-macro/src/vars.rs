@@ -19,7 +19,7 @@ use crate::SpecBody;
 pub struct VarInfo {
     /// if the trait parameter is generic, this is the corresponding generic in the impl
     pub impl_generic: String,
-    /// concrete type with which the fn was called
+    /// concrete type with which the fn was called (without lifetime)
     pub concrete_type: String,
     /// traits implemented by the concrete_type, got from annotations
     pub traits: Vec<String>,
@@ -184,8 +184,8 @@ fn get_generic_constraints_from_trait(
     res.into_iter()
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
-            concrete_type: get_concrete_type(&constraint, aliases),
-            lifetime: get_lifetime(&constraint, &ann.annotations, aliases),
+            concrete_type: get_type_without_lifetime(&constraint, aliases),
+            lifetime: get_type_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
         .collect::<Vec<_>>()
@@ -214,8 +214,8 @@ fn get_generic_constraints_from_type(
         .filter_map(|(generic, constraint)| constraint.map(|c| (c, generic)))
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
-            concrete_type: get_concrete_type(&constraint, aliases),
-            lifetime: get_lifetime(&constraint, &ann.annotations, aliases),
+            concrete_type: get_type_without_lifetime(&constraint, aliases),
+            lifetime: get_type_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
         .collect::<Vec<_>>()
@@ -235,7 +235,7 @@ fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<St
 }
 
 /// Get the lifetime associated with a type from annotations.
-fn get_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Option<String> {
+fn get_type_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Option<String> {
     let ty = str_to_type_name(type_);
 
     let lt_from_ty = match ty {
@@ -261,6 +261,22 @@ fn get_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Option<St
     }
 
     lifetimes.into_iter().next()
+}
+
+/// Get the type without lifetime.
+fn get_type_without_lifetime(type_: &str, aliases: &Aliases) -> String {
+    let ty = str_to_type_name(&get_concrete_type(type_, aliases));
+
+    let t_no_lt = match ty {
+        Type::Reference(r) => {
+            let mut r_no_lt = r.clone();
+            r_no_lt.lifetime = None;
+            Type::Reference(r_no_lt)
+        }
+        t => t,
+    };
+
+    to_string(&t_no_lt)
 }
 
 #[cfg(test)]
@@ -371,7 +387,7 @@ mod tests {
             u,
             &(VarInfo {
                 impl_generic: "U".to_string(),
-                concrete_type: "& 'static i32".to_string(),
+                concrete_type: "& i32".to_string(),
                 traits: vec![],
                 lifetime: Some("'static".to_string()),
             })
@@ -481,7 +497,7 @@ mod tests {
             w,
             &(VarInfo {
                 impl_generic: "W".to_string(),
-                concrete_type: "& 'static Vec < i32 >".to_string(),
+                concrete_type: "& Vec < i32 >".to_string(),
                 traits: vec![],
                 lifetime: Some("'static".to_string()),
             })

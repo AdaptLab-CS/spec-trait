@@ -148,18 +148,13 @@ fn satisfies_condition(
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the lifetime does not match
-                generic_var.is_none_or(|v| v.lifetime != Some(lifetime.clone())) ||
+                generic_var.is_none_or(|v| {
+                    v.lifetime != Some("'static".into()) &&
+                        (lifetime == "'static" ||
+                            v.lifetime.as_ref().is_some_and(|lt| lt != lifetime))
+                }) ||
                 // generic parameter is forbidden to be assigned to this lifetime
-                constraint.not_lifetimes.iter().any(|lt| lt == lifetime) ||
-                // generic parameter is already assigned to a type that does not respect the lifetime
-                constraint.type_.as_ref().is_some_and(|ty| {
-                    let concrete_type_var = var.vars
-                        .iter()
-                        .find(|v| types_equal(&v.concrete_type, ty, &var.generics, &var.aliases));
-                    concrete_type_var.is_none_or(|v|
-                        v.lifetime.as_ref().is_some_and(|lt| lt != lifetime)
-                    )
-                });
+                constraint.not_lifetimes.iter().any(|lt| lt == lifetime);
 
             (!violates_constraints, new_constraints)
         }
@@ -323,7 +318,8 @@ mod tests {
             vec![
                 WhenCondition::Type("T".into(), "MyType".into()),
                 WhenCondition::Type("T".into(), "MyOtherType".into()),
-                WhenCondition::Trait("T".into(), vec!["MyTrait".into()])
+                WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
+                WhenCondition::Lifetime("T".into(), "'a".into())
             ]
         );
 
@@ -338,6 +334,7 @@ mod tests {
         let c = constraints.get("T".into()).unwrap();
         assert_eq!(c.type_, Some("MyType".into()));
         assert!(c.traits.contains(&"MyTrait".into()));
+        assert!(c.lifetime == Some("'a".into()));
     }
 
     #[test]
@@ -348,6 +345,41 @@ mod tests {
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
+    }
+
+    #[test]
+    fn lifetime_respected() {
+        let mut var = get_var_body();
+
+        var.vars[0].lifetime = None;
+
+        let condition = WhenCondition::Lifetime("T".into(), "'a".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(satisfies);
+
+        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(!satisfies);
+
+        var.vars[0].lifetime = Some("'a".into());
+
+        let condition = WhenCondition::Lifetime("T".into(), "'a".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(satisfies);
+
+        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(!satisfies);
+
+        var.vars[0].lifetime = Some("'static".into());
+
+        let condition = WhenCondition::Lifetime("T".into(), "'a".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(satisfies);
+
+        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(satisfies);
     }
 
     #[test]
@@ -392,8 +424,8 @@ mod tests {
     fn lifetime_forbidden() {
         let condition = WhenCondition::All(
             vec![
-                WhenCondition::Lifetime("T".into(), "'a".into()),
-                WhenCondition::Not(Box::new(WhenCondition::Lifetime("T".into(), "'a".into())))
+                WhenCondition::Lifetime("T".into(), "'static".into()),
+                WhenCondition::Not(Box::new(WhenCondition::Lifetime("T".into(), "'static".into())))
             ]
         );
         let var = get_var_body();

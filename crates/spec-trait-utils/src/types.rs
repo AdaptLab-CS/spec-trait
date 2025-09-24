@@ -148,7 +148,15 @@ fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
 
         // `&T`, `&_`
         (Type::Reference(ref1), Type::Reference(ref2)) => {
-            same_type(&ref1.elem, &ref2.elem, generics)
+            let lt1 = ref1.lifetime.as_ref().map(to_string);
+            let lt2 = ref2.lifetime.as_ref().map(to_string);
+
+            let same_lifetime =
+                (lt1.as_ref().is_none() && lt2.as_ref().is_some_and(|lt| lt != "'static")) ||
+                (lt2.as_ref().is_none() && lt1.as_ref().is_some_and(|lt| lt != "'static")) ||
+                lt1 == lt2;
+
+            same_type(&ref1.elem, &ref2.elem, generics) && same_lifetime
         }
 
         // `[T]`, `[_]`
@@ -547,6 +555,35 @@ mod tests {
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&i8");
+        assert!(!same_type(&t1, &t2, &mut g));
+    }
+
+    #[test]
+    fn compare_types_references_with_lifetimes() {
+        let mut g = GenericsMap::new();
+
+        let t1 = str_to_type_name("&u8");
+        let t2 = str_to_type_name("&u8");
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&u8");
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'a u8");
+        assert!(same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'b u8");
+        assert!(!same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'static u8");
+        assert!(!same_type(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("&'static u8");
+        let t2 = str_to_type_name("&u8");
         assert!(!same_type(&t1, &t2, &mut g));
     }
 
