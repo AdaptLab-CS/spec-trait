@@ -1,14 +1,15 @@
 use std::collections::{ HashMap, HashSet };
-use crate::conversions::{ str_to_type_name, to_string };
+use crate::conversions::{ str_to_generics, str_to_type_name, to_string };
 use syn::{
-    Type,
-    TypeTuple,
-    TypeReference,
-    TypeArray,
-    PathArguments,
-    GenericArgument,
-    TypeSlice,
     Expr,
+    GenericArgument,
+    GenericParam,
+    PathArguments,
+    Type,
+    TypeArray,
+    TypeReference,
+    TypeSlice,
+    TypeTuple,
 };
 
 pub type Aliases = HashMap<String, Vec<String>>;
@@ -89,55 +90,95 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
     }
 }
 
-type Generics = HashSet<String>;
 type GenericsMap = HashMap<String, Option<String>>;
 
-/// types can be something like: "T", "&T", "U<T>", "(T, T)", "&[T]"
-/// each of the "T" can be a type, a generic or a "_", which means any type
-pub fn types_equal_generic_constraints(
-    type1: &str,
-    type2: &str,
-    generics: &Generics,
-    aliases: &Aliases
-) -> Option<GenericsMap> {
-    let t1 = str_to_type_name(&get_concrete_type(type1, aliases));
-    let t2 = str_to_type_name(&get_concrete_type(type2, aliases));
+#[derive(Debug, Default)]
+pub struct ConstrainedGenerics {
+    pub types: GenericsMap,
+    pub lifetimes: GenericsMap,
+}
 
-    let mut generics_map = generics
+pub fn type_assignable_generic_constraints(
+    concrete_type: &str,
+    declared_or_concrete_type: &str,
+    generics: &str,
+    aliases: &Aliases
+) -> Option<ConstrainedGenerics> {
+    let concrete_type = str_to_type_name(&get_concrete_type(concrete_type, aliases));
+    let declared_or_concrete_type = str_to_type_name(
+        &get_concrete_type(declared_or_concrete_type, aliases)
+    );
+    let generics = str_to_generics(generics);
+
+    let types = generics.params
         .iter()
-        .map(|g| (g.clone(), None))
+        .filter_map(|p| {
+            match p {
+                GenericParam::Type(tp) => Some((tp.ident.to_string(), None)),
+                _ => None,
+            }
+        })
         .collect();
 
-    if same_type(&t1, &t2, &mut generics_map) {
-        Some(generics_map)
+    let lifetimes = generics.params
+        .iter()
+        .filter_map(|p| {
+            match p {
+                GenericParam::Lifetime(lt) => Some((lt.lifetime.to_string(), None)),
+                _ => None,
+            }
+        })
+        .collect();
+
+    let mut generics = ConstrainedGenerics { types, lifetimes };
+
+    if can_assign(&concrete_type, &declared_or_concrete_type, &mut generics) {
+        Some(generics)
     } else {
         None
     }
 }
 
-/// types can be something like: "T", "&T", "U<T>", "(T, T)", "&[T]"
-/// each of the "T" can be a type, a generic or a "_", which means any type
-pub fn types_equal(type1: &str, type2: &str, generics: &Generics, aliases: &Aliases) -> bool {
-    types_equal_generic_constraints(type1, type2, generics, aliases).is_some()
+pub fn type_assignable(
+    concrete_type: &str,
+    declared_or_concrete_type: &str,
+    generics: &str,
+    aliases: &Aliases
+) -> bool {
+    type_assignable_generic_constraints(
+        concrete_type,
+        declared_or_concrete_type,
+        generics,
+        aliases
+    ).is_some()
 }
 
-// TODO handle nested lifetimes
-
-fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
-    let t1 = unwrap_paren(t1);
-    let t2 = unwrap_paren(t2);
+/// check if concrete_type can be assigned to declared_type
+fn can_assign(
+    concrete_type: &Type,
+    declared_or_concrete_type: &Type,
+    generics: &mut ConstrainedGenerics
+) -> bool {
+    let t1 = unwrap_paren(concrete_type);
+    let t2 = unwrap_paren(declared_or_concrete_type);
 
     match (t1, t2) {
         #![cfg_attr(test, deny(non_exhaustive_omitted_patterns))]
 
         // `_`
-        (t1, t2) if matches!(t1, Type::Infer(_)) || matches!(t2, Type::Infer(_)) => true,
+        (_, Type::Infer(_)) => true,
+        // (t1, t2) if matches!(t1, Type::Infer(_)) || matches!(t2, Type::Infer(_)) => true,
 
         // `T` generic
-        (t1, t2) if
-            matches!(t1, Type::Path(p1) if p1.qself.is_none() && p1.path.segments.len() == 1 && generics.contains_key(&p1.path.segments[0].ident.to_string())) ||
-            matches!(t2, Type::Path(p2) if p2.qself.is_none() && p2.path.segments.len() == 1 && generics.contains_key(&p2.path.segments[0].ident.to_string()))
-        => check_equal_and_assign_generic(&to_string(t1), &to_string(t2), generics),
+        (_, Type::Path(p2)) if
+            p2.qself.is_none() &&
+            p2.path.segments.len() == 1 &&
+            generics.types.contains_key(&p2.path.segments[0].ident.to_string())
+        => check_and_assign_type_generic(&to_string(t1), &to_string(t2), generics),
+        // (t1, t2) if
+        //     matches!(t1, Type::Path(p1) if p1.qself.is_none() && p1.path.segments.len() == 1 && generics.types.contains_key(&p1.path.segments[0].ident.to_string())) ||
+        //     matches!(t2, Type::Path(p2) if p2.qself.is_none() && p2.path.segments.len() == 1 && generics.types.contains_key(&p2.path.segments[0].ident.to_string()))
+        // => check_equal_and_assign_generic(&to_string(t1), &to_string(t2), generics),
 
         // `(T, U)`, `(T, _)`
         (Type::Tuple(tuple1), Type::Tuple(tuple2)) => {
@@ -145,7 +186,7 @@ fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
                 tuple1.elems
                     .iter()
                     .zip(&tuple2.elems)
-                    .all(|(elem1, elem2)| same_type(elem1, elem2, generics))
+                    .all(|(elem1, elem2)| can_assign(elem1, elem2, generics))
         }
 
         // `&T`, `&_`
@@ -153,22 +194,26 @@ fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
             let lt1 = ref1.lifetime.as_ref().map(to_string);
             let lt2 = ref2.lifetime.as_ref().map(to_string);
 
-            let same_lifetime =
-                (lt1.as_ref().is_none() && lt2.as_ref().is_some_and(|lt| lt != "'static")) ||
-                (lt2.as_ref().is_none() && lt1.as_ref().is_some_and(|lt| lt != "'static")) ||
-                lt1 == lt2;
+            // if let Some(lt2) = lt2 {
+            // }
 
-            same_type(&ref1.elem, &ref2.elem, generics) && same_lifetime
+            // let lifetime_assignable = lt2.is_none_or(|lt2| {});
+            // let same_lifetime =
+            //     (lt1.as_ref().is_none() && lt2.as_ref().is_some_and(|lt| lt != "'static")) ||
+            //     (lt2.as_ref().is_none() && lt1.as_ref().is_some_and(|lt| lt != "'static")) ||
+            //     lt1 == lt2;
+            check_and_assign_lifetime_generic(&lt1, &lt2, generics) &&
+                can_assign(&ref1.elem, &ref2.elem, generics)
         }
 
         // `[T]`, `[_]`
         (Type::Slice(slice1), Type::Slice(slice2)) => {
-            same_type(&slice1.elem, &slice2.elem, generics)
+            can_assign(&slice1.elem, &slice2.elem, generics)
         }
 
         // `[T; N]`, `[_; N]`, `[T; _]`, `[_; _]`
         (Type::Array(array1), Type::Array(array2)) => {
-            same_type(&array1.elem, &array2.elem, generics) &&
+            can_assign(&array1.elem, &array2.elem, generics) &&
                 (matches!(array1.len, Expr::Infer(_)) ||
                     matches!(array2.len, Expr::Infer(_)) ||
                     to_string(&array1.len) == to_string(&array2.len))
@@ -176,38 +221,38 @@ fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
 
         // `T`, `T<U>`, `T<_>`
         (Type::Path(path1), Type::Path(path2)) if path1.qself.is_none() && path2.qself.is_none() => {
-            if path1.path.segments.len() == 1 {
-                let key = path1.path.segments.last().unwrap().ident.to_string();
-                if let Some(existing) = generics.get(&key).cloned() {
-                    if let Some(existing_val) = existing {
-                        let existing_ty = str_to_type_name(&existing_val);
-                        return same_type(&existing_ty, t2, generics);
-                    } else {
-                        generics.insert(key.clone(), Some(to_string(t2)));
-                        return true;
-                    }
-                }
-            }
+            // if path1.path.segments.len() == 1 {
+            //     let key = path1.path.segments.last().unwrap().ident.to_string();
+            //     if let Some(existing) = generics.types.get(&key).cloned() {
+            //         if let Some(existing_val) = existing {
+            //             let existing_ty = str_to_type_name(&existing_val);
+            //             return can_assign(&existing_ty, t2, generics);
+            //         } else {
+            //             generics.types.insert(key.clone(), Some(to_string(t2)));
+            //             return true;
+            //         }
+            //     }
+            // }
 
-            if path2.path.segments.len() == 1 {
-                let key = path2.path.segments.last().unwrap().ident.to_string();
-                if let Some(existing) = generics.get(&key).cloned() {
-                    if let Some(existing_val) = existing {
-                        let existing_ty = str_to_type_name(&existing_val);
-                        return same_type(t1, &existing_ty, generics);
-                    } else {
-                        generics.insert(key.clone(), Some(to_string(t1)));
-                        return true;
-                    }
-                }
-            }
+            // if path2.path.segments.len() == 1 {
+            //     let key = path2.path.segments.last().unwrap().ident.to_string();
+            //     if let Some(existing) = generics.types.get(&key).cloned() {
+            //         if let Some(existing_val) = existing {
+            //             let existing_ty = str_to_type_name(&existing_val);
+            //             return can_assign(t1, &existing_ty, generics);
+            //         } else {
+            //             generics.types.insert(key.clone(), Some(to_string(t1)));
+            //             return true;
+            //         }
+            //     }
+            // }
 
             path1.path.segments.len() == path2.path.segments.len() &&
                 path1.path.segments
                     .iter()
                     .zip(&path2.path.segments)
                     .all(|(seg1, seg2)| {
-                        check_equal_and_assign_generic(
+                        check_and_assign_type_generic(
                             &seg1.ident.to_string(),
                             &seg2.ident.to_string(),
                             generics
@@ -225,7 +270,7 @@ fn same_type(t1: &Type, t2: &Type, generics: &mut GenericsMap) -> bool {
                                                 (
                                                     GenericArgument::Type(t1),
                                                     GenericArgument::Type(t2),
-                                                ) => same_type(t1, t2, generics),
+                                                ) => can_assign(t1, t2, generics),
                                                 _ => false,
                                             }
                                         }),
@@ -242,37 +287,91 @@ fn unwrap_paren(ty: &Type) -> &Type {
     if let Type::Paren(paren) = ty { unwrap_paren(&paren.elem) } else { ty }
 }
 
-fn check_equal_and_assign_generic(t1: &str, t2: &str, generics: &mut GenericsMap) -> bool {
-    if t1 == t2 || t1 == "_" || t2 == "_" {
-        return true;
-    }
+fn check_and_assign_type_generic(
+    concrete_type: &str,
+    declared_type: &str,
+    generics: &mut ConstrainedGenerics
+) -> bool {
+    // if concrete_type == declared_type || declared_type == "_" {
+    //     return true;
+    // }
 
-    let t1_generic = generics.get(t1).cloned();
-    let t2_generic = generics.get(t2).cloned();
+    // let t1_generic = generics.types.get(concrete_type).cloned();
+    // let t2_generic = generics.types.get(declared_type).cloned();
+
+    // if
+    //     t1_generic.is_some_and(|v| {
+    //         v.clone().is_none_or(|v|
+    //             can_assign(&str_to_type_name(&v), &str_to_type_name(declared_type), generics)
+    //         )
+    //     })
+    // {
+    //     generics.types.insert(concrete_type.to_string(), Some(declared_type.to_string()));
+    //     return true;
+    // }
 
     if
-        t1_generic.is_some_and(|v| {
-            v.clone().is_none_or(|v|
-                same_type(&str_to_type_name(&v), &str_to_type_name(t2), generics)
-            )
-        })
+        generics.types
+            .get(declared_type)
+            .cloned()
+            .is_some_and(|assigned| {
+                assigned
+                    .clone()
+                    .is_none_or(|assigned|
+                        can_assign(
+                            &str_to_type_name(concrete_type),
+                            &str_to_type_name(&assigned),
+                            generics
+                        )
+                    )
+            })
     {
-        generics.insert(t1.to_string(), Some(t2.to_string()));
+        generics.types.insert(declared_type.to_string(), Some(concrete_type.to_string()));
         return true;
     }
+
+    concrete_type == declared_type || declared_type == "_"
+}
+
+fn check_and_assign_lifetime_generic(
+    concrete_lifetime: &Option<String>,
+    declared_lifetime: &Option<String>,
+    generics: &mut ConstrainedGenerics
+) -> bool {
+    // if concrete_lifetime == declared_type || declared_type == "_" {
+    //     return true;
+    // }
+
+    // let t1_generic = generics.types.get(concrete_type).cloned();
+    // let t2_generic = generics.types.get(declared_type).cloned();
+
+    // if
+    //     t1_generic.is_some_and(|v| {
+    //         v.clone().is_none_or(|v|
+    //             can_assign(&str_to_type_name(&v), &str_to_type_name(declared_type), generics)
+    //         )
+    //     })
+    // {
+    //     generics.types.insert(concrete_type.to_string(), Some(declared_type.to_string()));
+    //     return true;
+    // }
 
     if
-        t2_generic.is_some_and(|v| {
-            v.clone().is_none_or(|v|
-                same_type(&str_to_type_name(&v), &str_to_type_name(t1), generics)
-            )
-        })
+        declared_lifetime.as_ref().is_some_and(|d|
+            generics.lifetimes
+                .get(d)
+                .cloned()
+                .is_some_and(|assigned| { assigned.clone().is_none_or(|assigned| d == &assigned) })
+        )
     {
-        generics.insert(t2.to_string(), Some(t1.to_string()));
+        generics.lifetimes.insert(
+            declared_lifetime.as_ref().unwrap().clone(),
+            concrete_lifetime.clone()
+        );
         return true;
     }
 
-    false
+    declared_lifetime.as_ref().is_none_or(|v| v == "_")
 }
 
 pub fn type_contains(ty: &Type, generic: &str) -> bool {
@@ -465,274 +564,274 @@ mod tests {
 
     #[test]
     fn compare_types_simple() {
-        let mut g = GenericsMap::new();
-
-        let t1 = str_to_type_name("_");
-        let t2 = str_to_type_name("u8");
-        assert!(same_type(&t1, &t2, &mut g));
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("u8");
         let t2 = str_to_type_name("_");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        let t1 = str_to_type_name("_");
-        let t2 = str_to_type_name("_");
-        assert!(same_type(&t1, &t2, &mut g));
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("u8");
+        let t2 = str_to_type_name("T");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
-        let t1 = str_to_type_name("T");
-        let t2 = str_to_type_name("u8");
-        assert!(same_type(&t1, &t2, &mut g));
-
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("T");
         let t2 = str_to_type_name("T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
-        g.insert("U".to_string(), None);
+        g.types.insert("T".to_string(), None);
+        g.types.insert("U".to_string(), None);
         let t1 = str_to_type_name("T");
         let t2 = str_to_type_name("U");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("T");
         let t2 = str_to_type_name("_");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_tuples() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
-        let t1 = str_to_type_name("(u8, _)");
-        let t2 = str_to_type_name("(u8, i32)");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("(u8, i32)");
+        let t2 = str_to_type_name("(u8, _)");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
-        let t1 = str_to_type_name("(u8, T)");
-        let t2 = str_to_type_name("(u8, i32)");
-        assert!(same_type(&t1, &t2, &mut g));
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("(u8, i32)");
+        let t2 = str_to_type_name("(u8, T)");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("(u8, i32)");
         let t2 = str_to_type_name("T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("(u8, i32)");
         let t2 = str_to_type_name("(u8, i32)");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("(u8, i32)");
         let t2 = str_to_type_name("(u8, f32)");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("(u8, i32)");
         let t2 = str_to_type_name("(T, T)");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_references() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&u8");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&_");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("&i8");
         let t2 = str_to_type_name("T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&i8");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_references_with_lifetimes() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("&u8");
         let t2 = str_to_type_name("&u8");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("&'a u8");
         let t2 = str_to_type_name("&u8");
-        assert!(same_type(&t1, &t2, &mut g));
-
-        let t1 = str_to_type_name("&'a u8");
-        let t2 = str_to_type_name("&'a u8");
-        assert!(same_type(&t1, &t2, &mut g));
-
-        let t1 = str_to_type_name("&'a u8");
-        let t2 = str_to_type_name("&'b u8");
-        assert!(!same_type(&t1, &t2, &mut g));
-
-        let t1 = str_to_type_name("&'a u8");
-        let t2 = str_to_type_name("&'static u8");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("&'static u8");
         let t2 = str_to_type_name("&u8");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.lifetimes.insert("'a".to_string(), None);
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'a u8");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.lifetimes.insert("'b".to_string(), None);
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'b u8");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.lifetimes.insert("'a".to_string(), None);
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'static u8");
+        assert!(!can_assign(&t1, &t2, &mut g));
+
+        g.lifetimes.insert("'a".to_string(), None);
+        let t1 = str_to_type_name("&u8");
+        let t2 = str_to_type_name("&'static u8");
+        assert!(!can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_slices() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[u8]");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[_]");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[T]");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8]");
         let t2 = str_to_type_name("[i8]");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_arrays() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[u8; 3]");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[u8; 4]");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[_; 3]");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        let t1 = str_to_type_name("[u8; _]");
-        let t2 = str_to_type_name("[u8; 3]");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("[u8; 3]");
+        let t2 = str_to_type_name("[u8; _]");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        let t1 = str_to_type_name("[_; _]");
-        let t2 = str_to_type_name("[u8; 3]");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("[u8; 3]");
+        let t2 = str_to_type_name("[_; _]");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("[T; 3]");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("[u8; 3]");
         let t2 = str_to_type_name("T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_parens() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((u8))");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("(u8)");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((i32))");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((_))");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("((T))");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("((u8))");
         let t2 = str_to_type_name("T");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_paths() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
         let t1 = str_to_type_name("Vec<u8>");
         let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2, &mut g));
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        let t1 = str_to_type_name("Vec<_>");
-        let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("Vec<u8>");
+        let t2 = str_to_type_name("Vec<_>");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        let t1 = str_to_type_name("_");
-        let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("Vec<u8>");
+        let t2 = str_to_type_name("_");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
-        let t1 = str_to_type_name("Vec<T>");
-        let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2, &mut g));
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("Vec<u8>");
+        let t2 = str_to_type_name("Vec<T>");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
-        let t1 = str_to_type_name("T");
-        let t2 = str_to_type_name("Vec<u8>");
-        assert!(same_type(&t1, &t2, &mut g));
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("Vec<u8>");
+        let t2 = str_to_type_name("T");
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("Vec<u8>");
         let t2 = str_to_type_name("Vec<i32>");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
     }
 
     #[test]
     fn compare_types_nested() {
-        let mut g = GenericsMap::new();
+        let mut g = ConstrainedGenerics::default();
 
-        let t1 = str_to_type_name("Option<(u8, _)>");
-        let t2 = str_to_type_name("Option<(u8, i32)>");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("Option<(u8, i32)>");
+        let t2 = str_to_type_name("Option<(u8, _)>");
+        assert!(can_assign(&t1, &t2, &mut g));
 
-        let t1 = str_to_type_name("Result<Vec<_>, _>");
-        let t2 = str_to_type_name("Result<Vec<u8>, String>");
-        assert!(same_type(&t1, &t2, &mut g));
+        let t1 = str_to_type_name("Result<Vec<u8>, String>");
+        let t2 = str_to_type_name("Result<Vec<_>, _>");
+        assert!(can_assign(&t1, &t2, &mut g));
 
         let t1 = str_to_type_name("Result<Vec<u8>, String>");
         let t2 = str_to_type_name("Result<Vec<i32>, String>");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
 
-        g.insert("T".to_string(), None);
+        g.types.insert("T".to_string(), None);
         let t1 = str_to_type_name("Result<Vec<u8>, String>");
         let t2 = str_to_type_name("Result<T, T>");
-        assert!(!same_type(&t1, &t2, &mut g));
+        assert!(!can_assign(&t1, &t2, &mut g));
     }
 
     #[test]

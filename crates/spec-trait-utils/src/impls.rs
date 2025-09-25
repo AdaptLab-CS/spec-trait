@@ -10,7 +10,7 @@ use crate::conversions::{
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
-use crate::parsing::{ get_generics, handle_type_predicate, parse_generics };
+use crate::parsing::{ get_generics_types, handle_type_predicate, parse_generics };
 use crate::specialize::{
     add_generic,
     apply_type_condition,
@@ -128,8 +128,8 @@ impl ImplBody {
 
         // set missing generics
         let mut trait_generics = str_to_generics(&specialized.trait_generics);
-        let curr_generics = get_generics::<HashSet<_>>(&specialized.trait_generics);
-        for generic in get_generics::<Vec<_>>(&specialized.impl_generics) {
+        let curr_generics = get_generics_types::<HashSet<_>>(&specialized.trait_generics);
+        for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
             if !curr_generics.contains(&generic) {
                 add_generic(&mut trait_generics, &generic);
             }
@@ -324,7 +324,11 @@ mod tests {
             ]
         );
 
+        println!("pre {:#?}", impl_body);
+
         impl_body.apply_condition(&condition);
+
+        println!("post {:#?}", impl_body);
 
         assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<String>".to_string());
         assert_eq!(

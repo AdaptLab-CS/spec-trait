@@ -1,12 +1,12 @@
 use std::cmp::Ordering;
-use std::collections::{ HashMap, HashSet };
-use spec_trait_utils::types::{ types_equal, Aliases };
+use std::collections::{ HashMap };
+use spec_trait_utils::types::{ type_assignable, Aliases };
 
 /// constraint related to a single generic attribute
 #[derive(Debug, Default, Clone)]
 pub struct Constraint {
-    /// the generics that are present in type_ or not_types
-    pub generics: HashSet<String>,
+    /// the generics (types and lifetimes) that are present in type_ or not_types
+    pub generics: String,
     pub type_: Option<String>,
     pub traits: Vec<String>,
     pub not_types: Vec<String>,
@@ -47,11 +47,12 @@ fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
     let a = norm(&this.type_);
     let b = norm(&other.type_);
 
-    let combined_generics = this.generics.union(&other.generics).cloned().collect::<HashSet<_>>();
+    // let combined_generics = this.generics.union(&other.generics).cloned().collect();
+    let combined_generics = this.generics.clone(); // TODO: fix
 
     match (&a, &b) {
         // ('Vec<_>', 'Vec<T>')
-        (Some(a), Some(b)) if types_equal(a, b, &combined_generics, &Aliases::default()) => {
+        (Some(a), Some(b)) if type_assignable(a, b, &combined_generics, &Aliases::default()) => {
             a.replace("_", "").len().cmp(&b.replace("_", "").len())
         }
         _ => a.is_some().cmp(&b.is_some()),
@@ -108,7 +109,7 @@ mod tests {
     #[test]
     fn ordering_by_type() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -116,7 +117,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec![],
             not_types: vec![],
@@ -130,7 +131,7 @@ mod tests {
     #[test]
     fn ordering_by_lifetime() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("&'static TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -138,7 +139,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("&'a TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -152,7 +153,7 @@ mod tests {
     #[test]
     fn ordering_by_type_and_lifetime() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("&'static _".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -160,7 +161,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("&TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -174,7 +175,7 @@ mod tests {
     #[test]
     fn ordering_by_traits() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec!["Trait1".to_string()],
             not_types: vec![],
@@ -182,7 +183,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec!["Trait1".to_string(), "Trait2".to_string()],
             not_types: vec![],
@@ -196,7 +197,7 @@ mod tests {
     #[test]
     fn ordering_by_type_and_traits() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec!["Trait1".to_string()],
             not_types: vec![],
@@ -204,7 +205,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec!["Trait1".to_string(), "Trait2".to_string()],
             not_types: vec![],
@@ -218,7 +219,7 @@ mod tests {
     #[test]
     fn ordering_by_not_types() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec![],
             not_types: vec!["NotType1".to_string()],
@@ -226,7 +227,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec![],
             not_types: vec!["NotType1".to_string(), "NotType2".to_string()],
@@ -240,7 +241,7 @@ mod tests {
     #[test]
     fn ordering_by_not_traits() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec![],
             not_types: vec![],
@@ -248,7 +249,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec![],
             not_types: vec![],
@@ -262,7 +263,7 @@ mod tests {
     #[test]
     fn equal_constraints() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec!["Trait1".to_string()],
             not_types: vec!["NotType1".to_string()],
@@ -270,7 +271,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeB".to_string()),
             traits: vec!["Trait2".to_string()],
             not_types: vec!["NotType2".to_string()],
@@ -285,7 +286,7 @@ mod tests {
     #[test]
     fn ordering_by_type_with_wildcard() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA<TypeB>".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -293,7 +294,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA<_>".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -306,9 +307,8 @@ mod tests {
 
     #[test]
     fn ordering_by_type_with_generics() {
-        let generics = HashSet::from(["T".to_string()]);
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA<TypeB>".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -316,7 +316,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: generics.clone(),
+            generics: "<T>".to_string(),
             type_: Some("TypeA<T>".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -330,7 +330,7 @@ mod tests {
     #[test]
     fn ordering_by_type_only_wildcard() {
         let c1 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec![],
             not_types: vec![],
@@ -338,7 +338,7 @@ mod tests {
         };
 
         let c2 = Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("_".to_string()),
             traits: vec![],
             not_types: vec![],
@@ -354,28 +354,28 @@ mod tests {
         let mut c2 = Constraints::new();
 
         c1.insert("T".to_string(), Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec!["Trait1".to_string()],
             not_types: vec![],
             not_traits: vec![],
         });
         c1.insert("V".to_string(), Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
             not_traits: vec![],
         });
         c2.insert("T".to_string(), Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: Some("TypeB".to_string()),
             traits: vec![],
             not_types: vec![],
             not_traits: vec![],
         });
         c2.insert("U".to_string(), Constraint {
-            generics: HashSet::new(),
+            generics: "".to_string(),
             type_: None,
             traits: vec!["Trait2".to_string()],
             not_types: vec![],

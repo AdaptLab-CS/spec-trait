@@ -8,7 +8,7 @@ use crate::conversions::{
     tokens_to_trait,
 };
 use crate::impls::ImplBody;
-use crate::parsing::{ get_generics, parse_generics };
+use crate::parsing::{ get_generics_types, parse_generics };
 use crate::specialize::{
     add_generic,
     apply_type_condition,
@@ -127,7 +127,7 @@ impl TraitBody {
         let mut generics = str_to_generics(&specialized.generics);
         let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
         let specialized_impl_generics = str_to_generics(impl_generics);
-        for generic in get_generics::<Vec<_>>(impl_generics) {
+        for generic in get_generics_types::<Vec<_>>(impl_generics) {
             if
                 specialized
                     .get_corresponding_generic(&specialized_impl_generics, &generic)
@@ -175,9 +175,9 @@ impl TraitBody {
         let mut trait_generics = str_to_generics(&self.generics);
 
         let mut counter = 0;
-        let mut generics = get_generics(&self.generics);
+        let mut generics = get_generics_types(&self.generics);
 
-        for generic in get_generics::<Vec<_>>(&self.generics) {
+        for generic in get_generics_types::<Vec<_>>(&self.generics) {
             let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
 
             add_generic(&mut trait_generics, &new_generic_name);

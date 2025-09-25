@@ -1,8 +1,7 @@
-use crate::parsing::get_generics;
 use crate::traits::TraitBody;
 use crate::impls::ImplBody;
 use crate::env::get_cache_path;
-use crate::types::{ types_equal, Aliases };
+use crate::types::{ type_assignable, Aliases };
 use serde::{ Deserialize, Serialize };
 use std::fs;
 use std::collections::{ HashMap, HashSet };
@@ -94,7 +93,7 @@ pub fn get_impls_by_type_and_traits(
         .filter(
             |imp|
                 traits_names.contains(&imp.trait_name) &&
-                types_equal(&imp.type_name, type_name, &get_generics(&imp.impl_generics), aliases)
+                type_assignable(&imp.type_name, type_name, &imp.impl_generics, aliases)
         )
         .collect()
 }

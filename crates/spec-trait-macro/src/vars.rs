@@ -7,15 +7,15 @@ use spec_trait_utils::conversions::{
     to_string,
 };
 use spec_trait_utils::impls::ImplBody;
-use spec_trait_utils::parsing::get_generics;
+use spec_trait_utils::parsing::get_generics_types;
 use spec_trait_utils::traits::TraitBody;
 use syn::{ FnArg, TraitItemFn, Type };
 use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
     get_concrete_type,
     type_contains,
-    types_equal,
-    types_equal_generic_constraints,
+    type_assignable,
+    type_assignable_generic_constraints,
     Aliases,
 };
 use crate::SpecBody;
@@ -34,8 +34,8 @@ pub struct VarInfo {
 pub struct VarBody {
     /// map from concrete type to type aliases
     pub aliases: Aliases,
-    /// list of impl generics
-    pub generics: HashSet<String>,
+    /// impl generics
+    pub generics: String,
     /// map from type definition (e.g. generic) to VarInfo
     pub vars: Vec<VarInfo>,
 }
@@ -43,7 +43,7 @@ pub struct VarBody {
 impl From<&SpecBody> for VarBody {
     fn from(spec: &SpecBody) -> Self {
         let aliases = get_type_aliases(&spec.annotations.annotations);
-        let generics = get_generics(&spec.impl_.impl_generics);
+        let generics = spec.impl_.impl_generics.clone();
         let vars = get_vars(&spec.annotations, &spec.impl_, &spec.trait_, &aliases);
         VarBody { aliases, generics, vars }
     }
@@ -67,7 +67,7 @@ fn get_vars(
     trait_: &TraitBody,
     aliases: &Aliases
 ) -> Vec<VarInfo> {
-    get_generics::<Vec<_>>(&impl_.impl_generics)
+    get_generics_types::<Vec<_>>(&impl_.impl_generics)
         .iter()
         .flat_map(|g| {
             let from_type = get_generic_constraints_from_type(g, impl_, ann, aliases);
@@ -166,15 +166,15 @@ fn get_generic_constraints_from_trait(
 
     let mut res = HashSet::new();
 
-    let constrained_generics = types_equal_generic_constraints(
+    let constrained_generics = type_assignable_generic_constraints(
         concrete_type,
         trait_type_definition,
-        &get_generics(&trait_.generics),
+        &trait_.generics,
         aliases
     );
 
     if let Some(generics_map) = constrained_generics {
-        for (generic, constraint) in generics_map {
+        for (generic, constraint) in generics_map.types {
             if let Some(constraint) = constraint {
                 let impl_generic = impl_
                     .get_corresponding_generic(&str_to_generics(&trait_.generics), &generic)
@@ -203,16 +203,16 @@ fn get_generic_constraints_from_type(
         return vec![];
     }
 
-    let constrained_generics = types_equal_generic_constraints(
+    let constrained_generics = type_assignable_generic_constraints(
         &ann.var_type,
         &impl_.type_name,
-        &get_generics(&impl_.impl_generics),
+        &impl_.impl_generics,
         aliases
     );
 
     constrained_generics
         .into_iter()
-        .flat_map(|generics_map| generics_map.into_iter())
+        .flat_map(|generics_map| generics_map.types.into_iter())
         .filter_map(|(generic, constraint)| constraint.map(|c| (c, generic)))
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
@@ -227,7 +227,7 @@ fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<St
     ann.iter()
         .flat_map(|a| {
             match a {
-                Annotation::Trait(t, traits) if types_equal(t, type_, &HashSet::new(), aliases) =>
+                Annotation::Trait(t, traits) if type_assignable(type_, t, "", aliases) =>
                     traits.clone(),
                 _ => vec![],
             }
@@ -244,9 +244,8 @@ fn get_concrete_type_with_lifetime(type_: &str, ann: &[Annotation], aliases: &Al
         .iter()
         .filter_map(|a| {
             match a {
-                Annotation::Lifetime(t, lt) if
-                    types_equal(&concrete_type, t, &HashSet::new(), aliases)
-                => Some(lt.clone()),
+                Annotation::Lifetime(t, lt) if type_assignable(&concrete_type, t, "", aliases) =>
+                    Some(lt.clone()),
                 _ => None,
             }
         })

@@ -1,7 +1,7 @@
 use crate::annotations::AnnotationBody;
 use crate::vars::VarBody;
-use spec_trait_utils::parsing::get_generics;
-use spec_trait_utils::types::{ get_concrete_type, types_equal, Aliases };
+use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::types::{ get_concrete_type, type_assignable, Aliases };
 use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
@@ -90,7 +90,7 @@ fn satisfies_condition(
             let concrete_type_var = var.vars
                 .iter()
                 .find(|v: &_|
-                    types_equal(&concrete_type, &v.concrete_type, &var.generics, &var.aliases)
+                    type_assignable(&concrete_type, &v.concrete_type, &var.generics, &var.aliases)
                 );
 
             let mut new_constraints = constraints.clone();
@@ -103,8 +103,12 @@ fn satisfies_condition(
                     .as_ref()
                     .is_none_or(
                         |t|
-                            types_equal(&concrete_type, t, &var.generics, &Aliases::default()) &&
-                            concrete_type.replace("_", "").len() > t.replace("_", "").len()
+                            type_assignable(
+                                &concrete_type,
+                                t,
+                                &var.generics,
+                                &Aliases::default()
+                            ) && concrete_type.replace("_", "").len() > t.replace("_", "").len()
                     )
             {
                 constraint.type_ = Some(concrete_type.clone());
@@ -114,12 +118,18 @@ fn satisfies_condition(
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
                 generic_var.is_none_or(
-                    |v| !types_equal(&concrete_type, &v.concrete_type, &var.generics, &var.aliases)
+                    |v|
+                        !type_assignable(
+                            &concrete_type,
+                            &v.concrete_type,
+                            &var.generics,
+                            &var.aliases
+                        )
                 ) ||
                 // generic parameter is forbidden to be assigned to this type
                 constraint.not_types
                     .iter()
-                    .any(|t| types_equal(&concrete_type, t, &var.generics, &var.aliases)) ||
+                    .any(|t| type_assignable(&concrete_type, t, &var.generics, &var.aliases)) ||
                 // generic parameter should implement a trait that the type does not implement
                 concrete_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
@@ -155,7 +165,9 @@ fn satisfies_condition(
                 constraint.type_.as_ref().is_some_and(|ty| {
                     let concrete_type_var = var.vars
                         .iter()
-                        .find(|v| types_equal(&v.concrete_type, ty, &var.generics, &var.aliases));
+                        .find(|v|
+                            type_assignable(&v.concrete_type, ty, &var.generics, &var.aliases)
+                        );
                     concrete_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
 
@@ -209,7 +221,7 @@ impl From<&SpecBody> for TokenStream {
 
         let type_ = str_to_type_name(&spec_body.annotations.var_type);
         let trait_ = str_to_trait_name(&impl_body.trait_name);
-        let generics = get_generics_types(spec_body);
+        let generics = get_types_for_generics(spec_body);
         let fn_ = str_to_expr(&spec_body.annotations.fn_);
         let var = str_to_expr(("&".to_owned() + &spec_body.annotations.var).as_str());
         let args = spec_body.annotations.args
@@ -225,10 +237,10 @@ impl From<&SpecBody> for TokenStream {
     }
 }
 
-pub fn get_generics_types(spec: &SpecBody) -> TokenStream {
+pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
     let trait_body = spec.trait_.specialized.as_ref().expect("TraitBody not specialized");
 
-    let types = get_generics::<Vec<_>>(&trait_body.generics)
+    let types = get_generics_types::<Vec<_>>(&trait_body.generics)
         .iter()
         .map(|g| get_type(g.trim(), &spec.constraints))
         .map(|t| str_to_type_name(&t))
@@ -261,7 +273,7 @@ mod tests {
         aliases.insert("MyType".to_string(), vec!["MyOtherType".to_string()]);
         VarBody {
             aliases,
-            generics: vec!["T".into()].into_iter().collect(),
+            generics: "<T>".to_string(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
                 concrete_type: "&'a MyType".into(),
@@ -426,7 +438,7 @@ mod tests {
         );
         let var = VarBody {
             aliases: Aliases::default(),
-            generics: vec!["T".into()].into_iter().collect(),
+            generics: "<T>".to_string(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
                 concrete_type: "Vec<MyType>".into(),
@@ -492,7 +504,7 @@ mod tests {
             spec_body.constraints.get("T".into()),
             Some(
                 &(Constraint {
-                    generics: vec!["T".into(), "U".into()].into_iter().collect(),
+                    generics: "<T, U>".to_string(),
                     type_: Some("& MyType".into()),
                     traits: vec![],
                     not_types: vec![],
@@ -520,7 +532,7 @@ mod tests {
             spec_body.constraints.get("T".into()),
             Some(
                 &(Constraint {
-                    generics: vec!["T".into(), "U".into()].into_iter().collect(),
+                    generics: "<T, U>".to_string(),
                     type_: Some("& MyType".into()),
                     traits: vec![],
                     not_types: vec![],
