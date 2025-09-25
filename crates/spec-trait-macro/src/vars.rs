@@ -1,13 +1,18 @@
 use std::collections::HashSet;
 
-use spec_trait_utils::conversions::{ str_to_generics, str_to_type_name, to_string };
+use spec_trait_utils::conversions::{
+    str_to_generics,
+    str_to_lifetime,
+    str_to_type_name,
+    to_string,
+};
 use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::get_generics;
 use spec_trait_utils::traits::TraitBody;
 use syn::{ FnArg, TraitItemFn, Type };
 use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
-    break_type_lifetime,
+    get_concrete_type,
     type_contains,
     types_equal,
     types_equal_generic_constraints,
@@ -19,12 +24,10 @@ use crate::SpecBody;
 pub struct VarInfo {
     /// if the trait parameter is generic, this is the corresponding generic in the impl
     pub impl_generic: String,
-    /// concrete type with which the fn was called (without lifetime)
+    /// concrete type with which the fn was called
     pub concrete_type: String,
     /// traits implemented by the concrete_type, got from annotations
     pub traits: Vec<String>,
-    /// lifetime for the concrete_type, got from annotations
-    pub lifetime: Option<String>,
 }
 
 #[derive(Debug)]
@@ -184,8 +187,7 @@ fn get_generic_constraints_from_trait(
     res.into_iter()
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
-            concrete_type: break_type_lifetime(&constraint, aliases).0,
-            lifetime: get_type_lifetime(&constraint, &ann.annotations, aliases),
+            concrete_type: get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
         .collect::<Vec<_>>()
@@ -214,8 +216,7 @@ fn get_generic_constraints_from_type(
         .filter_map(|(generic, constraint)| constraint.map(|c| (c, generic)))
         .map(|(constraint, generic)| VarInfo {
             impl_generic: generic,
-            concrete_type: break_type_lifetime(&constraint, aliases).0,
-            lifetime: get_type_lifetime(&constraint, &ann.annotations, aliases),
+            concrete_type: get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
         .collect::<Vec<_>>()
@@ -235,32 +236,43 @@ fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<St
 }
 
 /// Get the lifetime associated with a type from annotations.
-fn get_type_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Option<String> {
-    let ty = str_to_type_name(type_);
-
-    let lt_from_ty = match ty {
-        Type::Reference(r) => r.lifetime.map(|lt| lt.to_string()),
-        _ => None,
-    };
+fn get_concrete_type_with_lifetime(type_: &str, ann: &[Annotation], aliases: &Aliases) -> String {
+    let concrete_type = get_concrete_type(type_, aliases);
+    let ty = str_to_type_name(&concrete_type);
 
     let lt_from_ann = ann
         .iter()
         .filter_map(|a| {
             match a {
-                Annotation::Lifetime(t, lt) if types_equal(t, type_, &HashSet::new(), aliases) =>
-                    Some(lt.clone()),
+                Annotation::Lifetime(t, lt) if
+                    types_equal(&concrete_type, t, &HashSet::new(), aliases)
+                => Some(lt.clone()),
                 _ => None,
             }
         })
-        .collect::<Vec<_>>();
+        .collect::<HashSet<_>>();
 
-    let lifetimes = lt_from_ann.into_iter().chain(lt_from_ty).collect::<Vec<_>>();
+    match ty {
+        Type::Reference(tr) => {
+            let lt_from_ty = tr.clone().lifetime.map(|lt| lt.to_string());
 
-    if lifetimes.len() > 1 {
-        panic!("Multiple lifetimes found for type {}", type_);
+            let lifetimes = lt_from_ann.into_iter().chain(lt_from_ty).collect::<HashSet<_>>();
+
+            match lifetimes.len() {
+                0 => concrete_type,
+                1 => {
+                    let mut tr_with_lifetime = tr.clone();
+                    tr_with_lifetime.lifetime = lifetimes
+                        .iter()
+                        .next()
+                        .map(|lt| str_to_lifetime(lt));
+                    to_string(&Type::Reference(tr_with_lifetime))
+                }
+                _ => panic!("Multiple lifetimes found for type {}", type_),
+            }
+        }
+        _ => concrete_type,
     }
-
-    lifetimes.into_iter().next()
 }
 
 #[cfg(test)]
@@ -364,16 +376,14 @@ mod tests {
                 impl_generic: "T".to_string(),
                 concrete_type: "i32".to_string(),
                 traits: vec!["Debug".to_string()],
-                lifetime: None,
             })
         );
         assert_eq!(
             u,
             &(VarInfo {
                 impl_generic: "U".to_string(),
-                concrete_type: "& i32".to_string(),
+                concrete_type: "& 'static i32".to_string(),
                 traits: vec![],
-                lifetime: Some("'static".to_string()),
             })
         );
         assert_eq!(
@@ -382,7 +392,6 @@ mod tests {
                 impl_generic: "V".to_string(),
                 concrete_type: "MyType".to_string(),
                 traits: vec![],
-                lifetime: None,
             })
         );
     }
@@ -462,9 +471,8 @@ mod tests {
             t,
             &(VarInfo {
                 impl_generic: "T".to_string(),
-                concrete_type: "& i32".to_string(),
+                concrete_type: "& 'a i32".to_string(),
                 traits: vec!["Debug".to_string()],
-                lifetime: Some("'a".to_string()),
             })
         );
         assert_eq!(
@@ -473,7 +481,6 @@ mod tests {
                 impl_generic: "U".to_string(),
                 concrete_type: "u32".to_string(),
                 traits: vec![],
-                lifetime: None,
             })
         );
         assert!(v.is_none());
@@ -481,9 +488,8 @@ mod tests {
             w,
             &(VarInfo {
                 impl_generic: "W".to_string(),
-                concrete_type: "& Vec < i32 >".to_string(),
+                concrete_type: "& 'static Vec < i32 >".to_string(),
                 traits: vec![],
-                lifetime: Some("'static".to_string()),
             })
         );
         assert_eq!(
@@ -492,7 +498,6 @@ mod tests {
                 impl_generic: "X".to_string(),
                 concrete_type: "u32".to_string(),
                 traits: vec![],
-                lifetime: None,
             })
         );
         assert_eq!(
@@ -501,7 +506,6 @@ mod tests {
                 impl_generic: "Y".to_string(),
                 concrete_type: "MyType".to_string(),
                 traits: vec![],
-                lifetime: None,
             })
         );
     }

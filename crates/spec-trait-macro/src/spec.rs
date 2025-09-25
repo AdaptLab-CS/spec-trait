@@ -97,6 +97,7 @@ fn satisfies_condition(
             let constraint = new_constraints.entry(generic.clone()).or_default();
 
             // update the type only if it is more specific than the current one
+            // TODO: add lifetime if not present
             if
                 constraint.type_
                     .as_ref()
@@ -122,39 +123,18 @@ fn satisfies_condition(
                 // generic parameter should implement a trait that the type does not implement
                 concrete_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
-                ) ||
-                // generic parameter should respect a lifetime that the type does not respect
-                concrete_type_var.is_none_or(|v| {
-                    constraint.lifetime.as_ref().is_some_and(|lt| Some(lt.clone()) != v.lifetime)
-                });
+                );
+            //  ||
+            // generic parameter should respect a lifetime that the type does not respect
 
-            (!violates_constraints, new_constraints)
-        }
-        WhenCondition::Lifetime(generic, lifetime) => {
-            let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
+            // concrete_type_var.is_none_or(|v| {
+            //     constraint.lifetime.as_ref().is_some_and(|lt| Some(lt.clone()) != v.lifetime)
+            // })
 
-            let mut new_constraints = constraints.clone();
-            let constraint = new_constraints.entry(generic.clone()).or_default();
-
-            // update the lifetime only if it is more specific than the current one
-            if
-                constraint.lifetime
-                    .as_ref()
-                    .is_none_or(|lt| lt != "'static" && lifetime == "'static")
-            {
-                constraint.lifetime = Some(lifetime.clone());
-                constraint.generics = var.generics.clone();
-            }
-
-            let violates_constraints =
-                // generic parameter is not present in the function parameters or the lifetime does not match
-                generic_var.is_none_or(|v| {
-                    v.lifetime != Some("'static".into()) &&
-                        (lifetime == "'static" ||
-                            v.lifetime.as_ref().is_some_and(|lt| lt != lifetime))
-                }) ||
-                // generic parameter is forbidden to be assigned to this lifetime
-                constraint.not_lifetimes.iter().any(|lt| lt == lifetime);
+            //         generic_var.is_none_or(|v| {
+            //             v.lifetime != Some("'static".into()) &&
+            //                 (lifetime == "'static" ||
+            //                     v.lifetime.as_ref().is_some_and(|lt| lt != lifetime))
 
             (!violates_constraints, new_constraints)
         }
@@ -272,7 +252,6 @@ fn get_type(generic: &str, constraints: &Constraints) -> String {
 mod tests {
     use super::*;
     use std::vec;
-    use std::collections::HashSet;
     use crate::annotations::Annotation;
     use crate::vars::VarInfo;
     use crate::constraints::Constraint;
@@ -285,9 +264,8 @@ mod tests {
             generics: vec!["T".into()].into_iter().collect(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
-                concrete_type: "MyType".into(),
+                concrete_type: "&'a MyType".into(),
                 traits: vec!["MyTrait".into()],
-                lifetime: Some("'a".into()),
             }],
         }
     }
@@ -306,8 +284,11 @@ mod tests {
         AnnotationBody {
             fn_: "foo".to_string(),
             args: vec!["my_arg".to_string()],
-            args_types: vec!["MyType".to_string()],
-            annotations: vec![Annotation::Trait("MyType".to_string(), vec!["MyTrait".to_string()])],
+            args_types: vec!["&MyType".to_string()],
+            annotations: vec![
+                Annotation::Trait("MyType".to_string(), vec!["MyTrait".to_string()]),
+                Annotation::Trait("&MyType".to_string(), vec!["MyTrait".to_string()])
+            ],
             ..Default::default()
         }
     }
@@ -316,10 +297,10 @@ mod tests {
     fn test_satisfies_condition() {
         let condition = WhenCondition::All(
             vec![
-                WhenCondition::Type("T".into(), "MyType".into()),
-                WhenCondition::Type("T".into(), "MyOtherType".into()),
+                WhenCondition::Type("T".into(), "&MyType".into()),
+                WhenCondition::Type("T".into(), "&MyOtherType".into()),
                 WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
-                WhenCondition::Lifetime("T".into(), "'a".into())
+                WhenCondition::Type("T".into(), "&'a _".into())
             ]
         );
 
@@ -332,9 +313,8 @@ mod tests {
         assert!(satisfies);
 
         let c = constraints.get("T".into()).unwrap();
-        assert_eq!(c.type_, Some("MyType".into()));
+        assert_eq!(c.type_, Some("& 'a MyType".into()));
         assert!(c.traits.contains(&"MyTrait".into()));
-        assert!(c.lifetime == Some("'a".into()));
     }
 
     #[test]
@@ -351,53 +331,53 @@ mod tests {
     fn lifetime_respected() {
         let mut var = get_var_body();
 
-        var.vars[0].lifetime = None;
+        var.vars[0].concrete_type = "&MyType".into();
 
-        let condition = WhenCondition::Lifetime("T".into(), "'a".into());
+        let condition = WhenCondition::Type("T".into(), "&'a _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
 
-        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let condition = WhenCondition::Type("T".into(), "&'static _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(!satisfies);
 
-        var.vars[0].lifetime = Some("'a".into());
+        var.vars[0].concrete_type = "&'a MyType".into();
 
-        let condition = WhenCondition::Lifetime("T".into(), "'a".into());
+        let condition = WhenCondition::Type("T".into(), "&'a _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
 
-        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let condition = WhenCondition::Type("T".into(), "&'static _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(!satisfies);
 
-        var.vars[0].lifetime = Some("'static".into());
+        var.vars[0].concrete_type = "&'static MyType".into();
 
-        let condition = WhenCondition::Lifetime("T".into(), "'a".into());
+        let condition = WhenCondition::Type("T".into(), "&'a _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
 
-        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let condition = WhenCondition::Type("T".into(), "&'static _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
     }
 
     #[test]
     fn lifetime_not_respected() {
-        let condition = WhenCondition::Lifetime("T".into(), "'static".into());
+        let condition = WhenCondition::Type("T".into(), "&'static _".into());
         let mut var = get_var_body();
 
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(!satisfies);
 
-        var.vars[0].lifetime = None;
+        var.vars[0].concrete_type = "&MyType".into();
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(!satisfies);
     }
 
     #[test]
     fn trait_not_respected() {
-        let condition = WhenCondition::Trait("T".into(), vec!["AnotherTrait".into()]);
+        let condition = WhenCondition::Trait("T".into(), vec!["&AnotherTrait".into()]);
         let var = get_var_body();
 
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
@@ -409,8 +389,8 @@ mod tests {
     fn type_forbidden() {
         let condition = WhenCondition::All(
             vec![
-                WhenCondition::Type("T".into(), "MyType".into()),
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "MyType".into())))
+                WhenCondition::Type("T".into(), "&MyType".into()),
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "&MyType".into())))
             ]
         );
         let var = get_var_body();
@@ -424,8 +404,8 @@ mod tests {
     fn lifetime_forbidden() {
         let condition = WhenCondition::All(
             vec![
-                WhenCondition::Lifetime("T".into(), "'static".into()),
-                WhenCondition::Not(Box::new(WhenCondition::Lifetime("T".into(), "'static".into())))
+                WhenCondition::Type("T".into(), "&'a _".into()),
+                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "&'a _".into())))
             ]
         );
         let var = get_var_body();
@@ -451,7 +431,6 @@ mod tests {
                 impl_generic: "T".into(),
                 concrete_type: "Vec<MyType>".into(),
                 traits: vec![],
-                lifetime: None,
             }],
         };
 
@@ -500,7 +479,7 @@ mod tests {
 
     #[test]
     fn single_impl() {
-        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into())))];
+        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into())))];
         let traits = vec![get_trait_body(&impls[0])];
         let annotations = get_annotation_body();
 
@@ -513,12 +492,10 @@ mod tests {
             spec_body.constraints.get("T".into()),
             Some(
                 &(Constraint {
-                    generics: HashSet::new(),
-                    type_: Some("MyType".into()),
-                    lifetime: None,
+                    generics: vec!["T".into(), "U".into()].into_iter().collect(),
+                    type_: Some("& MyType".into()),
                     traits: vec![],
                     not_types: vec![],
-                    not_lifetimes: vec![],
                     not_traits: vec![],
                 })
             )
@@ -528,7 +505,7 @@ mod tests {
     #[test]
     fn multiple_impls() {
         let impls = vec![
-            get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into()))),
+            get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into()))),
             get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyTrait".into()])))
         ];
         let traits = vec![get_trait_body(&impls[0])];
@@ -543,12 +520,10 @@ mod tests {
             spec_body.constraints.get("T".into()),
             Some(
                 &(Constraint {
-                    generics: HashSet::new(),
-                    type_: Some("MyType".into()),
-                    lifetime: None,
+                    generics: vec!["T".into(), "U".into()].into_iter().collect(),
+                    type_: Some("& MyType".into()),
                     traits: vec![],
                     not_types: vec![],
-                    not_lifetimes: vec![],
                     not_traits: vec![],
                 })
             )
@@ -558,8 +533,8 @@ mod tests {
     #[test]
     fn multiple_equally_specific_impls() {
         let impls = vec![
-            get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into()))),
-            get_impl_body(Some(WhenCondition::Type("T".into(), "MyType".into())))
+            get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into()))),
+            get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into())))
         ];
         let traits = vec![get_trait_body(&impls[0]), get_trait_body(&impls[1])];
         let annotations = get_annotation_body();
@@ -573,7 +548,7 @@ mod tests {
     #[test]
     fn no_valid_impl() {
         let impls = vec![
-            get_impl_body(Some(WhenCondition::Type("T".into(), "MyOtherType".into()))),
+            get_impl_body(Some(WhenCondition::Type("T".into(), "&MyOtherType".into()))),
             get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyOtherTrait".into()])))
         ];
         let traits = vec![get_trait_body(&impls[0]), get_trait_body(&impls[1])];

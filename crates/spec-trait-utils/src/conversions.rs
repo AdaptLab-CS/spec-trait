@@ -5,6 +5,7 @@ use syn::{
     ImplItem,
     ItemImpl,
     ItemTrait,
+    Lifetime,
     Path,
     PredicateType,
     Result,
@@ -28,6 +29,10 @@ pub fn str_to_trait_name(str: &str) -> Path {
 
 pub fn str_to_type_name(str: &str) -> Type {
     syn::parse_str(str).expect("Failed to parse type")
+}
+
+pub fn str_to_lifetime(str: &str) -> Lifetime {
+    syn::parse_str(str).expect("Failed to parse lifetime")
 }
 
 pub fn strs_to_impl_items(strs: &[String]) -> Vec<ImplItem> {

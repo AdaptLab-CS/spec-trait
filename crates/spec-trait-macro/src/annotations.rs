@@ -24,17 +24,8 @@ pub struct AnnotationBody {
 
 struct Annotations(Vec<Annotation>);
 impl ParseTypeOrLifetimeOrTrait<Annotations> for Annotation {
-    fn from_type(ident: String, type_name: String, lifetime: Option<String>) -> Annotations {
-        match lifetime {
-            Some(lt) =>
-                Annotations(
-                    vec![
-                        Annotation::Alias(ident.clone(), type_name),
-                        Annotation::Lifetime(ident, lt)
-                    ]
-                ),
-            None => Annotations(vec![Annotation::Alias(ident, type_name)]),
-        }
+    fn from_type(ident: String, type_name: String) -> Annotations {
+        Annotations(vec![Annotation::Alias(ident, type_name)])
     }
 
     fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Annotations {

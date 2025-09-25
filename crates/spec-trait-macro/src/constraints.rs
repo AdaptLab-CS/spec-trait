@@ -8,10 +8,8 @@ pub struct Constraint {
     /// the generics that are present in type_ or not_types
     pub generics: HashSet<String>,
     pub type_: Option<String>,
-    pub lifetime: Option<String>,
     pub traits: Vec<String>,
     pub not_types: Vec<String>,
-    pub not_lifetimes: Vec<String>,
     pub not_traits: Vec<String>,
 }
 
@@ -20,10 +18,8 @@ pub type Constraints = HashMap<String /* type definition (generic) */, Constrain
 impl Ord for Constraint {
     fn cmp(&self, other: &Self) -> Ordering {
         cmp_type(self, other)
-            .then(cmp_lifetime(self, other))
             .then(self.traits.len().cmp(&other.traits.len()))
             .then(self.not_types.len().cmp(&other.not_types.len()))
-            .then(self.not_lifetimes.len().cmp(&other.not_lifetimes.len()))
             .then(self.not_traits.len().cmp(&other.not_traits.len()))
     }
 }
@@ -62,18 +58,6 @@ fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
     }
 }
 
-fn cmp_lifetime(this: &Constraint, other: &Constraint) -> Ordering {
-    // `Some("'a")` = `None`
-    fn norm(ty: &Option<String>) -> Option<String> {
-        ty.as_ref().and_then(|s| if s != "'static" { None } else { Some(s.clone()) })
-    }
-
-    let a = norm(&this.lifetime);
-    let b = norm(&other.lifetime);
-
-    a.cmp(&b)
-}
-
 pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {
     let all_keys: Vec<&String> = {
         let mut keys = this.keys().chain(other.keys()).collect::<Vec<_>>();
@@ -107,16 +91,11 @@ impl Constraint {
         if self.not_types.len() > 1 {
             panic!("can't reverse with multiple not_types");
         }
-        if self.not_lifetimes.len() > 1 {
-            panic!("can't reverse with multiple not_lifetimes");
-        }
         Constraint {
             generics: self.generics.clone(),
             type_: self.not_types.first().cloned(),
-            lifetime: self.not_lifetimes.first().cloned(),
             traits: self.not_traits.clone(),
             not_types: self.type_.clone().into_iter().collect(),
-            not_lifetimes: self.lifetime.clone().into_iter().collect(),
             not_traits: self.traits.clone(),
         }
     }
@@ -131,20 +110,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
@@ -156,21 +131,17 @@ mod tests {
     fn ordering_by_lifetime() {
         let c1 = Constraint {
             generics: HashSet::new(),
-            type_: None,
-            lifetime: Some("'static".to_string()),
+            type_: Some("&'static TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
-            type_: None,
-            lifetime: Some("'a".to_string()),
+            type_: Some("&'a TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
@@ -179,29 +150,69 @@ mod tests {
     }
 
     #[test]
+    fn ordering_by_type_and_lifetime() {
+        let c1 = Constraint {
+            generics: HashSet::new(),
+            type_: Some("&'static _".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            generics: HashSet::new(),
+            type_: Some("&TypeA".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert!(c1 < c2);
+        assert!(c2 > c1);
+    }
+
+    #[test]
     fn ordering_by_traits() {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec!["Trait1".to_string()],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec!["Trait1".to_string(), "Trait2".to_string()],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         assert!(c1 < c2);
         assert!(c2 > c1);
+    }
+
+    #[test]
+    fn ordering_by_type_and_traits() {
+        let c1 = Constraint {
+            generics: HashSet::new(),
+            type_: Some("TypeA".to_string()),
+            traits: vec!["Trait1".to_string()],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            generics: HashSet::new(),
+            type_: None,
+            traits: vec!["Trait1".to_string(), "Trait2".to_string()],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert!(c1 > c2);
+        assert!(c2 < c1);
     }
 
     #[test]
@@ -209,46 +220,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec![],
             not_types: vec!["NotType1".to_string()],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec![],
             not_types: vec!["NotType1".to_string(), "NotType2".to_string()],
-            not_lifetimes: vec![],
-            not_traits: vec![],
-        };
-
-        assert!(c1 < c2);
-        assert!(c2 > c1);
-    }
-
-    #[test]
-    fn ordering_by_not_lifetimes() {
-        let c1 = Constraint {
-            generics: HashSet::new(),
-            type_: None,
-            lifetime: None,
-            traits: vec![],
-            not_types: vec![],
-            not_lifetimes: vec!["'a".to_string()],
-            not_traits: vec![],
-        };
-
-        let c2 = Constraint {
-            generics: HashSet::new(),
-            type_: None,
-            lifetime: None,
-            traits: vec![],
-            not_types: vec![],
-            not_lifetimes: vec!["'a".to_string(), "'b".to_string()],
             not_traits: vec![],
         };
 
@@ -261,20 +242,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec!["NotTrait1".to_string()],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec!["NotTrait1".to_string(), "NotTrait2".to_string()],
         };
 
@@ -287,20 +264,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA".to_string()),
-            lifetime: Some("'a".to_string()),
             traits: vec!["Trait1".to_string()],
             not_types: vec!["NotType1".to_string()],
-            not_lifetimes: vec!["'b".to_string()],
             not_traits: vec!["NotTrait1".to_string()],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: Some("TypeB".to_string()),
-            lifetime: None,
             traits: vec!["Trait2".to_string()],
             not_types: vec!["NotType2".to_string()],
-            not_lifetimes: vec!["'a".to_string()],
             not_traits: vec!["NotTrait2".to_string()],
         };
 
@@ -314,20 +287,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA<TypeB>".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA<_>".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
@@ -341,20 +310,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA<TypeB>".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: generics.clone(),
             type_: Some("TypeA<T>".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
@@ -367,45 +332,16 @@ mod tests {
         let c1 = Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
             generics: HashSet::new(),
             type_: Some("_".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
-            not_traits: vec![],
-        };
-
-        assert_eq!(c1, c2);
-    }
-
-    #[test]
-    fn ordering_by_lifetime_generic() {
-        let c1 = Constraint {
-            generics: HashSet::new(),
-            type_: None,
-            lifetime: Some("'a".to_string()),
-            traits: vec![],
-            not_types: vec![],
-            not_lifetimes: vec![],
-            not_traits: vec![],
-        };
-
-        let c2 = Constraint {
-            generics: HashSet::new(),
-            type_: None,
-            lifetime: Some("'b".to_string()),
-            traits: vec![],
-            not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         };
 
@@ -420,37 +356,29 @@ mod tests {
         c1.insert("T".to_string(), Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA".to_string()),
-            lifetime: None,
             traits: vec!["Trait1".to_string()],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         });
         c1.insert("V".to_string(), Constraint {
             generics: HashSet::new(),
             type_: Some("TypeA".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         });
         c2.insert("T".to_string(), Constraint {
             generics: HashSet::new(),
             type_: Some("TypeB".to_string()),
-            lifetime: None,
             traits: vec![],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         });
         c2.insert("U".to_string(), Constraint {
             generics: HashSet::new(),
             type_: None,
-            lifetime: None,
             traits: vec!["Trait2".to_string()],
             not_types: vec![],
-            not_lifetimes: vec![],
             not_traits: vec![],
         });
 

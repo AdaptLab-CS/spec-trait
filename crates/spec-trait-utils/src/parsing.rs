@@ -15,10 +15,9 @@ use syn::parse::ParseStream;
 use quote::ToTokens;
 use crate::conversions::{ str_to_generics, to_string };
 use crate::specialize::{ add_generic, collect_generics };
-use crate::types::{ break_type_lifetime, Aliases };
 
 pub trait ParseTypeOrLifetimeOrTrait<T> {
-    fn from_type(ident: String, type_name: String, lifetime: Option<String>) -> T;
+    fn from_type(ident: String, type_name: String) -> T;
     fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> T;
 }
 
@@ -47,10 +46,7 @@ fn parse_type<T: ParseTypeOrLifetimeOrTrait<U>, U>(
 ) -> Result<U, Error> {
     input.parse::<Token![=]>()?; // consume the '=' token
     let type_ = input.parse::<Type>()?;
-
-    let (type_name, lifetime) = break_type_lifetime(&to_string(&type_), &Aliases::new());
-
-    Ok(T::from_type(ident.to_string(), type_name, lifetime))
+    Ok(T::from_type(ident.to_string(), to_string(&type_)))
 }
 
 fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
@@ -188,13 +184,13 @@ mod tests {
 
     #[derive(Debug, PartialEq)]
     enum MockTypeOrTrait {
-        Type(String, String, Option<String>), // (ident, type_name, lifetime)
+        Type(String, String), // (ident, type_name)
         Trait(String, Vec<String>, Option<String>), // (ident, traits, lifetime)
     }
 
     impl ParseTypeOrLifetimeOrTrait<MockTypeOrTrait> for MockTypeOrTrait {
-        fn from_type(ident: String, type_name: String, lifetime: Option<String>) -> Self {
-            MockTypeOrTrait::Type(ident, type_name, lifetime)
+        fn from_type(ident: String, type_name: String) -> Self {
+            MockTypeOrTrait::Type(ident, type_name)
         }
 
         fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Self {
@@ -215,7 +211,7 @@ mod tests {
 
         let result: MockTypeOrTrait = parse2(input).unwrap();
 
-        assert_eq!(result, MockTypeOrTrait::Type("MyType".to_string(), "u32".to_string(), None));
+        assert_eq!(result, MockTypeOrTrait::Type("MyType".to_string(), "u32".to_string()));
     }
 
     #[test]
@@ -226,11 +222,7 @@ mod tests {
 
         assert_eq!(
             result,
-            MockTypeOrTrait::Type(
-                "MyType".to_string(),
-                "& u32".to_string(),
-                Some("'static".to_string())
-            )
+            MockTypeOrTrait::Type("MyType".to_string(), "& 'static u32".to_string())
         );
     }
 
