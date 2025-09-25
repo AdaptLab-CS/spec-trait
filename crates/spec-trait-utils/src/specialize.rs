@@ -3,7 +3,7 @@ use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
 use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
 use crate::conversions::str_to_type_name;
-use crate::types::{ replace_infers, replace_type, type_assignable, Aliases };
+use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
 use crate::conditions::WhenCondition;
 
 // TODO: infer lifetimes as well
@@ -26,25 +26,12 @@ pub fn get_assignable_conditions(
                 WhenCondition::Type(g, t) => {
                     let types = get_generic_types_from_conditions(g, conditions);
                     let most_specific = types.last() == Some(t);
-                    let diff_types = types.iter().any(|other_t| {
-                        println!(
-                            "t {} <- other_t {}: {} ",
-                            t,
-                            other_t,
-                            type_assignable(t, other_t, &generics, &Aliases::default())
+                    let diff_types = types
+                        .iter()
+                        .any(
+                            |other_t|
+                                !types_equal(t, other_t, &generics, &generics, &Aliases::default())
                         );
-                        println!(
-                            "t {} <- other_t {}: {} ",
-                            other_t,
-                            t,
-                            type_assignable(other_t, t, &generics, &Aliases::default())
-                        );
-
-                        // TODO: fix "t Vec<_> <- other_t Vec<V>: false"
-
-                        !type_assignable(t, other_t, &generics, &Aliases::default()) ||
-                            !type_assignable(other_t, t, &generics, &Aliases::default())
-                    });
 
                     if diff_types || !most_specific {
                         None
@@ -105,8 +92,8 @@ pub fn apply_type_condition<T: Specializable>(
 
     // add new generics
     for generic in new_generics {
-        add_generic(generics, &generic);
-        add_generic(other_generics, &generic);
+        add_generic_type(generics, &generic);
+        add_generic_type(other_generics, &generic);
     }
 
     // remove generic
@@ -144,7 +131,19 @@ pub fn collect_generics_types<T: FromIterator<String>>(generics: &Generics) -> T
         .collect()
 }
 
-pub fn add_generic(generics: &mut Generics, generic: &str) {
+pub fn collect_generics_lifetimes<T: FromIterator<String>>(generics: &Generics) -> T {
+    generics.params
+        .iter()
+        .filter_map(|p| {
+            match p {
+                GenericParam::Lifetime(lt) => Some(lt.lifetime.to_string()),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
+pub fn add_generic_type(generics: &mut Generics, generic: &str) {
     generics.params.push(
         GenericParam::Type(TypeParam {
             attrs: vec![],
@@ -173,7 +172,7 @@ mod tests {
         let collected: Vec<_> = collect_generics_types(&gens);
         assert_eq!(collected, vec!["U".to_string()]);
 
-        add_generic(&mut gens, "V");
+        add_generic_type(&mut gens, "V");
         let collected: Vec<_> = collect_generics_types(&gens);
         assert_eq!(collected, vec!["U".to_string(), "V".to_string()]);
     }

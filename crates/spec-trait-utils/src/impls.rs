@@ -12,7 +12,7 @@ use crate::conversions::{
 use crate::conditions::WhenCondition;
 use crate::parsing::{ get_generics_types, handle_type_predicate, parse_generics };
 use crate::specialize::{
-    add_generic,
+    add_generic_type,
     apply_type_condition,
     get_assignable_conditions,
     Specializable,
@@ -131,7 +131,7 @@ impl ImplBody {
         let curr_generics = get_generics_types::<HashSet<_>>(&specialized.trait_generics);
         for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
             if !curr_generics.contains(&generic) {
-                add_generic(&mut trait_generics, &generic);
+                add_generic_type(&mut trait_generics, &generic);
             }
         }
         specialized.trait_generics = to_string(&trait_generics);

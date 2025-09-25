@@ -14,7 +14,7 @@ use syn::{
 use syn::parse::ParseStream;
 use quote::ToTokens;
 use crate::conversions::{ str_to_generics, to_string };
-use crate::specialize::{ add_generic, collect_generics_types };
+use crate::specialize::{ add_generic_type, collect_generics_types };
 
 pub trait ParseTypeOrLifetimeOrTrait<T> {
     fn from_type(ident: String, type_name: String) -> T;
@@ -125,7 +125,7 @@ pub fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics)
     let param = match find_type_param_mut(generics, ident) {
         Some(p) => p,
         None => {
-            add_generic(generics, ident);
+            add_generic_type(generics, ident);
             find_type_param_mut(generics, ident).unwrap()
         }
     };

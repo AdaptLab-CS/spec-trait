@@ -1,6 +1,10 @@
 use std::cmp::Ordering;
 use std::collections::{ HashMap };
-use spec_trait_utils::types::{ type_assignable, Aliases };
+use proc_macro2::TokenStream;
+use spec_trait_utils::conversions::{ str_to_generics, str_to_type_name, to_string };
+use spec_trait_utils::types::{ replace_type, strip_lifetimes, types_equal, Aliases };
+use spec_trait_utils::parsing::{ get_generics_types };
+use syn::Type;
 
 /// constraint related to a single generic attribute
 #[derive(Debug, Default, Clone)]
@@ -17,7 +21,7 @@ pub type Constraints = HashMap<String /* type definition (generic) */, Constrain
 
 impl Ord for Constraint {
     fn cmp(&self, other: &Self) -> Ordering {
-        cmp_type(self, other)
+        cmp_type_and_lifetimes(self, other)
             .then(self.traits.len().cmp(&other.traits.len()))
             .then(self.not_types.len().cmp(&other.not_types.len()))
             .then(self.not_traits.len().cmp(&other.not_traits.len()))
@@ -38,8 +42,7 @@ impl PartialEq for Constraint {
 
 impl Eq for Constraint {}
 
-fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
-    // `Some("_")` = `None`
+fn cmp_type_and_lifetimes(this: &Constraint, other: &Constraint) -> Ordering {
     fn norm(ty: &Option<String>) -> Option<String> {
         ty.as_ref().and_then(|s| if s == "_" { None } else { Some(s.clone()) })
     }
@@ -47,13 +50,43 @@ fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
     let a = norm(&this.type_);
     let b = norm(&other.type_);
 
-    // let combined_generics = this.generics.union(&other.generics).cloned().collect();
-    let combined_generics = this.generics.clone(); // TODO: fix
-
     match (&a, &b) {
         // ('Vec<_>', 'Vec<T>')
-        (Some(a), Some(b)) if type_assignable(a, b, &combined_generics, &Aliases::default()) => {
-            a.replace("_", "").len().cmp(&b.replace("_", "").len())
+        (Some(a), Some(b)) if
+            types_equal(a, b, &this.generics, &other.generics, &Aliases::default())
+        => {
+            let mut a = str_to_type_name(a);
+            let mut b = str_to_type_name(b);
+
+            let empty_type = Type::Verbatim(TokenStream::new());
+
+            // replace infers, generic types and lifetimes
+            replace_type(&mut a, "_", &empty_type);
+            strip_lifetimes(&mut a, &str_to_generics(&this.generics));
+            for g in get_generics_types::<Vec<_>>(&this.generics) {
+                replace_type(&mut a, &g, &empty_type);
+            }
+
+            // replace infers, generic types and lifetimes
+            replace_type(&mut b, "_", &empty_type);
+            strip_lifetimes(&mut b, &str_to_generics(&other.generics));
+            for g in get_generics_types::<Vec<_>>(&other.generics) {
+                replace_type(&mut b, &g, &empty_type);
+            }
+
+            let a_with_static_lifetimes = a.clone();
+            let b_with_static_lifetimes = b.clone();
+
+            // replace 'static as well to compare types
+            strip_lifetimes(&mut a, &str_to_generics("<'static>"));
+            strip_lifetimes(&mut b, &str_to_generics("<'static>"));
+
+            let cmp_type = to_string(&a).len().cmp(&to_string(&b).len());
+            let cmp_lifetime = to_string(&a_with_static_lifetimes)
+                .len()
+                .cmp(&to_string(&b_with_static_lifetimes).len());
+
+            cmp_type.then(cmp_lifetime)
         }
         _ => a.is_some().cmp(&b.is_some()),
     }
@@ -126,21 +159,18 @@ mod tests {
 
         assert!(c1 > c2);
         assert!(c2 < c1);
-    }
 
-    #[test]
-    fn ordering_by_lifetime() {
         let c1 = Constraint {
             generics: "".to_string(),
-            type_: Some("&'static TypeA".to_string()),
+            type_: Some("T".to_string()),
             traits: vec![],
             not_types: vec![],
             not_traits: vec![],
         };
 
         let c2 = Constraint {
-            generics: "".to_string(),
-            type_: Some("&'a TypeA".to_string()),
+            generics: "<T>".to_string(),
+            type_: Some("T".to_string()),
             traits: vec![],
             not_types: vec![],
             not_traits: vec![],
@@ -148,6 +178,66 @@ mod tests {
 
         assert!(c1 > c2);
         assert!(c2 < c1);
+
+        let c1 = Constraint {
+            generics: "".to_string(),
+            type_: Some("T".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            generics: "".to_string(),
+            type_: Some("_".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert!(c1 > c2);
+        assert!(c2 < c1);
+    }
+
+    #[test]
+    fn ordering_by_lifetime() {
+        let c1 = Constraint {
+            generics: "".to_string(),
+            type_: Some("&'static T".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            generics: "<'a>".to_string(),
+            type_: Some("&'a T".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert!(c1 > c2);
+        assert!(c2 < c1);
+
+        let c1 = Constraint {
+            generics: "<'a, 'b>".to_string(),
+            type_: Some("&'a T<&'b T>".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        let c2 = Constraint {
+            generics: "<'c>".to_string(),
+            type_: Some("&'c T<&'static T>".to_string()),
+            traits: vec![],
+            not_types: vec![],
+            not_traits: vec![],
+        };
+
+        assert!(c1 < c2);
+        assert!(c2 > c1);
     }
 
     #[test]

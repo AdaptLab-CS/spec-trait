@@ -1,9 +1,15 @@
 use std::collections::{ HashMap, HashSet };
-use crate::conversions::{ str_to_generics, str_to_type_name, to_string };
+use crate::{
+    conversions::{ str_to_generics, str_to_type_name, to_string },
+    specialize::collect_generics_lifetimes,
+};
+use proc_macro2::Span;
 use syn::{
     Expr,
     GenericArgument,
     GenericParam,
+    Generics,
+    Ident,
     PathArguments,
     Type,
     TypeArray,
@@ -153,6 +159,16 @@ pub fn type_assignable(
     ).is_some()
 }
 
+pub fn types_equal(
+    t1: &str,
+    t2: &str,
+    t1_generics: &str,
+    t2_generics: &str,
+    aliases: &Aliases
+) -> bool {
+    type_assignable(t1, t2, t2_generics, aliases) || type_assignable(t2, t1, t1_generics, aliases)
+}
+
 /// check if concrete_type can be assigned to declared_type
 fn can_assign(
     concrete_type: &Type,
@@ -167,7 +183,7 @@ fn can_assign(
 
         // `_`
         (_, Type::Infer(_)) => true,
-        // (t1, t2) if matches!(t1, Type::Infer(_)) || matches!(t2, Type::Infer(_)) => true,
+        (Type::Infer(_), _) => true,
 
         // `T` generic
         (_, Type::Path(p2)) if
@@ -175,10 +191,6 @@ fn can_assign(
             p2.path.segments.len() == 1 &&
             generics.types.contains_key(&p2.path.segments[0].ident.to_string())
         => check_and_assign_type_generic(&to_string(t1), &to_string(t2), generics),
-        // (t1, t2) if
-        //     matches!(t1, Type::Path(p1) if p1.qself.is_none() && p1.path.segments.len() == 1 && generics.types.contains_key(&p1.path.segments[0].ident.to_string())) ||
-        //     matches!(t2, Type::Path(p2) if p2.qself.is_none() && p2.path.segments.len() == 1 && generics.types.contains_key(&p2.path.segments[0].ident.to_string()))
-        // => check_equal_and_assign_generic(&to_string(t1), &to_string(t2), generics),
 
         // `(T, U)`, `(T, _)`
         (Type::Tuple(tuple1), Type::Tuple(tuple2)) => {
@@ -194,14 +206,6 @@ fn can_assign(
             let lt1 = ref1.lifetime.as_ref().map(to_string);
             let lt2 = ref2.lifetime.as_ref().map(to_string);
 
-            // if let Some(lt2) = lt2 {
-            // }
-
-            // let lifetime_assignable = lt2.is_none_or(|lt2| {});
-            // let same_lifetime =
-            //     (lt1.as_ref().is_none() && lt2.as_ref().is_some_and(|lt| lt != "'static")) ||
-            //     (lt2.as_ref().is_none() && lt1.as_ref().is_some_and(|lt| lt != "'static")) ||
-            //     lt1 == lt2;
             check_and_assign_lifetime_generic(&lt1, &lt2, generics) &&
                 can_assign(&ref1.elem, &ref2.elem, generics)
         }
@@ -221,32 +225,6 @@ fn can_assign(
 
         // `T`, `T<U>`, `T<_>`
         (Type::Path(path1), Type::Path(path2)) if path1.qself.is_none() && path2.qself.is_none() => {
-            // if path1.path.segments.len() == 1 {
-            //     let key = path1.path.segments.last().unwrap().ident.to_string();
-            //     if let Some(existing) = generics.types.get(&key).cloned() {
-            //         if let Some(existing_val) = existing {
-            //             let existing_ty = str_to_type_name(&existing_val);
-            //             return can_assign(&existing_ty, t2, generics);
-            //         } else {
-            //             generics.types.insert(key.clone(), Some(to_string(t2)));
-            //             return true;
-            //         }
-            //     }
-            // }
-
-            // if path2.path.segments.len() == 1 {
-            //     let key = path2.path.segments.last().unwrap().ident.to_string();
-            //     if let Some(existing) = generics.types.get(&key).cloned() {
-            //         if let Some(existing_val) = existing {
-            //             let existing_ty = str_to_type_name(&existing_val);
-            //             return can_assign(t1, &existing_ty, generics);
-            //         } else {
-            //             generics.types.insert(key.clone(), Some(to_string(t1)));
-            //             return true;
-            //         }
-            //     }
-            // }
-
             path1.path.segments.len() == path2.path.segments.len() &&
                 path1.path.segments
                     .iter()
@@ -292,24 +270,6 @@ fn check_and_assign_type_generic(
     declared_type: &str,
     generics: &mut ConstrainedGenerics
 ) -> bool {
-    // if concrete_type == declared_type || declared_type == "_" {
-    //     return true;
-    // }
-
-    // let t1_generic = generics.types.get(concrete_type).cloned();
-    // let t2_generic = generics.types.get(declared_type).cloned();
-
-    // if
-    //     t1_generic.is_some_and(|v| {
-    //         v.clone().is_none_or(|v|
-    //             can_assign(&str_to_type_name(&v), &str_to_type_name(declared_type), generics)
-    //         )
-    //     })
-    // {
-    //     generics.types.insert(concrete_type.to_string(), Some(declared_type.to_string()));
-    //     return true;
-    // }
-
     if
         generics.types
             .get(declared_type)
@@ -338,24 +298,6 @@ fn check_and_assign_lifetime_generic(
     declared_lifetime: &Option<String>,
     generics: &mut ConstrainedGenerics
 ) -> bool {
-    // if concrete_lifetime == declared_type || declared_type == "_" {
-    //     return true;
-    // }
-
-    // let t1_generic = generics.types.get(concrete_type).cloned();
-    // let t2_generic = generics.types.get(declared_type).cloned();
-
-    // if
-    //     t1_generic.is_some_and(|v| {
-    //         v.clone().is_none_or(|v|
-    //             can_assign(&str_to_type_name(&v), &str_to_type_name(declared_type), generics)
-    //         )
-    //     })
-    // {
-    //     generics.types.insert(concrete_type.to_string(), Some(declared_type.to_string()));
-    //     return true;
-    // }
-
     if
         declared_lifetime.as_ref().is_some_and(|d|
             generics.lifetimes
@@ -405,13 +347,20 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
         // (T)
         Type::Paren(s) => replace_type(&mut s.elem, prev, new),
 
+        // _
+        Type::Infer(_) if prev == "_" => {
+            *ty = new.clone();
+            return;
+        }
+
         // T, T<U>
         Type::Path(type_path) => {
             // T
             if
                 type_path.qself.is_none() &&
                 type_path.path.segments.len() == 1 &&
-                type_path.path.segments[0].ident == prev
+                type_path.path.segments[0].ident == prev &&
+                type_path.path.segments[0].arguments.is_empty()
             {
                 *ty = new.clone();
                 return;
@@ -419,6 +368,12 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
 
             // T<U>
             for seg in &mut type_path.path.segments {
+                // T
+                if seg.ident == prev {
+                    seg.ident = Ident::new(&to_string(&new.clone()), Span::call_site());
+                }
+
+                // <U>
                 if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
                     for arg in ab.args.iter_mut() {
                         if let GenericArgument::Type(inner_ty) = arg {
@@ -432,6 +387,53 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
     }
 }
 
+/// removes all lifetimes present in generics
+pub fn strip_lifetimes(ty: &mut Type, generics: &Generics) {
+    match ty {
+        // (T, U)
+        Type::Tuple(t) => {
+            for elem in &mut t.elems {
+                strip_lifetimes(elem, generics);
+            }
+        }
+
+        // &T
+        Type::Reference(r) => {
+            let generics_lifetimes = collect_generics_lifetimes::<HashSet<_>>(generics);
+
+            if r.lifetime.as_ref().is_some_and(|l| generics_lifetimes.contains(&l.to_string())) {
+                r.lifetime = None;
+            }
+
+            strip_lifetimes(&mut r.elem, generics);
+        }
+
+        // [T; N]
+        Type::Array(a) => strip_lifetimes(&mut a.elem, generics),
+
+        // [T]
+        Type::Slice(s) => strip_lifetimes(&mut s.elem, generics),
+
+        // (T)
+        Type::Paren(s) => strip_lifetimes(&mut s.elem, generics),
+
+        // T, T<U>
+        Type::Path(type_path) => {
+            for seg in &mut type_path.path.segments {
+                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
+                    for arg in ab.args.iter_mut() {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            strip_lifetimes(inner_ty, generics);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+// TODO: use replace_type to simplify this function
 /// Replaces all occurrences of `_` (inferred types) in the given type with fresh generic type parameters.
 pub fn replace_infers(
     ty: &mut Type,
@@ -927,14 +929,14 @@ mod tests {
 
     #[test]
     fn replace_type_nested() {
-        let mut ty: Type = parse2(quote! { Option<(T, &[T])> }).unwrap();
+        let mut ty: Type = parse2(quote! { Option<(T, &[T], T<T<i32>>)> }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(
             to_string(&ty).replace(" ", ""),
-            "Option<(String, &[String])>".to_string().replace(" ", "")
+            "Option<(String, &[String], String<String<i32>>)>".to_string().replace(" ", "")
         );
     }
 
@@ -1047,5 +1049,45 @@ mod tests {
             "Option<(__G_0__, &[__G_1__])>".to_string().replace(" ", "")
         );
         assert_eq!(new_generics, vec!["__G_0__".to_string(), "__G_1__".to_string()]);
+    }
+
+    #[test]
+    fn strip_lifetimes_simple() {
+        let mut ty: Type = parse2(quote! { &'a u8 }).unwrap();
+        let generics = str_to_generics("<'a>");
+        strip_lifetimes(&mut ty, &generics);
+        assert_eq!(to_string(&ty).replace(" ", ""), "&u8");
+    }
+
+    #[test]
+    fn strip_lifetimes_tuple() {
+        let mut ty: Type = parse2(quote! { (&'a u8, &'b i32) }).unwrap();
+        let generics = str_to_generics("<'b>");
+        strip_lifetimes(&mut ty, &generics);
+        assert_eq!(to_string(&ty).replace(" ", ""), "(&'a u8, &i32)".replace(" ", ""));
+    }
+
+    #[test]
+    fn strip_lifetimes_array() {
+        let mut ty: Type = parse2(quote! { [&'a u8; 3] }).unwrap();
+        let generics = str_to_generics("<'a>");
+        strip_lifetimes(&mut ty, &generics);
+        assert_eq!(to_string(&ty).replace(" ", ""), "[&u8; 3]".replace(" ", ""));
+    }
+
+    #[test]
+    fn strip_lifetimes_slice() {
+        let mut ty: Type = parse2(quote! { &'a [u8] }).unwrap();
+        let generics = str_to_generics("<'a>");
+        strip_lifetimes(&mut ty, &generics);
+        assert_eq!(to_string(&ty).replace(" ", ""), "&[u8]");
+    }
+
+    #[test]
+    fn strip_lifetimes_nested() {
+        let mut ty: Type = parse2(quote! { Option<&'a (u8, &'b i32)> }).unwrap();
+        let generics = str_to_generics("<'a, 'b>");
+        strip_lifetimes(&mut ty, &generics);
+        assert_eq!(to_string(&ty).replace(" ", ""), "Option<&(u8, &i32)>".replace(" ", ""));
     }
 }

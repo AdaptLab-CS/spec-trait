@@ -10,7 +10,7 @@ use crate::conversions::{
 use crate::impls::ImplBody;
 use crate::parsing::{ get_generics_types, parse_generics };
 use crate::specialize::{
-    add_generic,
+    add_generic_type,
     apply_type_condition,
     get_assignable_conditions,
     remove_generic,
@@ -133,7 +133,7 @@ impl TraitBody {
                     .get_corresponding_generic(&specialized_impl_generics, &generic)
                     .is_none()
             {
-                add_generic(&mut generics, &generic);
+                add_generic_type(&mut generics, &generic);
             }
         }
         specialized.generics = to_string(&generics);
@@ -180,7 +180,7 @@ impl TraitBody {
         for generic in get_generics_types::<Vec<_>>(&self.generics) {
             let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
 
-            add_generic(&mut trait_generics, &new_generic_name);
+            add_generic_type(&mut trait_generics, &new_generic_name);
             remove_generic(&mut trait_generics, &generic);
 
             let type_ = str_to_type_name(&new_generic_name);
