@@ -1,7 +1,7 @@
 use crate::annotations::AnnotationBody;
 use crate::vars::VarBody;
 use spec_trait_utils::parsing::get_generics_types;
-use spec_trait_utils::types::{ get_concrete_type, type_assignable, Aliases };
+use spec_trait_utils::types::{ get_concrete_type, type_assignable };
 use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
@@ -85,43 +85,36 @@ fn satisfies_condition(
 ) -> (bool, Constraints) {
     match condition {
         WhenCondition::Type(generic, type_) => {
-            let concrete_type = get_concrete_type(type_, &var.aliases);
+            let declared_type = get_concrete_type(type_, &var.aliases);
             let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
-            let concrete_type_var = var.vars
+            let declared_type_var = var.vars
                 .iter()
-                .find(|v: &_|
-                    type_assignable(&concrete_type, &v.concrete_type, &var.generics, &var.aliases)
+                .find(|v|
+                    type_assignable(&v.concrete_type, &declared_type, &var.generics, &var.aliases)
                 );
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.entry(generic.clone()).or_default();
 
-            // update the type only if it is more specific than the current one
-            // TODO: add lifetime if not present
-            if
-                constraint.type_
-                    .as_ref()
-                    .is_none_or(
-                        |t|
-                            type_assignable(
-                                &concrete_type,
-                                t,
-                                &var.generics,
-                                &Aliases::default()
-                            ) && concrete_type.replace("_", "").len() > t.replace("_", "").len()
-                    )
-            {
-                constraint.type_ = Some(concrete_type.clone());
+            let mut tmp = constraint.clone();
+            tmp.type_ = Some(declared_type.clone());
+            tmp.generics = var.generics.clone();
+
+            // update the type if it is more specific than the current one
+            if *constraint < tmp {
+                constraint.type_ = Some(declared_type.clone());
                 constraint.generics = var.generics.clone();
             }
+
+            // TODO: update the lifetimes if types compatible and lifetimes more specific
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
                 generic_var.is_none_or(
                     |v|
                         !type_assignable(
-                            &concrete_type,
                             &v.concrete_type,
+                            &declared_type,
                             &var.generics,
                             &var.aliases
                         )
@@ -129,22 +122,11 @@ fn satisfies_condition(
                 // generic parameter is forbidden to be assigned to this type
                 constraint.not_types
                     .iter()
-                    .any(|t| type_assignable(&concrete_type, t, &var.generics, &var.aliases)) ||
+                    .any(|t| type_assignable(&declared_type, t, &var.generics, &var.aliases)) ||
                 // generic parameter should implement a trait that the type does not implement
-                concrete_type_var.is_none_or(|v|
+                declared_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
                 );
-            //  ||
-            // generic parameter should respect a lifetime that the type does not respect
-
-            // concrete_type_var.is_none_or(|v| {
-            //     constraint.lifetime.as_ref().is_some_and(|lt| Some(lt.clone()) != v.lifetime)
-            // })
-
-            //         generic_var.is_none_or(|v| {
-            //             v.lifetime != Some("'static".into()) &&
-            //                 (lifetime == "'static" ||
-            //                     v.lifetime.as_ref().is_some_and(|lt| lt != lifetime))
 
             (!violates_constraints, new_constraints)
         }
@@ -163,12 +145,12 @@ fn satisfies_condition(
                 constraint.not_traits.iter().any(|t| traits.contains(t)) ||
                 // generic parameter is already assigned to a type that does not implement one of the traits
                 constraint.type_.as_ref().is_some_and(|ty| {
-                    let concrete_type_var = var.vars
+                    let declared_type_var = var.vars
                         .iter()
                         .find(|v|
                             type_assignable(&v.concrete_type, ty, &var.generics, &var.aliases)
                         );
-                    concrete_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
+                    declared_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
 
             (!violates_constraints, new_constraints)
@@ -267,13 +249,14 @@ mod tests {
     use crate::annotations::Annotation;
     use crate::vars::VarInfo;
     use crate::constraints::Constraint;
+    use spec_trait_utils::types::Aliases;
 
     fn get_var_body() -> VarBody {
         let mut aliases = Aliases::new();
         aliases.insert("MyType".to_string(), vec!["MyOtherType".to_string()]);
         VarBody {
             aliases,
-            generics: "<T>".to_string(),
+            generics: "<T, 'a>".to_string(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
                 concrete_type: "&'a MyType".into(),
@@ -349,9 +332,9 @@ mod tests {
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
 
-        let condition = WhenCondition::Type("T".into(), "&'static _".into());
+        let condition = WhenCondition::Type("T".into(), "&_".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
-        assert!(!satisfies);
+        assert!(satisfies);
 
         var.vars[0].concrete_type = "&'a MyType".into();
 
@@ -359,17 +342,21 @@ mod tests {
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
 
-        let condition = WhenCondition::Type("T".into(), "&'static _".into());
+        let condition = WhenCondition::Type("T".into(), "&_".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
-        assert!(!satisfies);
+        assert!(satisfies);
 
         var.vars[0].concrete_type = "&'static MyType".into();
+
+        let condition = WhenCondition::Type("T".into(), "&'static _".into());
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+        assert!(satisfies);
 
         let condition = WhenCondition::Type("T".into(), "&'a _".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
 
-        let condition = WhenCondition::Type("T".into(), "&'static _".into());
+        let condition = WhenCondition::Type("T".into(), "&_".into());
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(satisfies);
     }
@@ -379,6 +366,7 @@ mod tests {
         let condition = WhenCondition::Type("T".into(), "&'static _".into());
         let mut var = get_var_body();
 
+        var.vars[0].concrete_type = "&'a MyType".into();
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
         assert!(!satisfies);
 

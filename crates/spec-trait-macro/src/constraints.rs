@@ -21,7 +21,8 @@ pub type Constraints = HashMap<String /* type definition (generic) */, Constrain
 
 impl Ord for Constraint {
     fn cmp(&self, other: &Self) -> Ordering {
-        cmp_type_and_lifetimes(self, other)
+        cmp_type(self, other)
+            .then(cmp_lifetimes(self, other))
             .then(self.traits.len().cmp(&other.traits.len()))
             .then(self.not_types.len().cmp(&other.not_types.len()))
             .then(self.not_traits.len().cmp(&other.not_traits.len()))
@@ -42,7 +43,11 @@ impl PartialEq for Constraint {
 
 impl Eq for Constraint {}
 
-fn cmp_type_and_lifetimes(this: &Constraint, other: &Constraint) -> Ordering {
+pub fn cmp_type_or_lifetime(
+    this: &Constraint,
+    other: &Constraint,
+    replace_fn: &dyn Fn(&mut Type, &str)
+) -> Ordering {
     fn norm(ty: &Option<String>) -> Option<String> {
         ty.as_ref().and_then(|s| if s == "_" { None } else { Some(s.clone()) })
     }
@@ -58,38 +63,40 @@ fn cmp_type_and_lifetimes(this: &Constraint, other: &Constraint) -> Ordering {
             let mut a = str_to_type_name(a);
             let mut b = str_to_type_name(b);
 
-            let empty_type = Type::Verbatim(TokenStream::new());
+            replace_fn(&mut a, &this.generics);
+            replace_fn(&mut b, &other.generics);
 
-            // replace infers, generic types and lifetimes
-            replace_type(&mut a, "_", &empty_type);
-            strip_lifetimes(&mut a, &str_to_generics(&this.generics));
-            for g in get_generics_types::<Vec<_>>(&this.generics) {
-                replace_type(&mut a, &g, &empty_type);
-            }
-
-            // replace infers, generic types and lifetimes
-            replace_type(&mut b, "_", &empty_type);
-            strip_lifetimes(&mut b, &str_to_generics(&other.generics));
-            for g in get_generics_types::<Vec<_>>(&other.generics) {
-                replace_type(&mut b, &g, &empty_type);
-            }
-
-            let a_with_static_lifetimes = a.clone();
-            let b_with_static_lifetimes = b.clone();
-
-            // replace 'static as well to compare types
-            strip_lifetimes(&mut a, &str_to_generics("<'static>"));
-            strip_lifetimes(&mut b, &str_to_generics("<'static>"));
-
-            let cmp_type = to_string(&a).len().cmp(&to_string(&b).len());
-            let cmp_lifetime = to_string(&a_with_static_lifetimes)
-                .len()
-                .cmp(&to_string(&b_with_static_lifetimes).len());
-
-            cmp_type.then(cmp_lifetime)
+            to_string(&a).len().cmp(&to_string(&b).len())
         }
         _ => a.is_some().cmp(&b.is_some()),
     }
+}
+
+fn cmp_type(this: &Constraint, other: &Constraint) -> Ordering {
+    fn replace_fn(ty: &mut Type, generics: &str) {
+        let empty_type = Type::Verbatim(TokenStream::new());
+
+        replace_type(ty, "_", &empty_type);
+        strip_lifetimes(ty, &str_to_generics(generics));
+        strip_lifetimes(ty, &str_to_generics("<'static>"));
+        for g in get_generics_types::<Vec<_>>(generics) {
+            replace_type(ty, &g, &empty_type);
+        }
+    }
+    cmp_type_or_lifetime(this, other, &replace_fn)
+}
+
+fn cmp_lifetimes(this: &Constraint, other: &Constraint) -> Ordering {
+    fn replace_fn(ty: &mut Type, generics: &str) {
+        let empty_type = Type::Verbatim(TokenStream::new());
+
+        replace_type(ty, "_", &empty_type);
+        strip_lifetimes(ty, &str_to_generics(generics));
+        for g in get_generics_types::<Vec<_>>(generics) {
+            replace_type(ty, &g, &empty_type);
+        }
+    }
+    cmp_type_or_lifetime(this, other, &replace_fn)
 }
 
 pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {

@@ -86,7 +86,7 @@ impl<T> Foo<T> for ZST {
     }
 }
 
-#[when(all(T = &_, T: 'a))]
+#[when(all(T = &_, T: 'a))] // TODO: fix
 impl<'a, T> Foo<T> for ZST {
     fn foo(&self, x: T) {
         println!("Foo impl ZST where T is &'a _");

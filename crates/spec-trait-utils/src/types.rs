@@ -28,8 +28,6 @@ pub fn get_concrete_type(type_or_alias: &str, aliases: &Aliases) -> String {
 
 fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
     match unwrap_paren(ty) {
-        #![cfg_attr(test, deny(non_exhaustive_omitted_patterns))]
-
         // (T, U)
         Type::Tuple(tuple) => {
             let resolved_elems = tuple.elems
@@ -179,8 +177,6 @@ fn can_assign(
     let t2 = unwrap_paren(declared_or_concrete_type);
 
     match (t1, t2) {
-        #![cfg_attr(test, deny(non_exhaustive_omitted_patterns))]
-
         // `_`
         (_, Type::Infer(_)) => true,
         (Type::Infer(_), _) => true,
@@ -313,7 +309,8 @@ fn check_and_assign_lifetime_generic(
         return true;
     }
 
-    declared_lifetime.as_ref().is_none_or(|v| v == "_")
+    declared_lifetime.as_ref().is_none_or(|v| v == "_") ||
+        concrete_lifetime.as_ref().is_some_and(|c| c == "'static")
 }
 
 pub fn type_contains(ty: &Type, generic: &str) -> bool {
@@ -327,6 +324,11 @@ pub fn type_contains(ty: &Type, generic: &str) -> bool {
 
 /// Replaces all occurrences of `prev` in the given type with `new`.
 pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
+    if to_string(ty) == to_string(&str_to_type_name(&prev)) {
+        *ty = new.clone();
+        return;
+    }
+
     match ty {
         // (T, U)
         Type::Tuple(t) => {
@@ -674,6 +676,17 @@ mod tests {
         let t2 = str_to_type_name("&'a u8");
         assert!(can_assign(&t1, &t2, &mut g));
 
+        g.lifetimes.insert("'a".to_string(), None);
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'a _");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.lifetimes.insert("'a".to_string(), None);
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("&'a u8");
+        let t2 = str_to_type_name("&'a T");
+        assert!(can_assign(&t1, &t2, &mut g));
+
         g.lifetimes.insert("'b".to_string(), None);
         let t1 = str_to_type_name("&'a u8");
         let t2 = str_to_type_name("&'b u8");
@@ -861,83 +874,118 @@ mod tests {
 
         replace_type(&mut ty, "T", &new_ty);
 
-        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string().replace(" ", ""));
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_tuple() {
-        let mut ty: Type = parse2(quote! { (T, Other, T) }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { (T, Other, T) }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(
             to_string(&ty).replace(" ", ""),
             "(String, Other, String)".to_string().replace(" ", "")
         );
+
+        let mut ty: Type = parse2(quote! { (T, Other, T) }).unwrap();
+        replace_type(&mut ty, "(T, Other, T)", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_reference() {
-        let mut ty: Type = parse2(quote! { &T }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { &T }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "&String".to_string().replace(" ", ""));
+
+        let mut ty: Type = parse2(quote! { &T }).unwrap();
+        replace_type(&mut ty, "&T", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_array() {
-        let mut ty: Type = parse2(quote! { [T; 3] }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { [T; 3] }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "[String; 3]".to_string().replace(" ", ""));
+
+        let mut ty: Type = parse2(quote! { [T; 3] }).unwrap();
+        replace_type(&mut ty, "[T; 3]", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_slice() {
-        let mut ty: Type = parse2(quote! { &[T] }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { &[T] }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "&[String]".to_string().replace(" ", ""));
+
+        let mut ty: Type = parse2(quote! { &[T] }).unwrap();
+        replace_type(&mut ty, "&[T]", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_paren() {
-        let mut ty: Type = parse2(quote! { (T) }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { (T) }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "(String)".to_string().replace(" ", ""));
+
+        let mut ty: Type = parse2(quote! { (T) }).unwrap();
+        replace_type(&mut ty, "(T)", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_path() {
-        let mut ty: Type = parse2(quote! { Option<T> }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { Option<T> }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "Option<String>".to_string().replace(" ", ""));
+
+        let mut ty: Type = parse2(quote! { Option<T> }).unwrap();
+        replace_type(&mut ty, "Option<T>", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
     fn replace_type_nested() {
-        let mut ty: Type = parse2(quote! { Option<(T, &[T], T<T<i32>>)> }).unwrap();
         let new_ty: Type = parse2(quote! { String }).unwrap();
 
+        let mut ty: Type = parse2(quote! { Option<(T, &[T], T<T<i32>>)> }).unwrap();
         replace_type(&mut ty, "T", &new_ty);
 
         assert_eq!(
             to_string(&ty).replace(" ", ""),
             "Option<(String, &[String], String<String<i32>>)>".to_string().replace(" ", "")
         );
+
+        let mut ty: Type = parse2(quote! { Option<(T, &[T], T<T<i32>>)> }).unwrap();
+        replace_type(&mut ty, "Option<(T, &[T], T<T<i32>>)>", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
 
     #[test]
