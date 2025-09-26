@@ -10,6 +10,7 @@ trait Foo2<T, U> {
     fn foo(&self, x: T, y: U);
 }
 
+#[allow(dead_code)]
 trait Foo3<T> { fn foo(&self, x: T, y: String); }
 
 type MyType = u8;
@@ -25,77 +26,77 @@ impl FooBar for i64 {}
 // ZST - Foo
 
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Default Foo for ZST");
     }
 }
 
 #[when(T = MyType)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is MyType");
     }
 }
 
 #[when(T: Bar)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T implements Bar");
     }
 }
 
 #[when(T: Bar + FooBar)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T implements Bar and FooBar");
     }
 }
 
 #[when(T = Vec<MyType>)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is Vec<u8>");
     }
 }
 
 #[when(T = Vec<_>)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is Vec<_>");
     }
 }
 
 #[when(T = MyVecAlias)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is MyVecAlias");
     }
 }
 
 #[when(T = (i32, _))]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is (i32, _)");
     }
 }
 
 #[when(T = &[i32])]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is &[i32]");
     }
 }
 
 #[when(all(T = &_, T: 'a))] // TODO: fix
 impl<'a, T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is &'a _");
     }
 }
 
 #[when(T = &'static _)]
 impl<T> Foo<T> for ZST {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST where T is &'static _");
     }
 }
@@ -103,14 +104,14 @@ impl<T> Foo<T> for ZST {
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
-    fn foo(&self, x: T, y: U) {
+    fn foo(&self, _x: T, _y: U) {
         println!("Default Foo2 for ZST");
     }
 }
 
 #[when(T = MyType)]
 impl<T, U> Foo2<T, U> for ZST {
-    fn foo(&self, x: T, y: U) {
+    fn foo(&self, _x: T, _y: U) {
         println!("Foo2 for ZST where T is MyType");
     }
 }
@@ -119,28 +120,28 @@ impl<T, U> Foo2<T, U> for ZST {
 
 #[when(T = String)]
 impl<T> Foo3<T> for ZST {
-    fn foo(&self, x: T, y: String) {
+    fn foo(&self, _x: T, _y: String) {
         println!("Foo3 for ZST where T is String");
     }
 }
 
 #[when(all(T = Vec<U>, U = String))]
 impl<T, U> Foo3<T> for ZST {
-    fn foo(&self, x: T, y: String) {
+    fn foo(&self, _x: T, _y: String) {
         println!("Foo3 impl ZST where T is Vec<String>");
     }
 }
 
 #[when(T = Vec<U>)]
 impl<T, U> Foo3<T> for ZST {
-    fn foo(&self, x: T, y: String) {
+    fn foo(&self, _x: T, _y: String) {
         println!("Foo3 impl ZST where T is Vec<U>");
     }
 }
 
 #[when(all(T = Vec<U>, U: Debug))]
 impl<T, U> Foo3<T> for ZST {
-    fn foo(&self, x: T, y: String) {
+    fn foo(&self, _x: T, _y: String) {
         println!("Foo3 impl ZST where T is Vec<U> and U implements Debug");
     }
 }
@@ -149,28 +150,28 @@ impl<T, U> Foo3<T> for ZST {
 // ZST2 - Foo
 
 impl<T> Foo<T> for ZST2 {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Default Foo for ZST2");
     }
 }
 
 #[when(T = MyType)]
 impl<T> Foo<T> for ZST2 {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST2 where T is MyType");
     }
 }
 
 #[when(all(T = Vec<i32>, T = Vec<_>))]
 impl<T> Foo<T> for ZST2 {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST2 where T is Vec<i32>");
     }
 }
 
 #[when(any(T: Copy, T: Clone))]
 impl<T> Foo<T> for ZST2 {
-    fn foo(&self, x: T) {
+    fn foo(&self, _x: T) {
         println!("Foo impl ZST2 where T implements Copy or Clone");
     }
 }
@@ -178,21 +179,21 @@ impl<T> Foo<T> for ZST2 {
 // ZST2 - Foo2
 
 impl<T, U> Foo2<T, U> for ZST2 {
-    fn foo(&self, x: T, y: U) {
+    fn foo(&self, _x: T, _y: U) {
         println!("Default Foo2 for ZST2");
     }
 }
 
 #[when(T = MyType)]
 impl<T, U> Foo2<T, U> for ZST2 {
-    fn foo(&self, x: T, y: U) {
+    fn foo(&self, _x: T, _y: U) {
         println!("Foo2 for ZST2 where T is MyType");
     }
 }
 
 #[when(not(T = MyType))]
 impl<T, U> Foo2<T, U> for ZST2 {
-    fn foo(&self, x: T, y: U) {
+    fn foo(&self, _x: T, _y: U) {
         println!("Foo2 for ZST2 where T is not MyType");
     }
 }
@@ -201,21 +202,21 @@ impl<T, U> Foo2<T, U> for ZST2 {
 
 #[when(all(U = MyType, T = i32))]
 impl<T, U> Foo<U> for T {
-    fn foo(&self, x: U) {
+    fn foo(&self, _x: U) {
         println!("Foo impl T where T is i32 and U is MyType");
     }
 }
 
 #[when(all(U = MyType, T = Vec<_>))]
 impl<T, U> Foo<U> for T {
-    fn foo(&self, x: U) {
+    fn foo(&self, _x: U) {
         println!("Foo impl T where T is Vec<_> and U is MyType");
     }
 }
 
 #[when(all(U = &str))]
 impl<T, U> Foo<U> for T {
-    fn foo(&self, x: U) {
+    fn foo(&self, _x: U) {
         println!("Foo impl T where U is &str");
     }
 }
