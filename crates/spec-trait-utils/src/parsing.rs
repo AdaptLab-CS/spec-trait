@@ -14,7 +14,7 @@ use syn::{
 use syn::parse::ParseStream;
 use quote::ToTokens;
 use crate::conversions::{ str_to_generics, to_string };
-use crate::specialize::{ add_generic_type, collect_generics_types };
+use crate::specialize::{ add_generic_type, collect_generics_lifetimes, collect_generics_types };
 
 pub trait ParseTypeOrLifetimeOrTrait<T> {
     fn from_type(ident: String, type_name: String) -> T;
@@ -173,6 +173,11 @@ fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Gener
 pub fn get_generics_types<T: FromIterator<String>>(generics_str: &str) -> T {
     let generics = str_to_generics(generics_str);
     collect_generics_types(&generics)
+}
+
+pub fn get_generics_lifetimes<T: FromIterator<String>>(generics_str: &str) -> T {
+    let generics = str_to_generics(generics_str);
+    collect_generics_lifetimes(&generics)
 }
 
 #[cfg(test)]

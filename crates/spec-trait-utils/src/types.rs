@@ -310,7 +310,8 @@ fn check_and_assign_lifetime_generic(
     }
 
     declared_lifetime.as_ref().is_none_or(|v| v == "_") ||
-        concrete_lifetime.as_ref().is_some_and(|c| c == "'static")
+        concrete_lifetime.as_ref().is_some_and(|c| c == "'static") ||
+        declared_lifetime == concrete_lifetime
 }
 
 pub fn type_contains(ty: &Type, generic: &str) -> bool {
@@ -478,7 +479,7 @@ pub fn replace_infers(
 
         // _
         Type::Infer(_) => {
-            let name = get_unique_generic_name(generics, counter);
+            let name = get_unique_generic_name(generics, counter, None);
             *ty = str_to_type_name(&name);
             new_generics.push(name);
         }
@@ -487,9 +488,14 @@ pub fn replace_infers(
     }
 }
 
-pub fn get_unique_generic_name(generics: &mut HashSet<String>, counter: &mut usize) -> String {
+pub fn get_unique_generic_name(
+    generics: &mut HashSet<String>,
+    counter: &mut usize,
+    prefix: Option<&str>
+) -> String {
+    let prefix = prefix.unwrap_or_default();
     loop {
-        let candidate = format!("__G_{}__", *counter);
+        let candidate = format!("{}__G_{}__", prefix, *counter);
         *counter += 1;
 
         if generics.insert(candidate.clone()) {

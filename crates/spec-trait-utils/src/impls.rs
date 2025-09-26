@@ -10,8 +10,14 @@ use crate::conversions::{
     trait_to_string,
 };
 use crate::conditions::WhenCondition;
-use crate::parsing::{ get_generics_types, handle_type_predicate, parse_generics };
+use crate::parsing::{
+    get_generics_lifetimes,
+    get_generics_types,
+    handle_type_predicate,
+    parse_generics,
+};
 use crate::specialize::{
+    add_generic_lifetime,
     add_generic_type,
     apply_type_condition,
     get_assignable_conditions,
@@ -128,10 +134,18 @@ impl ImplBody {
 
         // set missing generics
         let mut trait_generics = str_to_generics(&specialized.trait_generics);
-        let curr_generics = get_generics_types::<HashSet<_>>(&specialized.trait_generics);
+        let curr_generics_types = get_generics_types::<HashSet<_>>(&specialized.trait_generics);
+        let curr_generics_lifetimes = get_generics_lifetimes::<HashSet<_>>(
+            &specialized.trait_generics
+        );
         for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
-            if !curr_generics.contains(&generic) {
+            if !curr_generics_types.contains(&generic) {
                 add_generic_type(&mut trait_generics, &generic);
+            }
+        }
+        for generic in get_generics_lifetimes::<Vec<_>>(&specialized.impl_generics) {
+            if !curr_generics_lifetimes.contains(&generic) {
+                add_generic_lifetime(&mut trait_generics, &generic);
             }
         }
         specialized.trait_generics = to_string(&trait_generics);
@@ -205,14 +219,29 @@ impl ImplBody {
 
         let trait_generic_param = trait_generics.params
             .iter()
-            .position(
-                |param| matches!(param, GenericParam::Type(tp) if tp.ident == trait_generic)
-            )?;
+            .filter_map(|param| {
+                match param {
+                    GenericParam::Type(tp) if !trait_generic.starts_with("'") =>
+                        Some(tp.ident.to_string()),
+                    GenericParam::Lifetime(lp) if trait_generic.starts_with("'") =>
+                        Some(lp.lifetime.to_string()),
+                    _ => None,
+                }
+            })
+            .position(|param| param == trait_generic)?;
 
-        match impl_generics.params.iter().nth(trait_generic_param) {
-            Some(GenericParam::Type(tp)) => Some(tp.ident.to_string()),
-            _ => None,
-        }
+        impl_generics.params
+            .iter()
+            .filter_map(|param| {
+                match param {
+                    GenericParam::Type(tp) if !trait_generic.starts_with("'") =>
+                        Some(tp.ident.to_string()),
+                    GenericParam::Lifetime(lp) if trait_generic.starts_with("'") =>
+                        Some(lp.lifetime.to_string()),
+                    _ => None,
+                }
+            })
+            .nth(trait_generic_param)
     }
 }
 
@@ -228,10 +257,10 @@ pub fn break_attr(impl_: &ItemImpl) -> (ItemImpl, Vec<Attribute>) {
 mod tests {
     use super::*;
 
-    fn get_impl_body() -> ImplBody {
+    fn get_impl_body(condition: Option<WhenCondition>) -> ImplBody {
         ImplBody::try_from((
             quote! {
-            impl <T: Clone, U: Copy> Foo<T, U> for T {
+            impl <'a, T: Clone, U: Copy> Foo<T, U> for T {
                 type Bar = ();
                 fn foo(&self, arg1: Vec<T>, arg2: U) -> T {
                     let x: T = arg1[0].clone();
@@ -239,36 +268,37 @@ mod tests {
                 }
             }
         },
-            None,
+            condition,
         )).unwrap()
     }
 
     #[test]
     fn apply_trait_condition() {
-        let mut impl_body = get_impl_body();
         let condition = WhenCondition::Trait("T".into(), vec!["Copy".into(), "Clone".into()]);
 
-        impl_body.apply_condition(&condition);
+        let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<T: Clone + Copy, U: Copy>".to_string().replace(" ", "")
+            "<'a, T: Clone + Copy, U: Copy>".to_string().replace(" ", "")
         );
     }
 
     #[test]
     fn apply_type_condition() {
-        let mut impl_body = get_impl_body();
         let condition = WhenCondition::Type("T".into(), "String".into());
 
-        impl_body.apply_condition(&condition);
+        let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
         assert_eq!(impl_body.type_name, "String".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<U: Copy>".to_string().replace(" ", "")
+            "<'a, U: Copy>".to_string().replace(" ", "")
         );
-        assert_eq!(impl_body.trait_generics.replace(" ", ""), "<U>".to_string().replace(" ", ""));
+        assert_eq!(
+            impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
+            "<'a, U>".to_string().replace(" ", "")
+        );
         assert_eq!(
             impl_body.items
                 .into_iter()
@@ -285,19 +315,18 @@ mod tests {
 
     #[test]
     fn apply_type_condition_with_wildcard() {
-        let mut impl_body = get_impl_body();
         let condition = WhenCondition::Type("T".into(), "Vec<_>".into());
 
-        impl_body.apply_condition(&condition);
+        let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
         assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<__G_0__>".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<U: Copy, __G_0__>".to_string().replace(" ", "")
+            "<'a, U: Copy, __G_0__>".to_string().replace(" ", "")
         );
         assert_eq!(
-            impl_body.trait_generics.replace(" ", ""),
-            "<U, __G_0__>".to_string().replace(" ", "")
+            impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
+            "<'a, U, __G_0__>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items
@@ -314,8 +343,36 @@ mod tests {
     }
 
     #[test]
+    fn apply_type_condition_with_lifetime() {
+        let condition = WhenCondition::Type("T".into(), "&'a _".into());
+
+        let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
+
+        assert_eq!(impl_body.type_name, "& 'a __G_0__".to_string());
+        assert_eq!(
+            impl_body.impl_generics.replace(" ", ""),
+            "<'a, U: Copy, __G_0__>".to_string().replace(" ", "")
+        );
+        assert_eq!(
+            impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
+            "<'a, U, __G_0__>".to_string().replace(" ", "")
+        );
+        assert_eq!(
+            impl_body.items
+                .into_iter()
+                .map(|item| item.replace(" ", ""))
+                .collect::<Vec<_>>(),
+            vec![
+                "type Bar = ();".to_string().replace(" ", ""),
+                "fn foo(&self, arg1: Vec<&'a __G_0__>, arg2: U) -> &'a __G_0__ { let x: &'a __G_0__ = arg1[0].clone(); x }"
+                    .to_string()
+                    .replace(" ", "")
+            ]
+        );
+    }
+
+    #[test]
     fn apply_type_condition_all() {
-        let mut impl_body = get_impl_body();
         let condition = WhenCondition::All(
             vec![
                 WhenCondition::Type("T".into(), "Vec<V>".into()),
@@ -324,18 +381,17 @@ mod tests {
             ]
         );
 
-        println!("pre {:#?}", impl_body);
-
-        impl_body.apply_condition(&condition);
-
-        println!("post {:#?}", impl_body);
+        let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
         assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<String>".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<U: Copy>".to_string().replace(" ", "")
+            "<'a, U: Copy>".to_string().replace(" ", "")
         );
-        assert_eq!(impl_body.trait_generics.replace(" ", ""), "<U>".to_string().replace(" ", ""));
+        assert_eq!(
+            impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
+            "<'a, U>".to_string().replace(" ", "")
+        );
         assert_eq!(
             impl_body.items
                 .into_iter()
@@ -352,7 +408,6 @@ mod tests {
 
     #[test]
     fn apply_type_condition_unsuccessful() {
-        let mut impl_body = get_impl_body();
         let condition = WhenCondition::All(
             vec![
                 WhenCondition::Type("T".into(), "MyType".into()),
@@ -360,15 +415,15 @@ mod tests {
             ]
         );
 
-        impl_body.apply_condition(&condition);
+        let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<T: Clone, U: Copy>".to_string().replace(" ", "")
+            "<'a, T: Clone, U: Copy>".to_string().replace(" ", "")
         );
         assert_eq!(
-            impl_body.trait_generics.replace(" ", ""),
-            "<T, U>".to_string().replace(" ", "")
+            impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
+            "<'a, T, U>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items

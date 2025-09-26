@@ -1,8 +1,8 @@
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
-use syn::{ GenericParam, Generics, Ident, Type, TypeParam };
-use crate::conversions::str_to_type_name;
+use syn::{ GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam };
+use crate::conversions::{ str_to_lifetime, str_to_type_name };
 use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
 use crate::conditions::WhenCondition;
 
@@ -28,10 +28,9 @@ pub fn get_assignable_conditions(
                     let most_specific = types.last() == Some(t);
                     let diff_types = types
                         .iter()
-                        .any(
-                            |other_t|
-                                !types_equal(t, other_t, &generics, &generics, &Aliases::default())
-                        );
+                        .any(|other_t| {
+                            !types_equal(t, other_t, &generics, &generics, &Aliases::default())
+                        });
 
                     if diff_types || !most_specific {
                         None
@@ -71,6 +70,7 @@ impl VisitMut for TypeReplacer {
     }
 }
 
+// TODO: handle generic lifetimes
 pub fn apply_type_condition<T: Specializable>(
     target: &mut T,
     generics: &mut Generics,
@@ -90,17 +90,17 @@ pub fn apply_type_condition<T: Specializable>(
 
     replace_infers(&mut new_type, &mut existing_generics, &mut counter, &mut new_generics);
 
-    // add new generics
+    // add new generic types
     for generic in new_generics {
         add_generic_type(generics, &generic);
         add_generic_type(other_generics, &generic);
     }
 
-    // remove generic
+    // remove generic type
     remove_generic(generics, &item_generic);
     remove_generic(other_generics, impl_generic);
 
-    // replace generic with type in the items
+    // replace generic type with type in the items
     let mut replacer = TypeReplacer {
         generic: item_generic.clone(),
         type_: new_type.clone(),
@@ -115,7 +115,11 @@ pub fn remove_generic(generics: &mut Generics, generic: &str) {
     generics.params = generics.params
         .clone()
         .into_iter()
-        .filter(|param| !matches!(param, GenericParam::Type(tp) if tp.ident == generic))
+        .filter(
+            |param|
+                !matches!(param, GenericParam::Type(tp) if tp.ident == generic) &&
+                !matches!(param, GenericParam::Lifetime(lt) if lt.lifetime.to_string() == generic)
+        )
         .collect();
 }
 
@@ -152,6 +156,17 @@ pub fn add_generic_type(generics: &mut Generics, generic: &str) {
             bounds: Punctuated::new(),
             eq_token: None,
             default: None,
+        })
+    )
+}
+
+pub fn add_generic_lifetime(generics: &mut Generics, generic: &str) {
+    generics.params.push(
+        GenericParam::Lifetime(LifetimeParam {
+            attrs: vec![],
+            lifetime: str_to_lifetime(generic),
+            colon_token: None,
+            bounds: Punctuated::new(),
         })
     )
 }

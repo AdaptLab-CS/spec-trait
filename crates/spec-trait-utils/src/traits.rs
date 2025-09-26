@@ -8,8 +8,9 @@ use crate::conversions::{
     tokens_to_trait,
 };
 use crate::impls::ImplBody;
-use crate::parsing::{ get_generics_types, parse_generics };
+use crate::parsing::{ get_generics_lifetimes, get_generics_types, parse_generics };
 use crate::specialize::{
+    add_generic_lifetime,
     add_generic_type,
     apply_type_condition,
     get_assignable_conditions,
@@ -127,6 +128,7 @@ impl TraitBody {
         let mut generics = str_to_generics(&specialized.generics);
         let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
         let specialized_impl_generics = str_to_generics(impl_generics);
+
         for generic in get_generics_types::<Vec<_>>(impl_generics) {
             if
                 specialized
@@ -134,6 +136,15 @@ impl TraitBody {
                     .is_none()
             {
                 add_generic_type(&mut generics, &generic);
+            }
+        }
+        for generic in get_generics_lifetimes::<Vec<_>>(impl_generics) {
+            if
+                specialized
+                    .get_corresponding_generic(&specialized_impl_generics, &generic)
+                    .is_none()
+            {
+                add_generic_lifetime(&mut generics, &generic);
             }
         }
         specialized.generics = to_string(&generics);
@@ -175,12 +186,28 @@ impl TraitBody {
         let mut trait_generics = str_to_generics(&self.generics);
 
         let mut counter = 0;
-        let mut generics = get_generics_types(&self.generics);
+        let mut generics_types = get_generics_types(&self.generics);
+        let mut generics_lifetimes = get_generics_lifetimes(&self.generics);
 
         for generic in get_generics_types::<Vec<_>>(&self.generics) {
-            let new_generic_name = get_unique_generic_name(&mut generics, &mut counter);
+            let new_generic_name = get_unique_generic_name(&mut generics_types, &mut counter, None);
 
             add_generic_type(&mut trait_generics, &new_generic_name);
+            remove_generic(&mut trait_generics, &generic);
+
+            let type_ = str_to_type_name(&new_generic_name);
+            let mut replacer = TypeReplacer { generic: generic.to_owned(), type_ };
+            self.handle_items_replace(&mut replacer);
+        }
+
+        for generic in get_generics_lifetimes::<Vec<_>>(&self.generics) {
+            let new_generic_name = get_unique_generic_name(
+                &mut generics_lifetimes,
+                &mut counter,
+                Some("'")
+            );
+
+            add_generic_lifetime(&mut trait_generics, &new_generic_name);
             remove_generic(&mut trait_generics, &generic);
 
             let type_ = str_to_type_name(&new_generic_name);
@@ -207,12 +234,29 @@ impl TraitBody {
 
         let impl_generic_param = impl_generics.params
             .iter()
-            .position(|param| matches!(param, GenericParam::Type(tp) if tp.ident == impl_generic))?;
+            .filter_map(|param| {
+                match param {
+                    GenericParam::Type(tp) if !impl_generic.starts_with("'") =>
+                        Some(tp.ident.to_string()),
+                    GenericParam::Lifetime(lp) if impl_generic.starts_with("'") =>
+                        Some(lp.lifetime.to_string()),
+                    _ => None,
+                }
+            })
+            .position(|param| param == impl_generic)?;
 
-        match trait_generics.params.iter().nth(impl_generic_param) {
-            Some(GenericParam::Type(tp)) => Some(tp.ident.to_string()),
-            _ => None,
-        }
+        trait_generics.params
+            .iter()
+            .filter_map(|param| {
+                match param {
+                    GenericParam::Type(tp) if !impl_generic.starts_with("'") =>
+                        Some(tp.ident.to_string()),
+                    GenericParam::Lifetime(lp) if impl_generic.starts_with("'") =>
+                        Some(lp.lifetime.to_string()),
+                    _ => None,
+                }
+            })
+            .nth(impl_generic_param)
     }
 }
 
