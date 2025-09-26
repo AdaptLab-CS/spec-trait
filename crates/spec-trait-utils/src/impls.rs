@@ -13,6 +13,7 @@ use crate::conditions::WhenCondition;
 use crate::parsing::{
     get_generics_lifetimes,
     get_generics_types,
+    get_relevant_generics_names,
     handle_type_predicate,
     parse_generics,
 };
@@ -26,7 +27,7 @@ use crate::specialize::{
 use crate::types::replace_type;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
-use syn::{ Attribute, GenericParam, Generics, ItemImpl };
+use syn::{ Attribute, Generics, ItemImpl };
 use std::collections::HashSet;
 use std::fmt::Debug;
 use quote::quote;
@@ -217,31 +218,14 @@ impl ImplBody {
     ) -> Option<String> {
         let impl_generics = str_to_generics(&self.trait_generics);
 
-        let trait_generic_param = trait_generics.params
+        let trait_generic_param = get_relevant_generics_names(trait_generics, trait_generic)
             .iter()
-            .filter_map(|param| {
-                match param {
-                    GenericParam::Type(tp) if !trait_generic.starts_with("'") =>
-                        Some(tp.ident.to_string()),
-                    GenericParam::Lifetime(lp) if trait_generic.starts_with("'") =>
-                        Some(lp.lifetime.to_string()),
-                    _ => None,
-                }
-            })
             .position(|param| param == trait_generic)?;
 
-        impl_generics.params
+        get_relevant_generics_names(&impl_generics, trait_generic)
             .iter()
-            .filter_map(|param| {
-                match param {
-                    GenericParam::Type(tp) if !trait_generic.starts_with("'") =>
-                        Some(tp.ident.to_string()),
-                    GenericParam::Lifetime(lp) if trait_generic.starts_with("'") =>
-                        Some(lp.lifetime.to_string()),
-                    _ => None,
-                }
-            })
             .nth(trait_generic_param)
+            .cloned()
     }
 }
 

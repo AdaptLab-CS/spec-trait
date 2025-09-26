@@ -180,6 +180,22 @@ pub fn get_generics_lifetimes<T: FromIterator<String>>(generics_str: &str) -> T 
     collect_generics_lifetimes(&generics)
 }
 
+pub fn get_relevant_generics_names(generics: &Generics, generic: &str) -> Vec<String> {
+    let get_lifetimes = generic.starts_with('\'');
+    let get_types = !get_lifetimes;
+
+    generics.params
+        .iter()
+        .filter_map(|p| {
+            match p {
+                GenericParam::Type(tp) if get_types => Some(tp.ident.to_string()),
+                GenericParam::Lifetime(lp) if get_lifetimes => Some(lp.lifetime.to_string()),
+                _ => None,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

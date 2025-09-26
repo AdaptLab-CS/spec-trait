@@ -271,3 +271,4 @@ fn main() {
     // spec! { 1i32.foo("str"); i32; [&str] } // TODO: fix                                                  // -> "Foo impl T where U is &str"                             
     // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                   // -> "Foo impl T where U is &str"                 
 }
+

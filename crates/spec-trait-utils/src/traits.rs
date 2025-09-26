@@ -8,7 +8,12 @@ use crate::conversions::{
     tokens_to_trait,
 };
 use crate::impls::ImplBody;
-use crate::parsing::{ get_generics_lifetimes, get_generics_types, parse_generics };
+use crate::parsing::{
+    get_generics_lifetimes,
+    get_generics_types,
+    get_relevant_generics_names,
+    parse_generics,
+};
 use crate::specialize::{
     add_generic_lifetime,
     add_generic_type,
@@ -21,16 +26,16 @@ use crate::specialize::{
 use crate::types::get_unique_generic_name;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
-use syn::{ GenericParam, Generics };
 use std::fmt::Debug;
 use syn::{
-    token::Comma,
+    Token,
     punctuated::Punctuated,
     Attribute,
     FnArg,
     ItemTrait,
     TraitItem,
     TraitItemFn,
+    Generics,
 };
 use quote::quote;
 use syn::visit_mut::VisitMut;
@@ -232,36 +237,19 @@ impl TraitBody {
     ) -> Option<String> {
         let trait_generics = str_to_generics(&self.generics);
 
-        let impl_generic_param = impl_generics.params
+        let impl_generic_param = get_relevant_generics_names(impl_generics, impl_generic)
             .iter()
-            .filter_map(|param| {
-                match param {
-                    GenericParam::Type(tp) if !impl_generic.starts_with("'") =>
-                        Some(tp.ident.to_string()),
-                    GenericParam::Lifetime(lp) if impl_generic.starts_with("'") =>
-                        Some(lp.lifetime.to_string()),
-                    _ => None,
-                }
-            })
             .position(|param| param == impl_generic)?;
 
-        trait_generics.params
+        get_relevant_generics_names(&trait_generics, impl_generic)
             .iter()
-            .filter_map(|param| {
-                match param {
-                    GenericParam::Type(tp) if !impl_generic.starts_with("'") =>
-                        Some(tp.ident.to_string()),
-                    GenericParam::Lifetime(lp) if impl_generic.starts_with("'") =>
-                        Some(lp.lifetime.to_string()),
-                    _ => None,
-                }
-            })
             .nth(impl_generic_param)
+            .cloned()
     }
 }
 
 /// count the number of arguments in a function signature
-fn count_fn_args(inputs: &Punctuated<FnArg, Comma>) -> usize {
+fn count_fn_args(inputs: &Punctuated<FnArg, Token![,]>) -> usize {
     inputs
         .iter()
         .filter(|arg| matches!(**arg, FnArg::Typed(_)))
