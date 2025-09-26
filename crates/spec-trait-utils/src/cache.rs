@@ -93,7 +93,7 @@ pub fn get_impls_by_type_and_traits(
         .filter(
             |imp|
                 traits_names.contains(&imp.trait_name) &&
-                type_assignable(&imp.type_name, type_name, &imp.impl_generics, aliases)
+                type_assignable(type_name, &imp.type_name, &imp.impl_generics, aliases)
         )
         .collect()
 }
