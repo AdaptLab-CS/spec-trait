@@ -70,7 +70,6 @@ impl VisitMut for TypeReplacer {
     }
 }
 
-// TODO: handle generic lifetimes
 pub fn apply_type_condition<T: Specializable>(
     target: &mut T,
     generics: &mut Generics,
