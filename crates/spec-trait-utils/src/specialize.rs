@@ -3,7 +3,7 @@ use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
 use syn::{ GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam };
 use crate::conversions::{ str_to_lifetime, str_to_type_name };
-use crate::types::{ replace_infers, replace_type, types_equal, Aliases };
+use crate::types::{ replace_infers, replace_type, can_assign_bidirectional, Aliases };
 use crate::conditions::WhenCondition;
 
 // TODO: infer lifetimes as well
@@ -28,9 +28,16 @@ pub fn get_assignable_conditions(
                     let most_specific = types.last() == Some(t);
                     let diff_types = types
                         .iter()
-                        .any(|other_t| {
-                            !types_equal(t, other_t, &generics, &generics, &Aliases::default())
-                        });
+                        .any(
+                            |other_t|
+                                !can_assign_bidirectional(
+                                    t,
+                                    other_t,
+                                    &generics,
+                                    &generics,
+                                    &Aliases::default()
+                                )
+                        );
 
                     if diff_types || !most_specific {
                         None

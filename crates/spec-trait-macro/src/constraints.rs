@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::{ HashMap };
 use proc_macro2::TokenStream;
 use spec_trait_utils::conversions::{ str_to_generics, str_to_type_name, to_string };
-use spec_trait_utils::types::{ replace_type, strip_lifetimes, types_equal, Aliases };
+use spec_trait_utils::types::{ replace_type, strip_lifetimes, can_assign_bidirectional, Aliases };
 use spec_trait_utils::parsing::{ get_generics_types };
 use syn::Type;
 
@@ -58,7 +58,7 @@ pub fn cmp_type_or_lifetime(
     match (&a, &b) {
         // ('Vec<_>', 'Vec<T>')
         (Some(a), Some(b)) if
-            types_equal(a, b, &this.generics, &other.generics, &Aliases::default())
+            can_assign_bidirectional(a, b, &this.generics, &other.generics, &Aliases::default())
         => {
             let mut a = str_to_type_name(a);
             let mut b = str_to_type_name(b);

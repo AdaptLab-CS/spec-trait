@@ -123,26 +123,10 @@ impl TraitBody {
         // replace generics with unique generic name
         specialized.replace_generics_names();
 
-        // apply condition
-        if let Some(condition) = &impl_body.condition {
-            let mut impl_generics = str_to_generics(&impl_body.trait_generics);
-            specialized.apply_condition(&mut impl_generics, condition);
-        }
-
-        // set missing generics
+        // set missing lifetimes
         let mut generics = str_to_generics(&specialized.generics);
         let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
         let specialized_impl_generics = str_to_generics(impl_generics);
-
-        for generic in get_generics_types::<Vec<_>>(impl_generics) {
-            if
-                specialized
-                    .get_corresponding_generic(&specialized_impl_generics, &generic)
-                    .is_none()
-            {
-                add_generic_type(&mut generics, &generic);
-            }
-        }
         for generic in get_generics_lifetimes::<Vec<_>>(impl_generics) {
             if
                 specialized
@@ -150,6 +134,27 @@ impl TraitBody {
                     .is_none()
             {
                 add_generic_lifetime(&mut generics, &generic);
+            }
+        }
+        specialized.generics = to_string(&generics);
+
+        // apply condition
+        if let Some(condition) = &impl_body.condition {
+            let mut impl_generics = str_to_generics(&impl_body.trait_generics);
+            specialized.apply_condition(&mut impl_generics, condition);
+        }
+
+        // set missing generic types
+        let mut generics = str_to_generics(&specialized.generics);
+        let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
+        let specialized_impl_generics = str_to_generics(impl_generics);
+        for generic in get_generics_types::<Vec<_>>(impl_generics) {
+            if
+                specialized
+                    .get_corresponding_generic(&specialized_impl_generics, &generic)
+                    .is_none()
+            {
+                add_generic_type(&mut generics, &generic);
             }
         }
         specialized.generics = to_string(&generics);

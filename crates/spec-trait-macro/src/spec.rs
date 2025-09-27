@@ -1,8 +1,13 @@
 use crate::annotations::AnnotationBody;
 use crate::vars::VarBody;
 use spec_trait_utils::parsing::get_generics_types;
-use spec_trait_utils::types::{ get_concrete_type, type_assignable };
-use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name };
+use spec_trait_utils::types::{
+    assign_lifetimes,
+    get_concrete_type,
+    type_assignable,
+    type_assignable_generic_constraints,
+};
+use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name, to_string };
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
@@ -104,9 +109,25 @@ fn satisfies_condition(
             if *constraint < tmp {
                 constraint.type_ = Some(declared_type.clone());
                 constraint.generics = var.generics.clone();
-            }
+            } else if constraint.type_.as_ref().is_some_and(|t| { &declared_type != t }) {
+                let mut current_type = str_to_type_name(constraint.type_.as_ref().unwrap());
+                let new_type = str_to_type_name(&declared_type);
 
-            // TODO: update the lifetimes if types compatible and lifetimes more specific
+                // update the lifetimes if types compatible and lifetimes more specific
+                if
+                    let Some(mut generics) = type_assignable_generic_constraints(
+                        &constraint.type_.as_ref().unwrap(),
+                        &declared_type,
+                        &var.generics,
+                        &var.aliases
+                    )
+                {
+                    assign_lifetimes(&mut current_type, &new_type, &mut generics);
+
+                    constraint.type_ = Some(to_string(&current_type));
+                    constraint.generics = var.generics.clone();
+                }
+            }
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
@@ -295,20 +316,22 @@ mod tests {
                 WhenCondition::Type("T".into(), "&MyType".into()),
                 WhenCondition::Type("T".into(), "&MyOtherType".into()),
                 WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
-                WhenCondition::Type("T".into(), "&'a _".into())
+                WhenCondition::Type("T".into(), "&'b _".into())
             ]
         );
+        let mut var = get_var_body();
+        var.generics = "<'b, T>".to_string();
 
         let (satisfies, constraints) = satisfies_condition(
             &condition,
-            &get_var_body(),
+            &var,
             &Constraints::default()
         );
 
         assert!(satisfies);
 
         let c = constraints.get("T".into()).unwrap();
-        assert_eq!(c.type_, Some("& 'a MyType".into()));
+        assert_eq!(c.type_, Some("& 'b MyType".into()));
         assert!(c.traits.contains(&"MyTrait".into()));
     }
 

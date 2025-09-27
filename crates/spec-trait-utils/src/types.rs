@@ -1,6 +1,6 @@
 use std::collections::{ HashMap, HashSet };
 use crate::{
-    conversions::{ str_to_generics, str_to_type_name, to_string },
+    conversions::{ str_to_generics, str_to_lifetime, str_to_type_name, to_string },
     specialize::collect_generics_lifetimes,
 };
 use proc_macro2::Span;
@@ -102,6 +102,32 @@ pub struct ConstrainedGenerics {
     pub lifetimes: GenericsMap,
 }
 
+impl From<Generics> for ConstrainedGenerics {
+    fn from(generics: Generics) -> Self {
+        let types = generics.params
+            .iter()
+            .filter_map(|p| {
+                match p {
+                    GenericParam::Type(tp) => Some((tp.ident.to_string(), None)),
+                    _ => None,
+                }
+            })
+            .collect();
+
+        let lifetimes = generics.params
+            .iter()
+            .filter_map(|p| {
+                match p {
+                    GenericParam::Lifetime(lt) => Some((lt.lifetime.to_string(), None)),
+                    _ => None,
+                }
+            })
+            .collect();
+
+        ConstrainedGenerics { types, lifetimes }
+    }
+}
+
 pub fn type_assignable_generic_constraints(
     concrete_type: &str,
     declared_or_concrete_type: &str,
@@ -112,29 +138,9 @@ pub fn type_assignable_generic_constraints(
     let declared_or_concrete_type = str_to_type_name(
         &get_concrete_type(declared_or_concrete_type, aliases)
     );
+
     let generics = str_to_generics(generics);
-
-    let types = generics.params
-        .iter()
-        .filter_map(|p| {
-            match p {
-                GenericParam::Type(tp) => Some((tp.ident.to_string(), None)),
-                _ => None,
-            }
-        })
-        .collect();
-
-    let lifetimes = generics.params
-        .iter()
-        .filter_map(|p| {
-            match p {
-                GenericParam::Lifetime(lt) => Some((lt.lifetime.to_string(), None)),
-                _ => None,
-            }
-        })
-        .collect();
-
-    let mut generics = ConstrainedGenerics { types, lifetimes };
+    let mut generics = ConstrainedGenerics::from(generics);
 
     if can_assign(&concrete_type, &declared_or_concrete_type, &mut generics) {
         Some(generics)
@@ -157,7 +163,7 @@ pub fn type_assignable(
     ).is_some()
 }
 
-pub fn types_equal(
+pub fn can_assign_bidirectional(
     t1: &str,
     t2: &str,
     t1_generics: &str,
@@ -310,8 +316,7 @@ fn check_and_assign_lifetime_generic(
     }
 
     declared_lifetime.as_ref().is_none_or(|v| v == "_") ||
-        concrete_lifetime.as_ref().is_some_and(|c| c == "'static") ||
-        declared_lifetime == concrete_lifetime
+        concrete_lifetime.as_ref().is_some_and(|c| c == "'static")
 }
 
 pub fn type_contains(ty: &Type, generic: &str) -> bool {
@@ -432,6 +437,84 @@ pub fn strip_lifetimes(ty: &mut Type, generics: &Generics) {
                 }
             }
         }
+        _ => {}
+    }
+}
+
+/// replaces all lifetimes with the most specific one in two types
+/// the two types must be assignable
+pub fn assign_lifetimes(t1: &mut Type, t2: &Type, generics: &mut ConstrainedGenerics) {
+    match (t1, t2) {
+        // `(T, U)`, `(T, _)`
+        (Type::Tuple(tuple1), Type::Tuple(tuple2)) => {
+            tuple1.elems
+                .iter_mut()
+                .zip(&tuple2.elems)
+                .for_each(|(elem1, elem2)| assign_lifetimes(elem1, elem2, generics))
+        }
+
+        // `&T`, `&_`
+        (Type::Reference(ref1), Type::Reference(ref2)) => {
+            let lt1 = ref1.lifetime.as_ref().map(to_string);
+            let lt2 = ref2.lifetime.as_ref().map(to_string);
+
+            if let Some(lt2) = lt2 {
+                if let Some(lt1) = lt1 {
+                    if let Some(corresponding) = generics.lifetimes.get(&lt1).cloned().flatten() {
+                        ref1.lifetime = Some(str_to_lifetime(&corresponding));
+                    } else if lt2 == "'static" {
+                        ref1.lifetime = Some(str_to_lifetime(&lt2));
+                        generics.lifetimes.insert(lt1.clone(), Some(lt2));
+                    }
+                } else {
+                    ref1.lifetime = Some(str_to_lifetime(&lt2));
+                }
+            }
+
+            assign_lifetimes(&mut ref1.elem, &ref2.elem, generics);
+        }
+
+        // `[T]`, `[_]`
+        (Type::Slice(slice1), Type::Slice(slice2)) => {
+            assign_lifetimes(&mut slice1.elem, &slice2.elem, generics);
+        }
+
+        // (T)
+        (Type::Paren(paren1), Type::Paren(paren2)) => {
+            assign_lifetimes(&mut paren1.elem, &paren2.elem, generics);
+        }
+
+        // `[T; N]`, `[_; N]`, `[T; _]`, `[_; _]`
+        (Type::Array(array1), Type::Array(array2)) => {
+            assign_lifetimes(&mut array1.elem, &array2.elem, generics);
+        }
+
+        // `T`, `T<U>`, `T<_>`
+        (Type::Path(path1), Type::Path(path2)) => {
+            path1.path.segments
+                .iter_mut()
+                .zip(&path2.path.segments)
+                .for_each(|(seg1, seg2)| {
+                    match (&mut seg1.arguments, &seg2.arguments) {
+                        (
+                            PathArguments::AngleBracketed(args1),
+                            PathArguments::AngleBracketed(args2),
+                        ) =>
+                            args1.args
+                                .iter_mut()
+                                .zip(&args2.args)
+                                .for_each(|(arg1, arg2)| {
+                                    match (arg1, arg2) {
+                                        (GenericArgument::Type(t1), GenericArgument::Type(t2)) =>
+                                            assign_lifetimes(t1, t2, generics),
+                                        _ => {}
+                                    }
+                                }),
+                        _ => {}
+                    };
+                })
+        }
+
         _ => {}
     }
 }
@@ -1143,5 +1226,75 @@ mod tests {
         let generics = str_to_generics("<'a, 'b>");
         strip_lifetimes(&mut ty, &generics);
         assert_eq!(to_string(&ty).replace(" ", ""), "Option<&(u8, &i32)>".replace(" ", ""));
+    }
+
+    #[test]
+    fn assign_lifetimes_simple() {
+        let mut t1: Type = parse2(quote! { &'a u8 }).unwrap();
+        let t2: Type = parse2(quote! { &'static u8 }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "&'static u8".replace(" ", ""));
+
+        let mut t1: Type = parse2(quote! { &u8 }).unwrap();
+        let t2: Type = parse2(quote! { &'a u8 }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "&'a u8".replace(" ", ""));
+
+        let mut t1: Type = parse2(quote! { &u8 }).unwrap();
+        let t2: Type = parse2(quote! { &'static u8 }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "&'static u8".replace(" ", ""));
+    }
+
+    #[test]
+    fn assign_lifetimes_tuple() {
+        let mut t1: Type = parse2(quote! { (&'a u8, &'b i32) }).unwrap();
+        let t2: Type = parse2(quote! { (&'static u8, &'static i32) }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'b>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "(&'static u8, &'static i32)".replace(" ", ""));
+    }
+
+    #[test]
+    fn assign_lifetimes_array() {
+        let mut t1: Type = parse2(quote! { [&'a u8; 3] }).unwrap();
+        let t2: Type = parse2(quote! { [&'static u8; 3] }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "[&'static u8; 3]".replace(" ", ""));
+    }
+
+    #[test]
+    fn assign_lifetimes_slice() {
+        let mut t1: Type = parse2(quote! { &'a [u8] }).unwrap();
+        let t2: Type = parse2(quote! { &'static [u8] }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "&'static [u8]".replace(" ", ""));
+    }
+
+    #[test]
+    fn assign_lifetimes_nested() {
+        // let mut t1: Type = parse2(quote! { Option<&'a (u8, &'b i32)> }).unwrap();
+        // let t2: Type = parse2(quote! { Option<&'static (u8, &'static i32)> }).unwrap();
+        // let mut generics = ConstrainedGenerics::from(str_to_generics("<'a, 'b>"));
+        // assign_lifetimes(&mut t1, &t2, &mut generics);
+        // assert_eq!(
+        //     to_string(&t1).replace(" ", ""),
+        //     "Option<&'static (u8, &'static i32)>".replace(" ", "")
+        // );
+
+        let mut t1: Type = parse2(quote! { &'a Option<&'a u8> }).unwrap();
+        let t2: Type = parse2(quote! { &'b Option<&'static u8> }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        generics.lifetimes.insert("'a".to_string(), Some("'static".to_string()));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(
+            to_string(&t1).replace(" ", ""),
+            "&'static Option<&'static u8>".replace(" ", "")
+        );
     }
 }
