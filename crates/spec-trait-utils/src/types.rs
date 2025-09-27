@@ -459,11 +459,10 @@ pub fn assign_lifetimes(t1: &mut Type, t2: &Type, generics: &mut ConstrainedGene
 
             if let Some(lt2) = lt2 {
                 if let Some(lt1) = lt1 {
-                    if let Some(corresponding) = generics.lifetimes.get(&lt1).cloned().flatten() {
+                    if let Some(corresponding) = generics.lifetimes.get(&lt2).cloned().flatten() {
                         ref1.lifetime = Some(str_to_lifetime(&corresponding));
-                    } else if lt2 == "'static" {
+                    } else if lt1 != "'static" {
                         ref1.lifetime = Some(str_to_lifetime(&lt2));
-                        generics.lifetimes.insert(lt1.clone(), Some(lt2));
                     }
                 } else {
                     ref1.lifetime = Some(str_to_lifetime(&lt2));
@@ -1234,9 +1233,15 @@ mod tests {
     fn assign_lifetimes_simple() {
         let mut t1: Type = parse2(quote! { &'a u8 }).unwrap();
         let t2: Type = parse2(quote! { &'static u8 }).unwrap();
-        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        let mut generics = ConstrainedGenerics::from(str_to_generics(""));
         assign_lifetimes(&mut t1, &t2, &mut generics);
         assert_eq!(to_string(&t1).replace(" ", ""), "&'static u8".replace(" ", ""));
+
+        let mut t1: Type = parse2(quote! { &'a u8 }).unwrap();
+        let t2: Type = parse2(quote! { &'b u8 }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'b>"));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(to_string(&t1).replace(" ", ""), "&'b u8".replace(" ", ""));
 
         let mut t1: Type = parse2(quote! { &u8 }).unwrap();
         let t2: Type = parse2(quote! { &'a u8 }).unwrap();
@@ -1246,7 +1251,7 @@ mod tests {
 
         let mut t1: Type = parse2(quote! { &u8 }).unwrap();
         let t2: Type = parse2(quote! { &'static u8 }).unwrap();
-        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        let mut generics = ConstrainedGenerics::from(str_to_generics(""));
         assign_lifetimes(&mut t1, &t2, &mut generics);
         assert_eq!(to_string(&t1).replace(" ", ""), "&'static u8".replace(" ", ""));
     }
@@ -1255,7 +1260,7 @@ mod tests {
     fn assign_lifetimes_tuple() {
         let mut t1: Type = parse2(quote! { (&'a u8, &'b i32) }).unwrap();
         let t2: Type = parse2(quote! { (&'static u8, &'static i32) }).unwrap();
-        let mut generics = ConstrainedGenerics::from(str_to_generics("<'b>"));
+        let mut generics = ConstrainedGenerics::from(str_to_generics(""));
         assign_lifetimes(&mut t1, &t2, &mut generics);
         assert_eq!(to_string(&t1).replace(" ", ""), "(&'static u8, &'static i32)".replace(" ", ""));
     }
@@ -1264,7 +1269,7 @@ mod tests {
     fn assign_lifetimes_array() {
         let mut t1: Type = parse2(quote! { [&'a u8; 3] }).unwrap();
         let t2: Type = parse2(quote! { [&'static u8; 3] }).unwrap();
-        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        let mut generics = ConstrainedGenerics::from(str_to_generics(""));
         assign_lifetimes(&mut t1, &t2, &mut generics);
         assert_eq!(to_string(&t1).replace(" ", ""), "[&'static u8; 3]".replace(" ", ""));
     }
@@ -1273,26 +1278,26 @@ mod tests {
     fn assign_lifetimes_slice() {
         let mut t1: Type = parse2(quote! { &'a [u8] }).unwrap();
         let t2: Type = parse2(quote! { &'static [u8] }).unwrap();
-        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
+        let mut generics = ConstrainedGenerics::from(str_to_generics(""));
         assign_lifetimes(&mut t1, &t2, &mut generics);
         assert_eq!(to_string(&t1).replace(" ", ""), "&'static [u8]".replace(" ", ""));
     }
 
     #[test]
     fn assign_lifetimes_nested() {
-        // let mut t1: Type = parse2(quote! { Option<&'a (u8, &'b i32)> }).unwrap();
-        // let t2: Type = parse2(quote! { Option<&'static (u8, &'static i32)> }).unwrap();
-        // let mut generics = ConstrainedGenerics::from(str_to_generics("<'a, 'b>"));
-        // assign_lifetimes(&mut t1, &t2, &mut generics);
-        // assert_eq!(
-        //     to_string(&t1).replace(" ", ""),
-        //     "Option<&'static (u8, &'static i32)>".replace(" ", "")
-        // );
+        let mut t1: Type = parse2(quote! { Option<&'a (u8, &'b i32)> }).unwrap();
+        let t2: Type = parse2(quote! { Option<&'static (u8, &'static i32)> }).unwrap();
+        let mut generics = ConstrainedGenerics::from(str_to_generics(""));
+        assign_lifetimes(&mut t1, &t2, &mut generics);
+        assert_eq!(
+            to_string(&t1).replace(" ", ""),
+            "Option<&'static (u8, &'static i32)>".replace(" ", "")
+        );
 
         let mut t1: Type = parse2(quote! { &'a Option<&'a u8> }).unwrap();
         let t2: Type = parse2(quote! { &'b Option<&'static u8> }).unwrap();
-        let mut generics = ConstrainedGenerics::from(str_to_generics("<'a>"));
-        generics.lifetimes.insert("'a".to_string(), Some("'static".to_string()));
+        let mut generics = ConstrainedGenerics::from(str_to_generics("<'b>"));
+        generics.lifetimes.insert("'b".to_string(), Some("'static".to_string()));
         assign_lifetimes(&mut t1, &t2, &mut generics);
         assert_eq!(
             to_string(&t1).replace(" ", ""),
