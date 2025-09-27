@@ -222,10 +222,7 @@ impl ImplBody {
             .iter()
             .position(|param| param == trait_generic)?;
 
-        get_relevant_generics_names(&impl_generics, trait_generic)
-            .iter()
-            .nth(trait_generic_param)
-            .cloned()
+        get_relevant_generics_names(&impl_generics, trait_generic).get(trait_generic_param).cloned()
     }
 }
 

@@ -330,7 +330,7 @@ pub fn type_contains(ty: &Type, generic: &str) -> bool {
 
 /// Replaces all occurrences of `prev` in the given type with `new`.
 pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
-    if to_string(ty) == to_string(&str_to_type_name(&prev)) {
+    if to_string(ty) == to_string(&str_to_type_name(prev)) {
         *ty = new.clone();
         return;
     }
@@ -358,7 +358,6 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
         // _
         Type::Infer(_) if prev == "_" => {
             *ty = new.clone();
-            return;
         }
 
         // T, T<U>
@@ -495,22 +494,25 @@ pub fn assign_lifetimes(t1: &mut Type, t2: &Type, generics: &mut ConstrainedGene
                 .iter_mut()
                 .zip(&path2.path.segments)
                 .for_each(|(seg1, seg2)| {
-                    match (&mut seg1.arguments, &seg2.arguments) {
-                        (
+                    if
+                        let (
                             PathArguments::AngleBracketed(args1),
                             PathArguments::AngleBracketed(args2),
-                        ) =>
-                            args1.args
-                                .iter_mut()
-                                .zip(&args2.args)
-                                .for_each(|(arg1, arg2)| {
-                                    match (arg1, arg2) {
-                                        (GenericArgument::Type(t1), GenericArgument::Type(t2)) =>
-                                            assign_lifetimes(t1, t2, generics),
-                                        _ => {}
-                                    }
-                                }),
-                        _ => {}
+                        ) = (&mut seg1.arguments, &seg2.arguments)
+                    {
+                        args1.args
+                            .iter_mut()
+                            .zip(&args2.args)
+                            .for_each(|(arg1, arg2)| {
+                                if
+                                    let (GenericArgument::Type(t1), GenericArgument::Type(t2)) = (
+                                        arg1,
+                                        arg2,
+                                    )
+                                {
+                                    assign_lifetimes(t1, t2, generics);
+                                }
+                            })
                     };
                 })
         }

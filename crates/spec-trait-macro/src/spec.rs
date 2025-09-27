@@ -116,7 +116,7 @@ fn satisfies_condition(
                 // update the lifetimes if types compatible and lifetimes more specific
                 if
                     let Some(mut generics) = type_assignable_generic_constraints(
-                        &constraint.type_.as_ref().unwrap(),
+                        constraint.type_.as_ref().unwrap(),
                         &declared_type,
                         &var.generics,
                         &var.aliases

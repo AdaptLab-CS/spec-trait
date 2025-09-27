@@ -33,8 +33,8 @@ pub fn get_assignable_conditions(
                                 !can_assign_bidirectional(
                                     t,
                                     other_t,
-                                    &generics,
-                                    &generics,
+                                    generics,
+                                    generics,
                                     &Aliases::default()
                                 )
                         );

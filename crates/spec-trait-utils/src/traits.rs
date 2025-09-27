@@ -246,10 +246,7 @@ impl TraitBody {
             .iter()
             .position(|param| param == impl_generic)?;
 
-        get_relevant_generics_names(&trait_generics, impl_generic)
-            .iter()
-            .nth(impl_generic_param)
-            .cloned()
+        get_relevant_generics_names(&trait_generics, impl_generic).get(impl_generic_param).cloned()
     }
 }
 
