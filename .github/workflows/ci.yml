@@ -8,6 +8,11 @@ on:
       - 'spec-trait-inst/Cargo.toml'
       - 'spec-trait-inst/rustfmt.toml'
       - 'spec-trait-inst/config/**'
+      - 'spec-trait-impl/src/**'
+      - 'spec-trait-impl/crates/**'
+      - 'spec-trait-impl/Cargo.lock'
+      - 'spec-trait-impl/Cargo.toml'
+      - 'spec-trait-impl/tests/**'
       - '.github/workflows/**'
   pull_request:
     paths:
@@ -16,6 +21,11 @@ on:
       - 'spec-trait-inst/Cargo.toml'
       - 'spec-trait-inst/rustfmt.toml'
       - 'spec-trait-inst/config/**'
+      - 'spec-trait-impl/src/**'
+      - 'spec-trait-impl/crates/**'
+      - 'spec-trait-impl/Cargo.lock'
+      - 'spec-trait-impl/Cargo.toml'
+      - 'spec-trait-impl/tests/**'
       - '.github/workflows/**'
 
 env:
@@ -46,15 +56,31 @@ jobs:
         run: rustup component add --toolchain ${{ matrix.toolchain }} clippy
       - name: Add rustfmt
         run: rustup component add --toolchain ${{ matrix.toolchain }} rustfmt
-      - name: Run cargo build
+
+      # spec-trait-inst checks
+      - name: Run cargo build (spec-trait-inst)
         working-directory: spec-trait-inst
         run: cargo +${{ matrix.toolchain }} build --verbose
-      - name: Run cargo test
+      - name: Run cargo test (spec-trait-inst)
         working-directory: spec-trait-inst
         run: cargo +${{ matrix.toolchain }} test --verbose -- --test-threads=1 --nocapture
-      - name: Run cargo clippy
+      - name: Run cargo clippy (spec-trait-inst)
         working-directory: spec-trait-inst
         run: cargo +${{ matrix.toolchain }} clippy --verbose -- -D warnings
-      - name: Run cargo fmt
+      - name: Run cargo fmt (spec-trait-inst)
         working-directory: spec-trait-inst
+        run: cargo +${{ matrix.toolchain }} fmt -- --check
+      
+      # spec-trait-impl checks
+      - name: Run cargo build (spec-trait-impl)
+        working-directory: spec-trait-impl
+        run: cargo +${{ matrix.toolchain }} build --verbose
+      - name: Run cargo test (spec-trait-impl)
+        working-directory: spec-trait-impl
+        run: cargo +${{ matrix.toolchain }} test --verbose -- --test-threads=1 --nocapture
+      - name: Run cargo clippy (spec-trait-impl)
+        working-directory: spec-trait-impl
+        run: cargo +${{ matrix.toolchain }} clippy --verbose -- -D warnings
+      - name: Run cargo fmt (spec-trait-impl)
+        working-directory: spec-trait-impl
         run: cargo +${{ matrix.toolchain }} fmt -- --check

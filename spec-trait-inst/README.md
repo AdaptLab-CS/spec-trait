@@ -1,9 +1,4 @@
-[github-ci]: https://github.com/AdaptLab-CS/spec-traits/actions/workflows/ci.yml
-[github-ci-shield]: https://github.com/AdaptLab-CS/spec-trait/actions/workflows/ci.yml/badge.svg
-
 # Trait Specialization Instrumentation
-
-[![GitHub CI][github-ci-shield]][github-ci]
 
 > [!NOTE] Add description here.
 
