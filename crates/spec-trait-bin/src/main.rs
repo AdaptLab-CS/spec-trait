@@ -221,6 +221,13 @@ impl<T, U> Foo<U> for T {
     }
 }
 
+#[when(T: Bar)]
+impl<T, U> Foo<U> for T {
+    fn foo(&self, _x: U) {
+        println!("Foo impl T where T implements Bar");
+    }
+}
+
 fn main() {
     let zst = ZST;
     let zst2 = ZST2;
@@ -268,8 +275,9 @@ fn main() {
 
     // T - Foo
     spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType }                                                         // -> "Foo impl T where T is i32 and U is MyType"
+    spec! { 1i32.foo(1i8); i32; [i8]; i32: Bar }                                                            // -> "Foo impl T where T implements Bar"
     spec! { x.foo(1u8); Vec<i32>; [u8]; u8 = MyType }                                                       // -> "Foo impl T where T is Vec<_> and U is MyType"
     spec! { 1i32.foo("str"); i32; [&str] }                                                                  // -> "Foo impl T where U is &str"
-    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                   // -> "Foo impl T where U is &str"
+    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                      // -> "Foo impl T where U is &str"
 }
 

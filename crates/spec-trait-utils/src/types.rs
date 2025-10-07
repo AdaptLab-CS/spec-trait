@@ -163,16 +163,6 @@ pub fn type_assignable(
     ).is_some()
 }
 
-pub fn can_assign_bidirectional(
-    t1: &str,
-    t2: &str,
-    t1_generics: &str,
-    t2_generics: &str,
-    aliases: &Aliases
-) -> bool {
-    type_assignable(t1, t2, t2_generics, aliases) || type_assignable(t2, t1, t1_generics, aliases)
-}
-
 /// check if concrete_type can be assigned to declared_type
 fn can_assign(
     concrete_type: &Type,

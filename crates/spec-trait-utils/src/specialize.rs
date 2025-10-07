@@ -7,9 +7,9 @@ use syn::visit::Visit;
 use syn::{ GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam };
 use crate::conversions::{ str_to_lifetime, str_to_type_name };
 use crate::types::{
-    can_assign_bidirectional,
     replace_infers,
     replace_type,
+    type_assignable,
     type_contains,
     type_contains_lifetime,
     Aliases,
@@ -42,13 +42,8 @@ pub fn get_assignable_conditions(
                         .iter()
                         .any(
                             |other_t|
-                                !can_assign_bidirectional(
-                                    t,
-                                    other_t,
-                                    generics,
-                                    generics,
-                                    &Aliases::default()
-                                )
+                                !type_assignable(t, other_t, generics, &Aliases::default()) &&
+                                !type_assignable(other_t, t, generics, &Aliases::default())
                         );
 
                     if diff_types || !most_specific {

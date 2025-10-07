@@ -14,6 +14,7 @@ use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
 use proc_macro2::TokenStream;
 use quote::quote;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct SpecBody {
@@ -45,13 +46,13 @@ impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
             })
             .collect::<Vec<_>>();
 
-        satisfied_specs.sort_by(|a, b| a.constraints.cmp(&b.constraints));
+        satisfied_specs.sort();
 
         match satisfied_specs.as_slice() {
             [] => Err("No valid implementation found".into()),
             [most_specific] => Ok(most_specific.clone()),
             [.., second, first] => {
-                if first.constraints == second.constraints {
+                if first == second {
                     Err("Multiple implementations are equally specific".into())
                 } else {
                     Ok(first.clone())
@@ -60,6 +61,26 @@ impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
         }
     }
 }
+
+impl Ord for SpecBody {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.constraints.cmp(&other.constraints)
+    }
+}
+
+impl PartialOrd for SpecBody {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for SpecBody {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for SpecBody {}
 
 /// if the condition is satisfiable, it inserts the constraints and returns the spec body, otherwise return none
 fn get_constraints(default: SpecBody) -> Option<SpecBody> {
