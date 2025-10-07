@@ -24,7 +24,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
             hir_id,
             hir_id.owner
         );
-        self.visit_item(&item);
+        self.visit_item(item);
     }
 }
 
@@ -49,15 +49,15 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 }
                 self.visit_ident(ident);
             }
-            ItemKind::Use(ref path, _) => {
+            ItemKind::Use(path, _) => {
                 self.visit_use(path, item.hir_id());
             }
-            ItemKind::Static(_, ident, ref typ, body) => {
+            ItemKind::Static(_, ident, typ, body) => {
                 self.visit_ident(ident);
                 self.visit_ty_unambig(typ);
                 self.visit_nested_body(body);
             }
-            ItemKind::Const(ident, ref generics, ref typ, body) => {
+            ItemKind::Const(ident, generics, typ, body) => {
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 self.visit_ty_unambig(typ);
@@ -82,7 +82,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
             ItemKind::Macro(ident, _, _) => {
                 self.visit_ident(ident);
             }
-            ItemKind::Mod(ident, ref module) => {
+            ItemKind::Mod(ident, module) => {
                 self.visit_ident(ident);
                 self.visit_mod(module, item.span, item.hir_id());
             }
@@ -95,12 +95,12 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
             ItemKind::GlobalAsm { asm: _, fake_body } => {
                 self.visit_nested_body(fake_body);
             }
-            ItemKind::TyAlias(ident, ref generics, ref ty) => {
+            ItemKind::TyAlias(ident, generics, ty) => {
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 self.visit_ty_unambig(ty);
             }
-            ItemKind::Enum(ident, ref generics, ref enum_definition) => {
+            ItemKind::Enum(ident, generics, ref enum_definition) => {
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 self.visit_enum_def(enum_definition);
@@ -128,8 +128,8 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                     self.visit_impl_item_ref(item);
                 }
             }
-            ItemKind::Struct(ident, ref generics, ref struct_definition)
-            | ItemKind::Union(ident, ref generics, ref struct_definition) => {
+            ItemKind::Struct(ident, generics, ref struct_definition)
+            | ItemKind::Union(ident, generics, ref struct_definition) => {
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 self.visit_variant_data(struct_definition);
@@ -139,7 +139,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 _is_auto,
                 _safety,
                 ident,
-                ref generics,
+                generics,
                 bounds,
                 trait_item_refs,
             ) => {
@@ -152,7 +152,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                     self.visit_trait_item_ref(trait_item_ref);
                 }
             }
-            ItemKind::TraitAlias(ident, ref generics, bounds) => {
+            ItemKind::TraitAlias(ident, generics, bounds) => {
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 for bound in bounds {
