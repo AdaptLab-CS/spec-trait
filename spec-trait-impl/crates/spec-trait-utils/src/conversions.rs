@@ -1,21 +1,11 @@
 use proc_macro2::TokenStream;
-use syn::{
-    Expr,
-    Generics,
-    ImplItem,
-    ItemImpl,
-    ItemTrait,
-    Lifetime,
-    Path,
-    PredicateType,
-    Result,
-    TraitItem,
-    Type,
-    WherePredicate,
-};
 use quote::ToTokens;
-use std::hash::{ DefaultHasher, Hasher, Hash };
 use quote::quote;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use syn::{
+    Expr, Generics, ImplItem, ItemImpl, ItemTrait, Lifetime, Path, PredicateType, Result,
+    TraitItem, Type, WherePredicate,
+};
 
 use crate::conditions::WhenCondition;
 

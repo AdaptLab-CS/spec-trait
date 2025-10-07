@@ -1,20 +1,11 @@
-use syn::{
-    Error,
-    GenericParam,
-    Generics,
-    Ident,
-    PredicateLifetime,
-    PredicateType,
-    Token,
-    Type,
-    TypeParam,
-    WherePredicate,
-    Lifetime,
-};
-use syn::parse::ParseStream;
+use crate::conversions::{str_to_generics, to_string};
+use crate::specialize::{add_generic_type, collect_generics_lifetimes, collect_generics_types};
 use quote::ToTokens;
-use crate::conversions::{ str_to_generics, to_string };
-use crate::specialize::{ add_generic_type, collect_generics_lifetimes, collect_generics_types };
+use syn::parse::ParseStream;
+use syn::{
+    Error, GenericParam, Generics, Ident, Lifetime, PredicateLifetime, PredicateType, Token, Type,
+    TypeParam, WherePredicate,
+};
 
 pub trait ParseTypeOrLifetimeOrTrait<T> {
     fn from_type(ident: String, type_name: String) -> T;
@@ -22,27 +13,30 @@ pub trait ParseTypeOrLifetimeOrTrait<T> {
 }
 
 /**
-    Parses either a type or a trait based on the next token in the input stream.
-    - If it's '=', it parses a type
-    - If it's ':', it parses a list of traits and a lifetime
-    - If neither token is found returns an error
- */
+   Parses either a type or a trait based on the next token in the input stream.
+   - If it's '=', it parses a type
+   - If it's ':', it parses a list of traits and a lifetime
+   - If neither token is found returns an error
+*/
 pub fn parse_type_or_lifetime_or_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     ident: &str,
-    input: ParseStream
+    input: ParseStream,
 ) -> Result<U, Error> {
     if input.peek(Token![=]) {
         parse_type::<T, U>(ident, input)
     } else if input.peek(Token![:]) {
         parse_trait::<T, U>(ident, input)
     } else {
-        Err(Error::new(input.span(), "Expected ':' or '=' after identifier"))
+        Err(Error::new(
+            input.span(),
+            "Expected ':' or '=' after identifier",
+        ))
     }
 }
 
 fn parse_type<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     ident: &str,
-    input: ParseStream
+    input: ParseStream,
 ) -> Result<U, Error> {
     input.parse::<Token![=]>()?; // consume the '=' token
     let type_ = input.parse::<Type>()?;
@@ -51,7 +45,7 @@ fn parse_type<T: ParseTypeOrLifetimeOrTrait<U>, U>(
 
 fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     ident: &str,
-    input: ParseStream
+    input: ParseStream,
 ) -> Result<U, Error> {
     input.parse::<Token![:]>()?; // Consume the ':' token
 
@@ -61,9 +55,10 @@ fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     while !input.is_empty() && !input.peek(Token![,]) && !input.peek(Token![;]) {
         if input.peek(Lifetime) {
             if lifetime.is_some() {
-                return Err(
-                    Error::new(input.span(), "Multiple lifetimes found, only one is allowed")
-                );
+                return Err(Error::new(
+                    input.span(),
+                    "Multiple lifetimes found, only one is allowed",
+                ));
             }
             lifetime = Some(input.parse::<Lifetime>()?.to_string());
         } else {
@@ -76,7 +71,10 @@ fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     }
 
     if traits.is_empty() && lifetime.is_none() {
-        return Err(Error::new(input.span(), "Expected at least one trait or lifetime after ':'"));
+        return Err(Error::new(
+            input.span(),
+            "Expected at least one trait or lifetime after ':'",
+        ));
     }
 
     Ok(T::from_trait(ident.to_string(), traits, lifetime))
@@ -96,7 +94,8 @@ fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
 
 */
 pub fn parse_generics(mut generics: Generics) -> Generics {
-    let predicates = generics.where_clause
+    let predicates = generics
+        .where_clause
         .as_ref()
         .map(|wc| wc.predicates.clone())
         .unwrap_or_default();
@@ -132,7 +131,11 @@ pub fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics)
 
     for bound in predicate.bounds.iter().cloned() {
         let bound_str = bound.to_token_stream().to_string();
-        if !param.bounds.iter().any(|b| b.to_token_stream().to_string() == bound_str) {
+        if !param
+            .bounds
+            .iter()
+            .any(|b| b.to_token_stream().to_string() == bound_str)
+        {
             param.bounds.push(bound);
         }
     }
@@ -140,26 +143,23 @@ pub fn handle_type_predicate(predicate: &PredicateType, generics: &mut Generics)
 
 pub fn find_type_param_mut<'a>(
     generics: &'a mut Generics,
-    ident: &str
+    ident: &str,
 ) -> Option<&'a mut TypeParam> {
-    generics.params.iter_mut().find_map(|param| {
-        match param {
-            GenericParam::Type(tp) if tp.ident == ident => Some(tp),
-            _ => None,
-        }
+    generics.params.iter_mut().find_map(|param| match param {
+        GenericParam::Type(tp) if tp.ident == ident => Some(tp),
+        _ => None,
     })
 }
 
 fn handle_lifetime_predicate(predicate: &PredicateLifetime, generics: &mut Generics) {
     let lifetime = &predicate.lifetime;
 
-    let param = generics.params
+    let param = generics
+        .params
         .iter_mut()
-        .find_map(|param| {
-            match param {
-                GenericParam::Lifetime(lp) if lp.lifetime == *lifetime => Some(lp),
-                _ => None,
-            }
+        .find_map(|param| match param {
+            GenericParam::Lifetime(lp) if lp.lifetime == *lifetime => Some(lp),
+            _ => None,
         })
         .expect("Lifetime parameter not found in generics");
 
@@ -184,14 +184,13 @@ pub fn get_relevant_generics_names(generics: &Generics, generic: &str) -> Vec<St
     let get_lifetimes = generic.starts_with('\'');
     let get_types = !get_lifetimes;
 
-    generics.params
+    generics
+        .params
         .iter()
-        .filter_map(|p| {
-            match p {
-                GenericParam::Type(tp) if get_types => Some(tp.ident.to_string()),
-                GenericParam::Lifetime(lp) if get_lifetimes => Some(lp.lifetime.to_string()),
-                _ => None,
-            }
+        .filter_map(|p| match p {
+            GenericParam::Type(tp) if get_types => Some(tp.ident.to_string()),
+            GenericParam::Lifetime(lp) if get_lifetimes => Some(lp.lifetime.to_string()),
+            _ => None,
         })
         .collect()
 }
@@ -199,13 +198,13 @@ pub fn get_relevant_generics_names(generics: &Generics, generic: &str) -> Vec<St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use syn::parse2;
-    use syn::parse::Parse;
     use quote::quote;
+    use syn::parse::Parse;
+    use syn::parse2;
 
     #[derive(Debug, PartialEq)]
     enum MockTypeOrTrait {
-        Type(String, String), // (ident, type_name)
+        Type(String, String),                       // (ident, type_name)
         Trait(String, Vec<String>, Option<String>), // (ident, traits, lifetime)
     }
 
@@ -232,7 +231,10 @@ mod tests {
 
         let result: MockTypeOrTrait = parse2(input).unwrap();
 
-        assert_eq!(result, MockTypeOrTrait::Type("MyType".to_string(), "u32".to_string()));
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Type("MyType".to_string(), "u32".to_string())
+        );
     }
 
     #[test]
@@ -338,7 +340,10 @@ mod tests {
 
         let res = parse_generics(generics);
 
-        assert_eq!(to_string(&res).replace(" ", ""), "<T: Clone>".to_string().replace(" ", ""));
+        assert_eq!(
+            to_string(&res).replace(" ", ""),
+            "<T: Clone>".to_string().replace(" ", "")
+        );
     }
 
     #[test]
@@ -348,7 +353,10 @@ mod tests {
 
         let res = parse_generics(generics);
 
-        assert_eq!(to_string(&res).replace(" ", ""), "<T: Clone>".to_string().replace(" ", ""));
+        assert_eq!(
+            to_string(&res).replace(" ", ""),
+            "<T: Clone>".to_string().replace(" ", "")
+        );
     }
 
     #[test]
@@ -371,7 +379,10 @@ mod tests {
 
         let res = parse_generics(generics);
 
-        assert_eq!(to_string(&res).replace(" ", ""), "<'a: 'b, 'b>".to_string().replace(" ", ""));
+        assert_eq!(
+            to_string(&res).replace(" ", ""),
+            "<'a: 'b, 'b>".to_string().replace(" ", "")
+        );
     }
 
     #[test]
@@ -381,7 +392,10 @@ mod tests {
 
         let res = parse_generics(generics);
 
-        assert_eq!(to_string(&res).replace(" ", ""), "<'a: 'b, 'b>".to_string().replace(" ", ""));
+        assert_eq!(
+            to_string(&res).replace(" ", ""),
+            "<'a: 'b, 'b>".to_string().replace(" ", "")
+        );
     }
 
     #[test]
@@ -393,7 +407,9 @@ mod tests {
 
         assert_eq!(
             to_string(&res).replace(" ", ""),
-            "<'a: 'b, 'b, T: Clone + Copy,>".to_string().replace(" ", "")
+            "<'a: 'b, 'b, T: Clone + Copy,>"
+                .to_string()
+                .replace(" ", "")
         );
     }
 }

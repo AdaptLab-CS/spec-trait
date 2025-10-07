@@ -1,13 +1,13 @@
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::fs;
-use spec_trait_utils::conditions::{ self, WhenCondition };
-use spec_trait_utils::impls::{ self, ImplBody };
-use spec_trait_utils::traits::{ self, TraitBody };
-use spec_trait_utils::cache::CrateCache;
-use syn::{ Attribute, Item, Meta };
+use crate::aliases::{collect_when_aliases, is_when_macro};
 use quote::quote;
-use crate::aliases::{ collect_when_aliases, is_when_macro };
+use spec_trait_utils::cache::CrateCache;
+use spec_trait_utils::conditions::{self, WhenCondition};
+use spec_trait_utils::impls::{self, ImplBody};
+use spec_trait_utils::traits::{self, TraitBody};
+use std::collections::HashSet;
+use std::fs;
+use std::path::PathBuf;
+use syn::{Attribute, Item, Meta};
 
 /// get CrateCache by parsing all the files in `paths`
 pub fn parse_all(paths: &[PathBuf]) -> CrateCache {
@@ -38,11 +38,9 @@ pub fn parse(path: &PathBuf) -> CrateCache {
 fn get_traits(items: &[Item]) -> Vec<TraitBody> {
     items
         .iter()
-        .filter_map(|item| {
-            match item {
-                Item::Trait(trait_item) => Some(trait_item),
-                _ => None,
-            }
+        .filter_map(|item| match item {
+            Item::Trait(trait_item) => Some(trait_item),
+            _ => None,
         })
         .map(|trait_| {
             let (trait_no_attrs, _) = traits::break_attr(trait_);
@@ -58,29 +56,28 @@ fn get_impls(items: &[Item]) -> Vec<ImplBody> {
 
     items
         .iter()
-        .filter_map(|item| {
-            match item {
-                Item::Impl(impl_item) => Some(impl_item),
-                _ => None,
-            }
+        .filter_map(|item| match item {
+            Item::Impl(impl_item) => Some(impl_item),
+            _ => None,
         })
         .flat_map(|impl_| {
             let (impl_no_attrs, impl_attrs) = impls::break_attr(impl_);
             let tokens = quote! { #impl_no_attrs };
 
             let conditions = match get_condition(&impl_attrs, &when_aliases) {
-                Some(condition) =>
-                    conditions::get_conjunctions(condition).into_iter().map(Some).collect(),
+                Some(condition) => conditions::get_conjunctions(condition)
+                    .into_iter()
+                    .map(Some)
+                    .collect(),
                 None => vec![None],
             };
 
             conditions
                 .into_iter()
-                .map(|condition|
-                    ImplBody::try_from((tokens.clone(), condition)).expect(
-                        "Failed to parse TokenStream into ImplBody"
-                    )
-                )
+                .map(|condition| {
+                    ImplBody::try_from((tokens.clone(), condition))
+                        .expect("Failed to parse TokenStream into ImplBody")
+                })
                 .collect::<Vec<_>>()
         })
         .collect()
@@ -91,25 +88,23 @@ fn get_condition(attrs: &[Attribute], when_aliases: &HashSet<String>) -> Option<
     attrs
         .iter()
         .find(|attr| is_when_macro(attr.path(), when_aliases))
-        .and_then(|attr| {
-            match attr.clone().meta {
-                Meta::List(meta_list) => {
-                    let params = meta_list.tokens;
-                    let tokens = quote! { #params };
-                    WhenCondition::try_from(tokens).ok()
-                }
-                _ => None,
+        .and_then(|attr| match attr.clone().meta {
+            Meta::List(meta_list) => {
+                let params = meta_list.tokens;
+                let tokens = quote! { #params };
+                WhenCondition::try_from(tokens).ok()
             }
+            _ => None,
         })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
     use std::path::Path;
-    use syn::{ Item, ItemImpl };
+    use syn::{Item, ItemImpl};
+    use tempfile::tempdir;
 
     fn make_file(file_path: &Path, content: &str) {
         fs::write(&file_path, content).expect("write file");
@@ -121,8 +116,7 @@ mod tests {
         let root = dir.path();
         let file_path = root.join("test.rs");
 
-        let content =
-            "
+        let content = "
             trait Foo { fn foo(&self); }
             impl Foo for MyStruct { fn foo(&self) {} }
         ";
@@ -159,7 +153,7 @@ mod tests {
             syn::parse_str::<Item>("struct MyStruct;").unwrap(),
             syn::parse_str::<Item>("trait Foo { fn foo(&self); }").unwrap(),
             syn::parse_str::<Item>("#[test] trait Bar { fn bar(&self); }").unwrap(),
-            syn::parse_str::<Item>("impl Foo for MyStruct { fn foo(&self) {} }").unwrap()
+            syn::parse_str::<Item>("impl Foo for MyStruct { fn foo(&self) {} }").unwrap(),
         ];
 
         let traits = get_traits(&items);
@@ -175,7 +169,7 @@ mod tests {
             syn::parse_str::<Item>("struct MyStruct;").unwrap(),
             syn::parse_str::<Item>("trait Foo { fn foo(&self); }").unwrap(),
             syn::parse_str::<Item>("impl Foo for MyStruct { fn foo(&self) {} }").unwrap(),
-            syn::parse_str::<Item>("#[test] impl Bar for MyStruct { fn bar(&self) {} }").unwrap()
+            syn::parse_str::<Item>("#[test] impl Bar for MyStruct { fn bar(&self) {} }").unwrap(),
         ];
 
         let impls = get_impls(&items);
@@ -187,11 +181,10 @@ mod tests {
 
     #[test]
     fn test_get_condition() {
-        let impl_ = syn
-            ::parse_str::<ItemImpl>(
-                "#[test] #[when(T = i32)] impl Foo<T> for MyStruct { fn foo(&self, x: T) {} }"
-            )
-            .unwrap();
+        let impl_ = syn::parse_str::<ItemImpl>(
+            "#[test] #[when(T = i32)] impl Foo<T> for MyStruct { fn foo(&self, x: T) {} }",
+        )
+        .unwrap();
 
         let (_, attributes) = impls::break_attr(&impl_);
 
@@ -202,6 +195,9 @@ mod tests {
 
         assert!(condition.is_some());
         let condition = condition.unwrap();
-        assert_eq!(condition, WhenCondition::Type("T".to_string(), "i32".to_string()));
+        assert_eq!(
+            condition,
+            WhenCondition::Type("T".to_string(), "i32".to_string())
+        );
     }
 }
