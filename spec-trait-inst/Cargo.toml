@@ -1,0 +1,38 @@
+[package]
+name = "spec-trait-inst"
+version = "0.1.0-nightly-2025-10-06"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[[bin]]
+name = "cargo-spec-trait-inst"
+
+[[bin]]
+name = "spec-trait-inst-driver"
+
+[features]
+default = []
+test-mode = []
+
+[dependencies]
+env_logger = "0.11.8"
+clap = { version = "4.5.48", features = ["derive"] }
+log = "0.4.28"
+cargo_metadata = "0.23.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.145"
+rustc_tools_util = "0.4.2"
+# rustworkx-core = "0.15.1"
+# petgraph = { version = "0.8.3", features = ["serde-1"] }
+# rustc_plugin = "0.10.0-nightly-2024-05-20"
+# rustc-instrument = { path = "../rustc-instrument/rustc-instrument" }
+
+[dev-dependencies]
+pretty_assertions = "1.4.1"
+
+[build-dependencies]
+toml = "0.9.7"

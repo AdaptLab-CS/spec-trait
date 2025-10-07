@@ -1,0 +1,13 @@
+[workspace]
+members = ["crates/*"]
+default-members = ["crates/spec-trait-bin"]
+
+
+[package]
+name = "spec-trait-impl"
+version = "0.1.0"
+edition = "2024"
+
+[dev-dependencies]
+spec-trait-macro = { path = "crates/spec-trait-macro" }
+spec-trait-order = { path = "crates/spec-trait-order" }
