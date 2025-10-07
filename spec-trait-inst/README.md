@@ -1,5 +1,5 @@
-[github-ci]: https://github.com/FedericoBruzzone/rusty-links/actions/workflows/ci.yml
-[github-ci-shield]: https://github.com/FedericoBruzzone/rusty-links/actions/workflows/ci.yml/badge.svg
+[github-ci]: https://github.com/AdaptLab-CS/spec-traits/actions/workflows/ci.yml
+[github-ci-shield]: https://github.com/AdaptLab-CS/spec-trait/actions/workflows/ci.yml/badge.svg
 
 # Trait Specialization Instrumentation
 
