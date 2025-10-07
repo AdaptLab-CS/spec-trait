@@ -5,9 +5,9 @@ use std::{
     process::{exit, Command},
 };
 
-use rustc_session::{config::ErrorOutputType, EarlyDiagCtxt};
 use super::cli::{RUSTC_PLUGIN_ALL_TARGETS, SPECIFIC_CRATE, SPECIFIC_TARGET};
 use super::plugin::{RustcPlugin, PLUGIN_ARGS};
+use rustc_session::{config::ErrorOutputType, EarlyDiagCtxt};
 
 /// If a command-line option matches `find_arg`, then apply the predicate `pred` on its value. If
 /// true, then return it. The parameter is assumed to be either `--arg=value` or `--arg value`.

@@ -30,7 +30,9 @@ pub fn run_with_cargo_bin(
     let current_dir = Path::new(".").canonicalize().unwrap();
     INSTALL_PLUGIN.call_once(|| {
         let mut cargo_cmd = Command::new("cargo");
-        cargo_cmd.args(["install", "--path", ".", "--debug", "--locked", "--force", "--root"]);
+        cargo_cmd.args([
+            "install", "--path", ".", "--debug", "--locked", "--force", "--root",
+        ]);
         cargo_cmd.arg(&root_dir);
         cargo_cmd.current_dir(&current_dir);
         // See the `args` function on `impl RustcPlugin for RustcEx` for the explanation of why we need to pass the `--features test-mode` argument.
@@ -65,8 +67,12 @@ pub fn run_with_cargo_bin(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
-        panic!("Plugin command failed with exit code: {:?}\nSTDOUT:\n{}\nSTDERR:\n{}", 
-               output.status.code(), stdout, stderr);
+        panic!(
+            "Plugin command failed with exit code: {:?}\nSTDOUT:\n{}\nSTDERR:\n{}",
+            output.status.code(),
+            stdout,
+            stderr
+        );
     }
 
     if let Some(expected_outout_name) = expected_outout_name {

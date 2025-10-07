@@ -1,11 +1,9 @@
 mod sti_visitor;
 
-use super::{
-    Analyzer,
-};
-use sti_visitor::STIVisitor;
+use super::Analyzer;
 use rustc_hir::def_id::LOCAL_CRATE;
 use std::{cell::Cell, time::Duration};
+use sti_visitor::STIVisitor;
 
 pub struct STIAnalysis<'tcx, 'a> {
     analyzer: &'a Analyzer<'tcx>,
@@ -28,7 +26,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
 
         let visitor: &mut STIVisitor<'tcx, 'a> = &mut STIVisitor::new(self.analyzer);
 
-        /* 
+        /*
             Useless:
             let krate = self.analyzer.tcx.resolver_for_lowering().borrow().1.clone();
 
@@ -38,10 +36,13 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
             let local_def_ids = krate.item_ids.iter().map(|item_id| item_id.owner_id.def_id).collect::<Vec<_>>();
         */
 
-        let item_ids= self.analyzer.tcx.hir_root_module().item_ids;
+        let item_ids = self.analyzer.tcx.hir_root_module().item_ids;
 
         for item_id in item_ids {
-            let hir_id = self.analyzer.tcx.local_def_id_to_hir_id(item_id.owner_id.def_id);
+            let hir_id = self
+                .analyzer
+                .tcx
+                .local_def_id_to_hir_id(item_id.owner_id.def_id);
             let item = self.analyzer.tcx.hir_item(*item_id);
             visitor.visit_with_hir_id_and_item(hir_id, item);
         }

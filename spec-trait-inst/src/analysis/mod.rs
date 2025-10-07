@@ -2,9 +2,9 @@ pub mod sti_analysis;
 pub mod utils;
 
 use crate::CliArgs;
-use sti_analysis::STIAnalysis;
 use rustc_middle::mir;
 use rustc_middle::ty;
+use sti_analysis::STIAnalysis;
 
 pub struct Analyzer<'tcx> {
     tcx: ty::TyCtxt<'tcx>,
