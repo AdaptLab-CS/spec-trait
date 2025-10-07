@@ -1,5 +1,6 @@
 use crate::annotations::AnnotationBody;
 use crate::vars::VarBody;
+use crate::constraints::Constraints;
 use spec_trait_utils::parsing::get_generics_types;
 use spec_trait_utils::types::{
     assign_lifetimes,
@@ -12,8 +13,6 @@ use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::conditions::WhenCondition;
 use spec_trait_utils::impls::ImplBody;
 use proc_macro2::TokenStream;
-use std::cmp::Ordering;
-use crate::constraints::{ cmp_constraints, Constraints };
 use quote::quote;
 
 #[derive(Debug, Clone)]
@@ -46,13 +45,13 @@ impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
             })
             .collect::<Vec<_>>();
 
-        satisfied_specs.sort_by(|a, b| cmp_constraints(&a.constraints, &b.constraints));
+        satisfied_specs.sort_by(|a, b| a.constraints.cmp(&b.constraints));
 
         match satisfied_specs.as_slice() {
             [] => Err("No valid implementation found".into()),
             [most_specific] => Ok(most_specific.clone()),
             [.., second, first] => {
-                if cmp_constraints(&first.constraints, &second.constraints) == Ordering::Equal {
+                if first.constraints == second.constraints {
                     Err("Multiple implementations are equally specific".into())
                 } else {
                     Ok(first.clone())
@@ -99,7 +98,7 @@ fn satisfies_condition(
                 );
 
             let mut new_constraints = constraints.clone();
-            let constraint = new_constraints.entry(generic.clone()).or_default();
+            let constraint = new_constraints.inner.entry(generic.clone()).or_default();
 
             let mut tmp = constraint.clone();
             tmp.type_ = Some(declared_type.clone());
@@ -155,7 +154,7 @@ fn satisfies_condition(
             let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
 
             let mut new_constraints = constraints.clone();
-            let constraint = new_constraints.entry(generic.clone()).or_default();
+            let constraint = new_constraints.inner.entry(generic.clone()).or_default();
             constraint.traits.extend(traits.clone());
             constraint.generics = var.generics.clone();
 
@@ -197,7 +196,7 @@ fn satisfies_condition(
                 let (is_satisfied, nc) = satisfies_condition(cond, var, constraints);
                 satisfied = satisfied || is_satisfied;
 
-                if is_satisfied && cmp_constraints(&nc, &new_constraints) == Ordering::Greater {
+                if is_satisfied && nc > new_constraints {
                     new_constraints = nc;
                 }
             }
@@ -208,10 +207,10 @@ fn satisfies_condition(
         WhenCondition::Not(inner) => {
             let (satisfied, nc) = satisfies_condition(inner, var, constraints);
 
-            let new_constraints = nc
+            let new_constraints = nc.inner
                 .into_iter()
                 .map(|(generic, constraint)| (generic, constraint.reverse()))
-                .collect::<Constraints>();
+                .collect();
 
             (!satisfied, new_constraints)
         }
@@ -257,7 +256,7 @@ pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
 }
 
 fn get_type(generic: &str, constraints: &Constraints) -> String {
-    constraints
+    constraints.inner
         .get(generic)
         .and_then(|constraint| constraint.type_.clone())
         .unwrap_or_else(|| "_".into())
@@ -280,6 +279,7 @@ mod tests {
             generics: "<T, 'a>".to_string(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
+                trait_generic: Some("A".into()),
                 concrete_type: "&'a MyType".into(),
                 traits: vec!["MyTrait".into()],
             }],
@@ -330,7 +330,7 @@ mod tests {
 
         assert!(satisfies);
 
-        let c = constraints.get("T".into()).unwrap();
+        let c = constraints.inner.get("T".into()).unwrap();
         assert_eq!(c.type_, Some("& 'b MyType".into()));
         assert!(c.traits.contains(&"MyTrait".into()));
     }
@@ -452,6 +452,7 @@ mod tests {
             generics: "<T>".to_string(),
             vars: vec![VarInfo {
                 impl_generic: "T".into(),
+                trait_generic: Some("A".into()),
                 concrete_type: "Vec<MyType>".into(),
                 traits: vec![],
             }],
@@ -465,7 +466,7 @@ mod tests {
 
         assert!(satisfies);
 
-        let c = constraints.get("T".into()).unwrap();
+        let c = constraints.inner.get("T".into()).unwrap();
         assert_eq!(c.type_.clone().unwrap().replace(" ", ""), "Vec<MyType>".to_string());
     }
 
@@ -512,7 +513,7 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.get("T".into()),
+            spec_body.constraints.inner.get("T".into()),
             Some(
                 &(Constraint {
                     generics: "<T, U>".to_string(),
@@ -540,7 +541,7 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.get("T".into()),
+            spec_body.constraints.inner.get("T".into()),
             Some(
                 &(Constraint {
                     generics: "<T, U>".to_string(),
@@ -596,7 +597,12 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
+            spec_body.constraints.inner
+                .get("T".into())
+                .unwrap()
+                .type_.clone()
+                .unwrap()
+                .replace(" ", ""),
             "Vec<_>".to_string()
         );
     }
@@ -614,7 +620,12 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
+            spec_body.constraints.inner
+                .get("T".into())
+                .unwrap()
+                .type_.clone()
+                .unwrap()
+                .replace(" ", ""),
             "Vec<U>".to_string()
         );
     }
@@ -643,11 +654,19 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.get("T".into()).unwrap().type_.clone().unwrap().replace(" ", ""),
+            spec_body.constraints.inner
+                .get("T".into())
+                .unwrap()
+                .type_.clone()
+                .unwrap()
+                .replace(" ", ""),
             "Vec<U>".to_string()
         );
         assert!(
-            spec_body.constraints.get("U".into()).unwrap().traits.contains(&"MyTrait".to_string())
+            spec_body.constraints.inner
+                .get("U".into())
+                .unwrap()
+                .traits.contains(&"MyTrait".to_string())
         );
     }
 

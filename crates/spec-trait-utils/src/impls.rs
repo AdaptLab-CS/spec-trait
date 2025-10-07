@@ -22,11 +22,14 @@ use crate::specialize::{
     add_generic_type,
     apply_type_condition,
     get_assignable_conditions,
+    get_used_generics,
+    remove_generic,
     Specializable,
 };
-use crate::types::replace_type;
+use crate::types::{ replace_type, type_contains, type_contains_lifetime };
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
+use syn::visit::Visit;
 use syn::{ Attribute, Generics, ItemImpl };
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -111,6 +114,12 @@ impl Specializable for ImplBody {
 
         self.items = new_items;
     }
+
+    fn handle_items_visit<V: for<'a> Visit<'a>>(&self, visitor: &mut V) {
+        for item in strs_to_impl_items(&self.items) {
+            visitor.visit_impl_item(&item);
+        }
+    }
 }
 
 impl ImplBody {
@@ -151,7 +160,32 @@ impl ImplBody {
         }
         specialized.trait_generics = to_string(&trait_generics);
 
-        // TODO: clean unused generics
+        // clean unused generics
+        let used_generics = get_used_generics(
+            &specialized,
+            &str_to_generics(&specialized.impl_generics)
+        );
+
+        let mut impl_generics = str_to_generics(&specialized.impl_generics);
+        let mut trait_generics = str_to_generics(&specialized.trait_generics);
+        for generic in get_generics_lifetimes::<Vec<_>>(&specialized.impl_generics) {
+            if !used_generics.contains(&generic) {
+                remove_generic(&mut trait_generics, &generic);
+                if !type_contains_lifetime(&str_to_type_name(&specialized.type_name), &generic) {
+                    remove_generic(&mut impl_generics, &generic);
+                }
+            }
+        }
+        for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
+            if !used_generics.contains(&generic) {
+                remove_generic(&mut trait_generics, &generic);
+                if !type_contains(&str_to_type_name(&specialized.type_name), &generic) {
+                    remove_generic(&mut impl_generics, &generic);
+                }
+            }
+        }
+        specialized.impl_generics = to_string(&impl_generics);
+        specialized.trait_generics = to_string(&trait_generics);
 
         new_impl.specialized = Some(Box::new(specialized));
         new_impl
@@ -261,7 +295,7 @@ mod tests {
 
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<'a, T: Clone + Copy, U: Copy>".to_string().replace(" ", "")
+            "<T: Clone + Copy, U: Copy>".to_string().replace(" ", "")
         );
     }
 
@@ -274,11 +308,11 @@ mod tests {
         assert_eq!(impl_body.type_name, "String".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<'a, U: Copy>".to_string().replace(" ", "")
+            "<U: Copy>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
-            "<'a, U>".to_string().replace(" ", "")
+            "<U>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items
@@ -303,11 +337,11 @@ mod tests {
         assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<__G_0__>".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<'a, U: Copy, __G_0__>".to_string().replace(" ", "")
+            "<U: Copy, __G_0__>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
-            "<'a, U, __G_0__>".to_string().replace(" ", "")
+            "<U, __G_0__>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items
@@ -367,11 +401,11 @@ mod tests {
         assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<String>".to_string());
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<'a, U: Copy>".to_string().replace(" ", "")
+            "<U: Copy>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
-            "<'a, U>".to_string().replace(" ", "")
+            "<U>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items
@@ -400,11 +434,11 @@ mod tests {
 
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
-            "<'a, T: Clone, U: Copy>".to_string().replace(" ", "")
+            "<T: Clone, U: Copy>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.trait_generics.replace(" ", "").replace(",>", ">"),
-            "<'a, T, U>".to_string().replace(" ", "")
+            "<T, U>".to_string().replace(" ", "")
         );
         assert_eq!(
             impl_body.items

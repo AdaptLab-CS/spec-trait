@@ -224,6 +224,7 @@ impl<T, U> Foo<U> for T {
 fn main() {
     let zst = ZST;
     let zst2 = ZST2;
+    let x = vec![1i32];
 
     // ZST - Foo
     spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType }                                                          // -> "Foo impl ZST where T is MyType"
@@ -267,8 +268,8 @@ fn main() {
 
     // T - Foo
     spec! { 1i32.foo(1u8); i32; [u8]; u8 = MyType }                                                         // -> "Foo impl T where T is i32 and U is MyType"
-    // spec! { vec![1i32].foo(1u8); Vec<i32>; [u8]; u8 = MyType } // TODO: fix                              // -> "Foo impl T where T is Vec<_> and U is MyType"
-    // spec! { 1i32.foo("str"); i32; [&str] } // TODO: fix                                                  // -> "Foo impl T where U is &str"                             
-    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                   // -> "Foo impl T where U is &str"                 
+    spec! { x.foo(1u8); Vec<i32>; [u8]; u8 = MyType }                                                       // -> "Foo impl T where T is Vec<_> and U is MyType"
+    spec! { 1i32.foo("str"); i32; [&str] }                                                                  // -> "Foo impl T where U is &str"
+    // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                   // -> "Foo impl T where U is &str"
 }
 

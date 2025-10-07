@@ -19,6 +19,7 @@ use crate::specialize::{
     add_generic_type,
     apply_type_condition,
     get_assignable_conditions,
+    get_used_generics,
     remove_generic,
     Specializable,
     TypeReplacer,
@@ -26,6 +27,7 @@ use crate::specialize::{
 use crate::types::get_unique_generic_name;
 use proc_macro2::TokenStream;
 use serde::{ Deserialize, Serialize };
+use syn::visit::Visit;
 use std::fmt::Debug;
 use syn::{
     Token,
@@ -93,6 +95,12 @@ impl Specializable for TraitBody {
 
         self.items = new_items;
     }
+
+    fn handle_items_visit<V: for<'a> Visit<'a>>(&self, visitor: &mut V) {
+        for item in strs_to_trait_items(&self.items) {
+            visitor.visit_trait_item(&item);
+        }
+    }
 }
 
 impl TraitBody {
@@ -123,7 +131,7 @@ impl TraitBody {
         // replace generics with unique generic name
         specialized.replace_generics_names();
 
-        // set missing lifetimes
+        // set missing generic lifetimes
         let mut generics = str_to_generics(&specialized.generics);
         let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
         let specialized_impl_generics = str_to_generics(impl_generics);
@@ -159,7 +167,24 @@ impl TraitBody {
         }
         specialized.generics = to_string(&generics);
 
-        // TODO: clean unused generics
+        // clean unused generics
+        let used_generics = get_used_generics(
+            &specialized,
+            &str_to_generics(&specialized.generics)
+        );
+
+        let mut generics = str_to_generics(&specialized.generics);
+        for generic in get_generics_lifetimes::<Vec<_>>(&specialized.generics) {
+            if !used_generics.contains(&generic) {
+                remove_generic(&mut generics, &generic);
+            }
+        }
+        for generic in get_generics_types::<Vec<_>>(&specialized.generics) {
+            if !used_generics.contains(&generic) {
+                remove_generic(&mut generics, &generic);
+            }
+        }
+        specialized.generics = to_string(&generics);
 
         new_trait.specialized = Some(Box::new(specialized));
         new_trait

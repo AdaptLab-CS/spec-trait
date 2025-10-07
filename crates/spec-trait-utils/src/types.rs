@@ -328,6 +328,15 @@ pub fn type_contains(ty: &Type, generic: &str) -> bool {
     to_string(&type_) != to_string(ty)
 }
 
+pub fn type_contains_lifetime(ty: &Type, lifetime: &str) -> bool {
+    let mut type_ = ty.clone();
+    let replacement = "'__G__";
+
+    replace_lifetime(&mut type_, lifetime, replacement);
+
+    to_string(&type_) != to_string(ty)
+}
+
 /// Replaces all occurrences of `prev` in the given type with `new`.
 pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
     if to_string(ty) == to_string(&str_to_type_name(prev)) {
@@ -385,6 +394,40 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
                     for arg in ab.args.iter_mut() {
                         if let GenericArgument::Type(inner_ty) = arg {
                             replace_type(inner_ty, prev, new);
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Replaces all occurrences of `prev` lifetime in the given type with `new`.
+pub fn replace_lifetime(ty: &mut Type, prev: &str, new: &str) {
+    match ty {
+        Type::Reference(r) => {
+            if let Some(lifetime) = &r.lifetime {
+                if lifetime.to_string() == prev {
+                    r.lifetime = Some(str_to_lifetime(new));
+                }
+            }
+            replace_lifetime(&mut r.elem, prev, new);
+        }
+        Type::Tuple(t) => {
+            for elem in &mut t.elems {
+                replace_lifetime(elem, prev, new);
+            }
+        }
+        Type::Array(a) => replace_lifetime(&mut a.elem, prev, new),
+        Type::Slice(s) => replace_lifetime(&mut s.elem, prev, new),
+        Type::Paren(p) => replace_lifetime(&mut p.elem, prev, new),
+        Type::Path(type_path) => {
+            for seg in &mut type_path.path.segments {
+                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
+                    for arg in ab.args.iter_mut() {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            replace_lifetime(inner_ty, prev, new);
                         }
                     }
                 }

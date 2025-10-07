@@ -20,10 +20,12 @@ use spec_trait_utils::types::{
 };
 use crate::SpecBody;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VarInfo {
     /// if the trait parameter is generic, this is the corresponding generic in the impl
     pub impl_generic: String,
+    /// if the trait parameter is generic, this is the name of the generic in the trait
+    pub trait_generic: Option<String>,
     /// concrete type with which the fn was called
     pub concrete_type: String,
     /// traits implemented by the concrete_type, got from annotations
@@ -119,6 +121,8 @@ fn get_vars(
                 }
             }
         })
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -179,14 +183,15 @@ fn get_generic_constraints_from_trait(
                 let impl_generic = impl_
                     .get_corresponding_generic(&str_to_generics(&trait_.generics), &generic)
                     .unwrap();
-                res.insert((constraint, impl_generic));
+                res.insert((constraint, impl_generic, generic));
             }
         }
     }
 
     res.into_iter()
-        .map(|(constraint, generic)| VarInfo {
-            impl_generic: generic,
+        .map(|(constraint, impl_generic, trait_generic)| VarInfo {
+            impl_generic,
+            trait_generic: Some(trait_generic),
             concrete_type: get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
@@ -214,8 +219,9 @@ fn get_generic_constraints_from_type(
         .into_iter()
         .flat_map(|generics_map| generics_map.types.into_iter())
         .filter_map(|(generic, constraint)| constraint.map(|c| (c, generic)))
-        .map(|(constraint, generic)| VarInfo {
-            impl_generic: generic,
+        .map(|(constraint, impl_generic)| VarInfo {
+            impl_generic,
+            trait_generic: None,
             concrete_type: get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
@@ -373,6 +379,7 @@ mod tests {
             t,
             &(VarInfo {
                 impl_generic: "T".to_string(),
+                trait_generic: Some("A".to_string()),
                 concrete_type: "i32".to_string(),
                 traits: vec!["Debug".to_string()],
             })
@@ -381,6 +388,7 @@ mod tests {
             u,
             &(VarInfo {
                 impl_generic: "U".to_string(),
+                trait_generic: Some("B".to_string()),
                 concrete_type: "& 'static i32".to_string(),
                 traits: vec![],
             })
@@ -389,6 +397,7 @@ mod tests {
             v,
             &(VarInfo {
                 impl_generic: "V".to_string(),
+                trait_generic: None,
                 concrete_type: "MyType".to_string(),
                 traits: vec![],
             })
@@ -443,6 +452,7 @@ mod tests {
         let aliases = Aliases::new();
 
         let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
+        println!("{:#?}", result);
 
         assert_eq!(result.len(), 5);
         let t = result
@@ -470,6 +480,7 @@ mod tests {
             t,
             &(VarInfo {
                 impl_generic: "T".to_string(),
+                trait_generic: Some("A".to_string()),
                 concrete_type: "& 'a i32".to_string(),
                 traits: vec!["Debug".to_string()],
             })
@@ -478,6 +489,7 @@ mod tests {
             u,
             &(VarInfo {
                 impl_generic: "U".to_string(),
+                trait_generic: Some("B".to_string()),
                 concrete_type: "u32".to_string(),
                 traits: vec![],
             })
@@ -487,6 +499,7 @@ mod tests {
             w,
             &(VarInfo {
                 impl_generic: "W".to_string(),
+                trait_generic: Some("C".to_string()),
                 concrete_type: "& 'static Vec < i32 >".to_string(),
                 traits: vec![],
             })
@@ -495,6 +508,7 @@ mod tests {
             x,
             &(VarInfo {
                 impl_generic: "X".to_string(),
+                trait_generic: Some("D".to_string()),
                 concrete_type: "u32".to_string(),
                 traits: vec![],
             })
@@ -503,6 +517,7 @@ mod tests {
             y,
             &(VarInfo {
                 impl_generic: "Y".to_string(),
+                trait_generic: None,
                 concrete_type: "MyType".to_string(),
                 traits: vec![],
             })

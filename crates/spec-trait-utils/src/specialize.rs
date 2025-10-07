@@ -1,9 +1,19 @@
+use std::collections::HashSet;
+
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{ self, VisitMut };
+use syn::visit::Visit;
 use syn::{ GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam };
 use crate::conversions::{ str_to_lifetime, str_to_type_name };
-use crate::types::{ replace_infers, replace_type, can_assign_bidirectional, Aliases };
+use crate::types::{
+    can_assign_bidirectional,
+    replace_infers,
+    replace_type,
+    type_contains,
+    type_contains_lifetime,
+    Aliases,
+};
 use crate::conditions::WhenCondition;
 
 // TODO: infer lifetimes as well
@@ -12,6 +22,8 @@ pub trait Specializable {
     fn resolve_item_generic(&self, other_generics: &Generics, impl_generic: &str) -> Option<String>;
 
     fn handle_items_replace<V: VisitMut>(&mut self, replacer: &mut V);
+
+    fn handle_items_visit<V: for<'a> Visit<'a>>(&self, visitor: &mut V);
 }
 
 pub fn get_assignable_conditions(
@@ -177,6 +189,44 @@ pub fn add_generic_lifetime(generics: &mut Generics, generic: &str) {
     )
 }
 
+pub struct TypeVisitor {
+    unused_generics: HashSet<String>,
+    used_generics: HashSet<String>,
+}
+
+impl Visit<'_> for TypeVisitor {
+    fn visit_type(&mut self, t: &Type) {
+        let mut to_remove = vec![];
+
+        for g in self.unused_generics.iter() {
+            if
+                (g.starts_with("'") && type_contains_lifetime(t, g)) ||
+                (!g.starts_with("'") && type_contains(t, g))
+            {
+                self.used_generics.insert(g.clone());
+                to_remove.push(g.clone());
+            }
+        }
+
+        for g in to_remove {
+            self.unused_generics.remove(&g);
+        }
+    }
+}
+
+pub fn get_used_generics<T: Specializable>(target: &T, generics: &Generics) -> HashSet<String> {
+    let generic_types: HashSet<_> = collect_generics_types(generics);
+    let generic_lifetimes: HashSet<_> = collect_generics_lifetimes(generics);
+    let mut visitor = TypeVisitor {
+        unused_generics: generic_types.union(&generic_lifetimes).cloned().collect(),
+        used_generics: HashSet::new(),
+    };
+
+    target.handle_items_visit(&mut visitor);
+
+    visitor.used_generics
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -217,8 +267,12 @@ mod tests {
             Some("T".to_string())
         }
 
-        fn handle_items_replace<V: visit_mut::VisitMut>(&mut self, replacer: &mut V) {
+        fn handle_items_replace<V: VisitMut>(&mut self, replacer: &mut V) {
             replacer.visit_type_mut(&mut self.type_);
+        }
+
+        fn handle_items_visit<V: for<'a> Visit<'a>>(&self, visitor: &mut V) {
+            visitor.visit_type(&self.type_);
         }
     }
 

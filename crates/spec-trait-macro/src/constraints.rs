@@ -17,7 +17,10 @@ pub struct Constraint {
     pub not_traits: Vec<String>,
 }
 
-pub type Constraints = HashMap<String /* type definition (generic) */, Constraint>;
+#[derive(Debug, Default, Clone)]
+pub struct Constraints {
+    pub inner: HashMap<String /* type definition (generic) */, Constraint>,
+}
 
 impl Ord for Constraint {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -99,31 +102,57 @@ fn cmp_lifetimes(this: &Constraint, other: &Constraint) -> Ordering {
     cmp_type_or_lifetime(this, other, &replace_fn)
 }
 
-pub fn cmp_constraints(this: &Constraints, other: &Constraints) -> Ordering {
-    let all_keys: Vec<&String> = {
-        let mut keys = this.keys().chain(other.keys()).collect::<Vec<_>>();
-        keys.sort();
-        keys.dedup();
-        keys
-    };
-
-    let default = Constraint::default();
-
-    let mut sum = 0;
-    for key in all_keys {
-        let self_constraint = this.get(key).unwrap_or(&default);
-        let other_constraint = other.get(key).unwrap_or(&default);
-
-        let ord = self_constraint.cmp(other_constraint);
-
-        sum += match ord {
-            Ordering::Greater => 1,
-            Ordering::Less => -1,
-            Ordering::Equal => 0,
+impl Ord for Constraints {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let all_keys: Vec<&String> = {
+            let mut keys = self.inner.keys().chain(other.inner.keys()).collect::<Vec<_>>();
+            keys.sort();
+            keys.dedup();
+            keys
         };
-    }
 
-    sum.cmp(&0)
+        let default = Constraint::default();
+
+        let mut sum = 0;
+        for key in all_keys {
+            let self_constraint = self.inner.get(key).unwrap_or(&default);
+            let other_constraint = other.inner.get(key).unwrap_or(&default);
+
+            let ord = self_constraint.cmp(other_constraint);
+
+            sum += match ord {
+                Ordering::Greater => 1,
+                Ordering::Less => -1,
+                Ordering::Equal => 0,
+            };
+        }
+
+        sum.cmp(&0)
+    }
+}
+
+impl PartialOrd for Constraints {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Constraints {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Constraints {}
+
+impl FromIterator<(String, Constraint)> for Constraints {
+    fn from_iter<I: IntoIterator<Item = (String, Constraint)>>(iter: I) -> Self {
+        let mut constraints = Constraints::default();
+        for (generic, constraint) in iter {
+            constraints.inner.insert(generic, constraint);
+        }
+        constraints
+    }
 }
 
 impl Constraint {
@@ -447,31 +476,31 @@ mod tests {
 
     #[test]
     fn test_cmp_constraints() {
-        let mut c1 = Constraints::new();
-        let mut c2 = Constraints::new();
+        let mut c1 = Constraints::default();
+        let mut c2 = Constraints::default();
 
-        c1.insert("T".to_string(), Constraint {
+        c1.inner.insert("T".to_string(), Constraint {
             generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec!["Trait1".to_string()],
             not_types: vec![],
             not_traits: vec![],
         });
-        c1.insert("V".to_string(), Constraint {
+        c1.inner.insert("V".to_string(), Constraint {
             generics: "".to_string(),
             type_: Some("TypeA".to_string()),
             traits: vec![],
             not_types: vec![],
             not_traits: vec![],
         });
-        c2.insert("T".to_string(), Constraint {
+        c2.inner.insert("T".to_string(), Constraint {
             generics: "".to_string(),
             type_: Some("TypeB".to_string()),
             traits: vec![],
             not_types: vec![],
             not_traits: vec![],
         });
-        c2.insert("U".to_string(), Constraint {
+        c2.inner.insert("U".to_string(), Constraint {
             generics: "".to_string(),
             type_: None,
             traits: vec!["Trait2".to_string()],
@@ -479,7 +508,7 @@ mod tests {
             not_traits: vec![],
         });
 
-        let res = cmp_constraints(&c1, &c2);
-        assert_eq!(res, Ordering::Greater);
+        assert!(c1 > c2);
+        assert!(c2 < c1);
     }
 }
