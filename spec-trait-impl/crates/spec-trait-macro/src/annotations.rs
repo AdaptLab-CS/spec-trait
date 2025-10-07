@@ -1,9 +1,9 @@
 use proc_macro2::TokenStream;
 use spec_trait_utils::conversions::to_string;
-use spec_trait_utils::parsing::{ parse_type_or_lifetime_or_trait, ParseTypeOrLifetimeOrTrait };
+use spec_trait_utils::parsing::{ParseTypeOrLifetimeOrTrait, parse_type_or_lifetime_or_trait};
 use std::fmt::Debug;
-use syn::parse::{ Parse, ParseStream };
-use syn::{ bracketed, parenthesized, token, Error, Expr, Ident, Lit, Token, Type };
+use syn::parse::{Parse, ParseStream};
+use syn::{Error, Expr, Ident, Lit, Token, Type, bracketed, parenthesized, token};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Annotation {
@@ -30,9 +30,10 @@ impl ParseTypeOrLifetimeOrTrait<Annotations> for Annotation {
 
     fn from_trait(ident: String, traits: Vec<String>, lifetime: Option<String>) -> Annotations {
         if let Some(lt) = lifetime {
-            Annotations(
-                vec![Annotation::Trait(ident.clone(), traits), Annotation::Lifetime(ident, lt)]
-            )
+            Annotations(vec![
+                Annotation::Trait(ident.clone(), traits),
+                Annotation::Lifetime(ident, lt),
+            ])
         } else {
             Annotations(vec![Annotation::Trait(ident, traits)])
         }
@@ -61,12 +62,10 @@ impl Parse for AnnotationBody {
         let annotations = parse_annotations(input)?;
 
         if args.len() != args_types.len() {
-            return Err(
-                Error::new(
-                    input.span(),
-                    "Number of arguments does not match number of argument types"
-                )
-            );
+            return Err(Error::new(
+                input.span(),
+                "Number of arguments does not match number of argument types",
+            ));
         }
 
         Ok(AnnotationBody {
@@ -133,12 +132,9 @@ fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
 }
 
 fn parse_annotations(input: ParseStream) -> Result<Vec<Annotation>, Error> {
-    input.parse_terminated(Annotations::parse, Token![;]).map(|annotations|
-        annotations
-            .into_iter()
-            .flat_map(|a| a.0)
-            .collect()
-    )
+    input
+        .parse_terminated(Annotations::parse, Token![;])
+        .map(|annotations| annotations.into_iter().flat_map(|a| a.0).collect())
 }
 
 #[cfg(test)]
@@ -174,20 +170,33 @@ mod tests {
 
     #[test]
     fn arguments_formats() {
-        let input =
-            quote! { zst.foo(1, vec![2i8], Vec::new(3), x, (4, 5), "a"); ZST; [i32, Vec<i8>, Vec<i32>, &[i32], (i32, i32), &'static str] };
+        let input = quote! { zst.foo(1, vec![2i8], Vec::new(3), x, (4, 5), "a"); ZST; [i32, Vec<i8>, Vec<i32>, &[i32], (i32, i32), &'static str] };
         let result = AnnotationBody::try_from(input).unwrap();
 
         assert_eq!(result.var, "zst");
         assert_eq!(result.fn_, "foo");
         assert_eq!(
             result.args,
-            vec!["1", "vec ! [2i8]", "Vec :: new (3)", "x", "(4 , 5)", "\"a\""]
+            vec![
+                "1",
+                "vec ! [2i8]",
+                "Vec :: new (3)",
+                "x",
+                "(4 , 5)",
+                "\"a\""
+            ]
         );
         assert_eq!(result.var_type, "ZST");
         assert_eq!(
             result.args_types,
-            vec!["i32", "Vec < i8 >", "Vec < i32 >", "& [i32]", "(i32 , i32)", "& 'static str"]
+            vec![
+                "i32",
+                "Vec < i8 >",
+                "Vec < i32 >",
+                "& [i32]",
+                "(i32 , i32)",
+                "& 'static str"
+            ]
         );
         assert!(result.annotations.is_empty());
     }
@@ -209,10 +218,9 @@ mod tests {
 
     #[test]
     fn annotations() {
-        let input =
-            quote! { 
-            zst.foo(1u8, 2u8); ZST; [u8, u8]; T: Clone + Debug; u32 = MyType;
-         };
+        let input = quote! {
+           zst.foo(1u8, 2u8); ZST; [u8, u8]; T: Clone + Debug; u32 = MyType;
+        };
         let result = AnnotationBody::try_from(input).unwrap();
 
         assert_eq!(result.var, "zst");
@@ -223,7 +231,10 @@ mod tests {
         assert_eq!(
             result.annotations,
             vec![
-                Annotation::Trait("T".to_string(), vec!["Clone".to_string(), "Debug".to_string()]),
+                Annotation::Trait(
+                    "T".to_string(),
+                    vec!["Clone".to_string(), "Debug".to_string()]
+                ),
                 Annotation::Alias("u32".to_string(), "MyType".to_string())
             ]
         );
@@ -241,7 +252,7 @@ mod tests {
     fn invalid_format() {
         let inputs = vec![
             quote! { zst.foo(1u8, 2u8); ZST; [u8, u8]; T Clone Debug; },
-            quote! { zst.foo(1u8, 2u8) }
+            quote! { zst.foo(1u8, 2u8) },
         ];
 
         for input in inputs {

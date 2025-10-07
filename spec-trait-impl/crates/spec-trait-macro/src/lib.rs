@@ -1,16 +1,16 @@
 mod annotations;
-mod vars;
-mod spec;
 mod constraints;
+mod spec;
+mod vars;
 
-use spec_trait_utils::conditions::{ self, WhenCondition };
-use spec_trait_utils::cache;
-use spec_trait_utils::impls::ImplBody;
+use crate::spec::SpecBody;
+use annotations::AnnotationBody;
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use annotations::AnnotationBody;
 use quote::quote;
-use crate::spec::SpecBody;
+use spec_trait_utils::cache;
+use spec_trait_utils::conditions::{self, WhenCondition};
+use spec_trait_utils::impls::ImplBody;
 
 // TODO: check support to other cases
 // TODO: allow blanket impls specialization
@@ -52,19 +52,16 @@ impl<T> MyTrait<T> for MyType {
 */
 #[proc_macro_attribute]
 pub fn when(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let condition = WhenCondition::try_from(TokenStream2::from(attr)).expect(
-        "Failed to parse TokenStream into WhenCondition"
-    );
+    let condition = WhenCondition::try_from(TokenStream2::from(attr))
+        .expect("Failed to parse TokenStream into WhenCondition");
 
     let mut parts = vec![];
     for c in conditions::get_conjunctions(condition) {
-        let impl_body = ImplBody::try_from((TokenStream2::from(item.clone()), Some(c))).expect(
-            "Failed to parse TokenStream into ImplBody"
-        );
+        let impl_body = ImplBody::try_from((TokenStream2::from(item.clone()), Some(c)))
+            .expect("Failed to parse TokenStream into ImplBody");
 
-        let trait_body = cache
-            ::get_trait_by_name(&impl_body.trait_name)
-            .expect("Trait not found in cache");
+        let trait_body =
+            cache::get_trait_by_name(&impl_body.trait_name).expect("Trait not found in cache");
 
         let specialized_trait = trait_body.specialize(&impl_body);
 
@@ -110,9 +107,8 @@ spec! { x.my_method("str", 1); MyType; [&str, i32], i32 = MyAlias  };
 */
 #[proc_macro]
 pub fn spec(item: TokenStream) -> TokenStream {
-    let ann = AnnotationBody::try_from(TokenStream2::from(item)).expect(
-        "Failed to parse TokenStream into AnnotationBody"
-    );
+    let ann = AnnotationBody::try_from(TokenStream2::from(item))
+        .expect("Failed to parse TokenStream into AnnotationBody");
 
     let aliases = vars::get_type_aliases(&ann.annotations);
     let traits = cache::get_traits_by_fn(&ann.fn_, ann.args.len());

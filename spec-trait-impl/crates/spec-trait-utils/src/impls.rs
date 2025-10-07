@@ -1,40 +1,25 @@
-use crate::conversions::{
-    str_to_generics,
-    str_to_trait_name,
-    str_to_type_name,
-    strs_to_impl_items,
-    to_hash,
-    to_string,
-    tokens_to_impl,
-    trait_condition_to_generic_predicate,
-    trait_to_string,
-};
 use crate::conditions::WhenCondition;
+use crate::conversions::{
+    str_to_generics, str_to_trait_name, str_to_type_name, strs_to_impl_items, to_hash, to_string,
+    tokens_to_impl, trait_condition_to_generic_predicate, trait_to_string,
+};
 use crate::parsing::{
-    get_generics_lifetimes,
-    get_generics_types,
-    get_relevant_generics_names,
-    handle_type_predicate,
+    get_generics_lifetimes, get_generics_types, get_relevant_generics_names, handle_type_predicate,
     parse_generics,
 };
 use crate::specialize::{
-    add_generic_lifetime,
-    add_generic_type,
-    apply_type_condition,
-    get_assignable_conditions,
-    get_used_generics,
-    remove_generic,
-    Specializable,
+    Specializable, add_generic_lifetime, add_generic_type, apply_type_condition,
+    get_assignable_conditions, get_used_generics, remove_generic,
 };
-use crate::types::{ replace_type, type_contains, type_contains_lifetime };
+use crate::types::{replace_type, type_contains, type_contains_lifetime};
 use proc_macro2::TokenStream;
-use serde::{ Deserialize, Serialize };
-use syn::visit::Visit;
-use syn::{ Attribute, Generics, ItemImpl };
+use quote::quote;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Debug;
-use quote::quote;
+use syn::visit::Visit;
 use syn::visit_mut::VisitMut;
+use syn::{Attribute, Generics, ItemImpl};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ImplBody {
@@ -50,10 +35,9 @@ pub struct ImplBody {
 impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
     type Error = syn::Error;
 
-    fn try_from((tokens, condition): (TokenStream, Option<WhenCondition>)) -> Result<
-        Self,
-        Self::Error
-    > {
+    fn try_from(
+        (tokens, condition): (TokenStream, Option<WhenCondition>),
+    ) -> Result<Self, Self::Error> {
         let bod = tokens_to_impl(tokens)?;
 
         let impl_generics = to_string(&parse_generics(bod.generics.clone()));
@@ -63,27 +47,34 @@ impl TryFrom<(TokenStream, Option<WhenCondition>)> for ImplBody {
         let type_name = to_string(&bod.self_ty);
         let items = bod.items.iter().map(to_string).collect();
 
-        Ok(
-            (ImplBody {
-                condition,
-                impl_generics,
-                trait_name,
-                trait_generics,
-                type_name,
-                items,
-                specialized: None,
-            }).specialize()
-        )
+        Ok((ImplBody {
+            condition,
+            impl_generics,
+            trait_name,
+            trait_generics,
+            type_name,
+            items,
+            specialized: None,
+        })
+        .specialize())
     }
 }
 
 fn get_trait_name_without_generics(trait_with_generics: &str) -> String {
-    trait_with_generics.split('<').next().unwrap_or(trait_with_generics).trim().to_string()
+    trait_with_generics
+        .split('<')
+        .next()
+        .unwrap_or(trait_with_generics)
+        .trim()
+        .to_string()
 }
 
 impl From<&ImplBody> for TokenStream {
     fn from(impl_body: &ImplBody) -> Self {
-        let impl_body = impl_body.specialized.as_ref().expect("ImplBody not specialized");
+        let impl_body = impl_body
+            .specialized
+            .as_ref()
+            .expect("ImplBody not specialized");
 
         let impl_generics = str_to_generics(&impl_body.impl_generics);
         let trait_name = str_to_trait_name(&impl_body.trait_name);
@@ -92,10 +83,10 @@ impl From<&ImplBody> for TokenStream {
         let items = strs_to_impl_items(&impl_body.items);
 
         quote! {
-        impl #impl_generics #trait_name #trait_generics for #type_name {
-            #(#items)*
+            impl #impl_generics #trait_name #trait_generics for #type_name {
+                #(#items)*
+            }
         }
-    }
     }
 }
 
@@ -145,9 +136,8 @@ impl ImplBody {
         // set missing generics
         let mut trait_generics = str_to_generics(&specialized.trait_generics);
         let curr_generics_types = get_generics_types::<HashSet<_>>(&specialized.trait_generics);
-        let curr_generics_lifetimes = get_generics_lifetimes::<HashSet<_>>(
-            &specialized.trait_generics
-        );
+        let curr_generics_lifetimes =
+            get_generics_lifetimes::<HashSet<_>>(&specialized.trait_generics);
         for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
             if !curr_generics_types.contains(&generic) {
                 add_generic_type(&mut trait_generics, &generic);
@@ -161,10 +151,8 @@ impl ImplBody {
         specialized.trait_generics = to_string(&trait_generics);
 
         // clean unused generics
-        let used_generics = get_used_generics(
-            &specialized,
-            &str_to_generics(&specialized.impl_generics)
-        );
+        let used_generics =
+            get_used_generics(&specialized, &str_to_generics(&specialized.impl_generics));
 
         let mut impl_generics = str_to_generics(&specialized.impl_generics);
         let mut trait_generics = str_to_generics(&specialized.trait_generics);
@@ -209,13 +197,8 @@ impl ImplBody {
                 let mut generics = str_to_generics(&self.impl_generics);
                 let mut other_generics = str_to_generics(&self.trait_generics);
 
-                let new_type = apply_type_condition(
-                    self,
-                    &mut generics,
-                    &mut other_generics,
-                    generic,
-                    type_
-                );
+                let new_type =
+                    apply_type_condition(self, &mut generics, &mut other_generics, generic, type_);
 
                 let mut impl_type = str_to_type_name(&self.type_name);
                 replace_type(&mut impl_type, generic, &new_type);
@@ -239,16 +222,16 @@ impl ImplBody {
     }
 
     /**
-        get the generic in the trait corresponding to the impl_generic in the impl
-        # Example:
-        for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
-        - trait_generic = A -> trait_generic = T
-        - trait_generic = B -> trait_generic = U
-     */
+       get the generic in the trait corresponding to the impl_generic in the impl
+       # Example:
+       for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
+       - trait_generic = A -> trait_generic = T
+       - trait_generic = B -> trait_generic = U
+    */
     pub fn get_corresponding_generic(
         &self,
         trait_generics: &Generics,
-        trait_generic: &str
+        trait_generic: &str,
     ) -> Option<String> {
         let impl_generics = str_to_generics(&self.trait_generics);
 
@@ -256,7 +239,9 @@ impl ImplBody {
             .iter()
             .position(|param| param == trait_generic)?;
 
-        get_relevant_generics_names(&impl_generics, trait_generic).get(trait_generic_param).cloned()
+        get_relevant_generics_names(&impl_generics, trait_generic)
+            .get(trait_generic_param)
+            .cloned()
     }
 }
 
@@ -275,16 +260,17 @@ mod tests {
     fn get_impl_body(condition: Option<WhenCondition>) -> ImplBody {
         ImplBody::try_from((
             quote! {
-            impl <'a, T: Clone, U: Copy> Foo<T, U> for T {
-                type Bar = ();
-                fn foo(&self, arg1: Vec<T>, arg2: U) -> T {
-                    let x: T = arg1[0].clone();
-                    x
+                impl <'a, T: Clone, U: Copy> Foo<T, U> for T {
+                    type Bar = ();
+                    fn foo(&self, arg1: Vec<T>, arg2: U) -> T {
+                        let x: T = arg1[0].clone();
+                        x
+                    }
                 }
-            }
-        },
+            },
             condition,
-        )).unwrap()
+        ))
+        .unwrap()
     }
 
     #[test]
@@ -334,7 +320,10 @@ mod tests {
 
         let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
-        assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<__G_0__>".to_string());
+        assert_eq!(
+            impl_body.type_name.replace(" ", ""),
+            "Vec<__G_0__>".to_string()
+        );
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
             "<U: Copy, __G_0__>".to_string().replace(" ", "")
@@ -388,17 +377,18 @@ mod tests {
 
     #[test]
     fn apply_type_condition_all() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Type("T".into(), "Vec<V>".into()),
-                WhenCondition::Type("V".into(), "String".into()),
-                WhenCondition::Type("T".into(), "Vec<_>".into())
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "Vec<V>".into()),
+            WhenCondition::Type("V".into(), "String".into()),
+            WhenCondition::Type("T".into(), "Vec<_>".into()),
+        ]);
 
         let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
-        assert_eq!(impl_body.type_name.replace(" ", ""), "Vec<String>".to_string());
+        assert_eq!(
+            impl_body.type_name.replace(" ", ""),
+            "Vec<String>".to_string()
+        );
         assert_eq!(
             impl_body.impl_generics.replace(" ", ""),
             "<U: Copy>".to_string().replace(" ", "")
@@ -423,12 +413,10 @@ mod tests {
 
     #[test]
     fn apply_type_condition_unsuccessful() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Type("T".into(), "MyType".into()),
-                WhenCondition::Type("T".into(), "OtherType".into())
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "MyType".into()),
+            WhenCondition::Type("T".into(), "OtherType".into()),
+        ]);
 
         let impl_body = get_impl_body(Some(condition)).specialized.unwrap();
 
@@ -441,7 +429,8 @@ mod tests {
             "<T, U>".to_string().replace(" ", "")
         );
         assert_eq!(
-            impl_body.items
+            impl_body
+                .items
                 .into_iter()
                 .map(|item| item.replace(" ", ""))
                 .collect::<Vec<_>>(),

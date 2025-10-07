@@ -1,27 +1,30 @@
 use crate::files;
-use std::path::{ Path, PathBuf };
-use std::fs;
 use glob::glob;
 use spec_trait_utils::cache::CrateCache;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Crate {
     pub name: String,
     pub content: CrateCache,
-    #[cfg(test)] files: Vec<PathBuf>,
+    #[cfg(test)]
+    files: Vec<PathBuf>,
 }
 
 /// Get all crates in the given directory, considering both single-package and workspace setups
 pub fn get_crates(dir: &Path) -> Vec<Crate> {
     let cargo_toml_path = dir.join("Cargo.toml");
-    let cargo_toml_content = fs
-        ::read_to_string(cargo_toml_path)
-        .expect("Failed to read Cargo.toml");
+    let cargo_toml_content =
+        fs::read_to_string(cargo_toml_path).expect("Failed to read Cargo.toml");
     let cargo_toml_value = toml::from_str(&cargo_toml_content).expect("Failed to parse Cargo.toml");
 
     let crate_from_package = get_crate_from_package(&cargo_toml_value, dir);
     let crates_from_workspace_members = get_crates_from_workspace_members(&cargo_toml_value, dir);
-    crate_from_package.into_iter().chain(crates_from_workspace_members).collect()
+    crate_from_package
+        .into_iter()
+        .chain(crates_from_workspace_members)
+        .collect()
 }
 
 fn get_crate_from_package(value: &toml::Value, dir: &Path) -> Option<Crate> {
@@ -35,7 +38,8 @@ fn get_crate_from_package(value: &toml::Value, dir: &Path) -> Option<Crate> {
     Some(Crate {
         name: name.to_string(),
         content,
-        #[cfg(test)] files,
+        #[cfg(test)]
+        files,
     })
 }
 
@@ -87,17 +91,20 @@ fn get_dir_rs_files(dir: &Path) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::{ create_dir_all, write };
+    use super::*;
+    use std::fs::{create_dir_all, write};
     use std::path::Path;
     use tempfile::tempdir;
-    use super::*;
 
     fn make_package(dir: &Path, name: &str, src_files: &[(&str, &str)]) {
         create_dir_all(dir.join("src")).expect("create src");
-        let cargo = format!(r#"[package]
+        let cargo = format!(
+            r#"[package]
 name = "{}"
 version = "0.1.0"
-"#, name);
+"#,
+            name
+        );
         write(dir.join("Cargo.toml"), cargo).expect("write Cargo.toml");
         for (fname, content) in src_files {
             write(dir.join("src").join(fname), content).expect("write src file");
@@ -110,9 +117,12 @@ version = "0.1.0"
             .map(|m| format!(r#""{}""#, m))
             .collect::<Vec<_>>()
             .join(", ");
-        let cargo = format!(r#"[workspace]
+        let cargo = format!(
+            r#"[workspace]
 members = [{}]
-"#, members_list);
+"#,
+            members_list
+        );
         write(dir.join("Cargo.toml"), cargo).expect("write Cargo.toml");
     }
 
@@ -125,10 +135,7 @@ members = [{}]
         make_package(
             root,
             "foo",
-            &[
-                ("lib.rs", "pub fn main(){}"),
-                ("foo.rs", "pub fn foo(){}"),
-            ]
+            &[("lib.rs", "pub fn main(){}"), ("foo.rs", "pub fn foo(){}")],
         );
 
         let crates = get_crates(root);
@@ -152,10 +159,7 @@ members = [{}]
 
         let crates = get_crates(root);
 
-        let names = crates
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect::<Vec<_>>();
+        let names = crates.iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
 
         assert_eq!(crates.len(), 2);
         assert!(names.contains(&"foo"));
@@ -170,15 +174,20 @@ members = [{}]
         let root = td.path();
 
         make_workspace(root, &["crates/*"]);
-        make_package(&root.join("crates").join("foo"), "foo", &[("lib.rs", "pub fn foo(){}")]);
-        make_package(&root.join("crates").join("bar"), "bar", &[("lib.rs", "pub fn bar(){}")]);
+        make_package(
+            &root.join("crates").join("foo"),
+            "foo",
+            &[("lib.rs", "pub fn foo(){}")],
+        );
+        make_package(
+            &root.join("crates").join("bar"),
+            "bar",
+            &[("lib.rs", "pub fn bar(){}")],
+        );
 
         let crates = get_crates(root);
 
-        let names = crates
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect::<Vec<_>>();
+        let names = crates.iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
 
         assert_eq!(crates.len(), 2);
         assert!(names.contains(&"foo"));
@@ -192,11 +201,18 @@ members = [{}]
         let root = td.path();
 
         make_package(&root, "root", &[("lib.rs", "pub fn main(){}")]);
-        make_package(&root.join("crates").join("foo"), "foo", &[("lib.rs", "pub fn foo(){}")]);
-        make_package(&root.join("crates").join("bar"), "bar", &[("lib.rs", "pub fn bar(){}")]);
+        make_package(
+            &root.join("crates").join("foo"),
+            "foo",
+            &[("lib.rs", "pub fn foo(){}")],
+        );
+        make_package(
+            &root.join("crates").join("bar"),
+            "bar",
+            &[("lib.rs", "pub fn bar(){}")],
+        );
 
-        let cargo =
-            "[package]
+        let cargo = "[package]
 name = \"root\"
 version = \"0.1.0\"
 
@@ -207,10 +223,7 @@ members = [\"crates/*\"]
 
         let crates = get_crates(root);
 
-        let names = crates
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect::<Vec<_>>();
+        let names = crates.iter().map(|c| c.name.as_str()).collect::<Vec<_>>();
 
         assert_eq!(crates.len(), 3);
         assert!(names.contains(&"root"));

@@ -1,25 +1,21 @@
 use std::collections::HashSet;
 
+use crate::conditions::WhenCondition;
+use crate::conversions::{str_to_lifetime, str_to_type_name};
+use crate::types::{
+    Aliases, replace_infers, replace_type, type_assignable, type_contains, type_contains_lifetime,
+};
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
-use syn::visit_mut::{ self, VisitMut };
 use syn::visit::Visit;
-use syn::{ GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam };
-use crate::conversions::{ str_to_lifetime, str_to_type_name };
-use crate::types::{
-    replace_infers,
-    replace_type,
-    type_assignable,
-    type_contains,
-    type_contains_lifetime,
-    Aliases,
-};
-use crate::conditions::WhenCondition;
+use syn::visit_mut::{self, VisitMut};
+use syn::{GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam};
 
 // TODO: infer lifetimes as well
 
 pub trait Specializable {
-    fn resolve_item_generic(&self, other_generics: &Generics, impl_generic: &str) -> Option<String>;
+    fn resolve_item_generic(&self, other_generics: &Generics, impl_generic: &str)
+    -> Option<String>;
 
     fn handle_items_replace<V: VisitMut>(&mut self, replacer: &mut V);
 
@@ -28,32 +24,27 @@ pub trait Specializable {
 
 pub fn get_assignable_conditions(
     conditions: &[WhenCondition],
-    generics: &str
+    generics: &str,
 ) -> Vec<WhenCondition> {
     conditions
         .iter()
-        .filter_map(|c| {
-            match c {
-                WhenCondition::Trait(_, _) => Some(c.clone()),
-                WhenCondition::Type(g, t) => {
-                    let types = get_generic_types_from_conditions(g, conditions);
-                    let most_specific = types.last() == Some(t);
-                    let diff_types = types
-                        .iter()
-                        .any(
-                            |other_t|
-                                !type_assignable(t, other_t, generics, &Aliases::default()) &&
-                                !type_assignable(other_t, t, generics, &Aliases::default())
-                        );
+        .filter_map(|c| match c {
+            WhenCondition::Trait(_, _) => Some(c.clone()),
+            WhenCondition::Type(g, t) => {
+                let types = get_generic_types_from_conditions(g, conditions);
+                let most_specific = types.last() == Some(t);
+                let diff_types = types.iter().any(|other_t| {
+                    !type_assignable(t, other_t, generics, &Aliases::default())
+                        && !type_assignable(other_t, t, generics, &Aliases::default())
+                });
 
-                    if diff_types || !most_specific {
-                        None
-                    } else {
-                        Some(c.clone())
-                    }
+                if diff_types || !most_specific {
+                    None
+                } else {
+                    Some(c.clone())
                 }
-                _ => None,
             }
+            _ => None,
         })
         .collect()
 }
@@ -61,11 +52,9 @@ pub fn get_assignable_conditions(
 fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]) -> Vec<String> {
     let mut types = conditions
         .iter()
-        .filter_map(|c| {
-            match c {
-                WhenCondition::Type(g, t) if g == generic => Some(t.clone()),
-                _ => None,
-            }
+        .filter_map(|c| match c {
+            WhenCondition::Type(g, t) if g == generic => Some(t.clone()),
+            _ => None,
         })
         .collect::<Vec<_>>();
     types.sort_by_key(|t| t.replace("_", "").len());
@@ -89,7 +78,7 @@ pub fn apply_type_condition<T: Specializable>(
     generics: &mut Generics,
     other_generics: &mut Generics,
     impl_generic: &str,
-    type_: &str
+    type_: &str,
 ) -> Type {
     let item_generic = target
         .resolve_item_generic(other_generics, impl_generic)
@@ -101,7 +90,12 @@ pub fn apply_type_condition<T: Specializable>(
     let mut counter = 0;
     let mut new_generics = vec![];
 
-    replace_infers(&mut new_type, &mut existing_generics, &mut counter, &mut new_generics);
+    replace_infers(
+        &mut new_type,
+        &mut existing_generics,
+        &mut counter,
+        &mut new_generics,
+    );
 
     // add new generic types
     for generic in new_generics {
@@ -137,51 +131,45 @@ pub fn remove_generic(generics: &mut Generics, generic: &str) {
 }
 
 pub fn collect_generics_types<T: FromIterator<String>>(generics: &Generics) -> T {
-    generics.params
+    generics
+        .params
         .iter()
-        .filter_map(|p| {
-            match p {
-                GenericParam::Type(tp) => Some(tp.ident.to_string()),
-                _ => None,
-            }
+        .filter_map(|p| match p {
+            GenericParam::Type(tp) => Some(tp.ident.to_string()),
+            _ => None,
         })
         .collect()
 }
 
 pub fn collect_generics_lifetimes<T: FromIterator<String>>(generics: &Generics) -> T {
-    generics.params
+    generics
+        .params
         .iter()
-        .filter_map(|p| {
-            match p {
-                GenericParam::Lifetime(lt) => Some(lt.lifetime.to_string()),
-                _ => None,
-            }
+        .filter_map(|p| match p {
+            GenericParam::Lifetime(lt) => Some(lt.lifetime.to_string()),
+            _ => None,
         })
         .collect()
 }
 
 pub fn add_generic_type(generics: &mut Generics, generic: &str) {
-    generics.params.push(
-        GenericParam::Type(TypeParam {
-            attrs: vec![],
-            ident: Ident::new(generic, Span::call_site()),
-            colon_token: None,
-            bounds: Punctuated::new(),
-            eq_token: None,
-            default: None,
-        })
-    )
+    generics.params.push(GenericParam::Type(TypeParam {
+        attrs: vec![],
+        ident: Ident::new(generic, Span::call_site()),
+        colon_token: None,
+        bounds: Punctuated::new(),
+        eq_token: None,
+        default: None,
+    }))
 }
 
 pub fn add_generic_lifetime(generics: &mut Generics, generic: &str) {
-    generics.params.push(
-        GenericParam::Lifetime(LifetimeParam {
-            attrs: vec![],
-            lifetime: str_to_lifetime(generic),
-            colon_token: None,
-            bounds: Punctuated::new(),
-        })
-    )
+    generics.params.push(GenericParam::Lifetime(LifetimeParam {
+        attrs: vec![],
+        lifetime: str_to_lifetime(generic),
+        colon_token: None,
+        bounds: Punctuated::new(),
+    }))
 }
 
 pub struct TypeVisitor {
@@ -194,9 +182,8 @@ impl Visit<'_> for TypeVisitor {
         let mut to_remove = vec![];
 
         for g in self.unused_generics.iter() {
-            if
-                (g.starts_with("'") && type_contains_lifetime(t, g)) ||
-                (!g.starts_with("'") && type_contains(t, g))
+            if (g.starts_with("'") && type_contains_lifetime(t, g))
+                || (!g.starts_with("'") && type_contains(t, g))
             {
                 self.used_generics.insert(g.clone());
                 to_remove.push(g.clone());
@@ -225,8 +212,8 @@ pub fn get_used_generics<T: Specializable>(target: &T, generics: &Generics) -> H
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversions::{ str_to_generics, to_string };
-    use syn::{ Type, Generics };
+    use crate::conversions::{str_to_generics, to_string};
+    use syn::{Generics, Type};
 
     #[test]
     fn collect_add_remove_generics() {
@@ -245,7 +232,10 @@ mod tests {
 
     #[test]
     fn type_replacer() {
-        let mut replacer = TypeReplacer { generic: "T".into(), type_: str_to_type_name("u32") };
+        let mut replacer = TypeReplacer {
+            generic: "T".into(),
+            type_: str_to_type_name("u32"),
+        };
         let mut type_ = str_to_type_name("Vec<T>");
 
         replacer.visit_type_mut(&mut type_);
@@ -273,13 +263,21 @@ mod tests {
 
     #[test]
     fn test_apply_type_condition() {
-        let mut target = TestTarget { type_: str_to_type_name("T") };
+        let mut target = TestTarget {
+            type_: str_to_type_name("T"),
+        };
         let mut generics = str_to_generics("<T>");
         let mut other_generics = str_to_generics("<T>");
         let impl_generic = "T";
         let type_ = "String";
 
-        apply_type_condition(&mut target, &mut generics, &mut other_generics, impl_generic, type_);
+        apply_type_condition(
+            &mut target,
+            &mut generics,
+            &mut other_generics,
+            impl_generic,
+            type_,
+        );
 
         assert_eq!(to_string(&target.type_), type_.to_string());
 
@@ -294,7 +292,7 @@ mod tests {
     fn get_assignable_conditions_simple() {
         let conditions = vec![
             WhenCondition::Trait("T".into(), vec!["Clone".into()]),
-            WhenCondition::Type("T".into(), "String".into())
+            WhenCondition::Type("T".into(), "String".into()),
         ];
 
         let res = get_assignable_conditions(&conditions, "<T>");
@@ -307,13 +305,16 @@ mod tests {
         let conditions = vec![
             WhenCondition::Trait("T".into(), vec!["Copy".into()]),
             WhenCondition::Type("T".into(), "A".into()),
-            WhenCondition::Type("T".into(), "B".into())
+            WhenCondition::Type("T".into(), "B".into()),
         ];
 
         let res = get_assignable_conditions(&conditions, "<T>");
 
         assert_eq!(res.len(), 1);
-        assert_eq!(res[0], WhenCondition::Trait("T".into(), vec!["Copy".into()]));
+        assert_eq!(
+            res[0],
+            WhenCondition::Trait("T".into(), vec!["Copy".into()])
+        );
     }
 
     #[test]
@@ -322,11 +323,18 @@ mod tests {
             WhenCondition::Type("T".into(), "A".into()),
             WhenCondition::Type("T".into(), "Vec<_>".into()),
             WhenCondition::Type("T".into(), "Vec<String>".into()),
-            WhenCondition::Type("U".into(), "Foo".into())
+            WhenCondition::Type("U".into(), "Foo".into()),
         ];
 
         let types_t = get_generic_types_from_conditions("T", &conditions);
-        assert_eq!(types_t, vec!["A".to_string(), "Vec<_>".to_string(), "Vec<String>".to_string()]);
+        assert_eq!(
+            types_t,
+            vec![
+                "A".to_string(),
+                "Vec<_>".to_string(),
+                "Vec<String>".to_string()
+            ]
+        );
 
         let types_u = get_generic_types_from_conditions("U", &conditions);
         assert_eq!(types_u, vec!["Foo".to_string()]);

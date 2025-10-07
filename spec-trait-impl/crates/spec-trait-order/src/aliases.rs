@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use syn::{ Item, UseTree , Path};
+use syn::{Item, Path, UseTree};
 
 const MACRO_PACKAGE: &str = "spec_trait_macro";
 const MACRO_NAME: &str = "when";

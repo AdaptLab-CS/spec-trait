@@ -1,19 +1,16 @@
 use crate::annotations::AnnotationBody;
-use crate::vars::VarBody;
 use crate::constraints::Constraints;
-use spec_trait_utils::parsing::get_generics_types;
-use spec_trait_utils::types::{
-    assign_lifetimes,
-    get_concrete_type,
-    type_assignable,
-    type_assignable_generic_constraints,
-};
-use spec_trait_utils::conversions::{ str_to_expr, str_to_trait_name, str_to_type_name, to_string };
-use spec_trait_utils::traits::TraitBody;
-use spec_trait_utils::conditions::WhenCondition;
-use spec_trait_utils::impls::ImplBody;
+use crate::vars::VarBody;
 use proc_macro2::TokenStream;
 use quote::quote;
+use spec_trait_utils::conditions::WhenCondition;
+use spec_trait_utils::conversions::{str_to_expr, str_to_trait_name, str_to_type_name, to_string};
+use spec_trait_utils::impls::ImplBody;
+use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::traits::TraitBody;
+use spec_trait_utils::types::{
+    assign_lifetimes, get_concrete_type, type_assignable, type_assignable_generic_constraints,
+};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
@@ -27,10 +24,9 @@ pub struct SpecBody {
 impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
     type Error = String;
 
-    fn try_from((impls, traits, ann): (&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)) -> Result<
-        Self,
-        Self::Error
-    > {
+    fn try_from(
+        (impls, traits, ann): (&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody),
+    ) -> Result<Self, Self::Error> {
         let mut satisfied_specs = impls
             .iter()
             .filter_map(|impl_| {
@@ -106,17 +102,20 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
 fn satisfies_condition(
     condition: &WhenCondition,
     var: &VarBody,
-    constraints: &Constraints
+    constraints: &Constraints,
 ) -> (bool, Constraints) {
     match condition {
         WhenCondition::Type(generic, type_) => {
             let declared_type = get_concrete_type(type_, &var.aliases);
             let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
-            let declared_type_var = var.vars
-                .iter()
-                .find(|v|
-                    type_assignable(&v.concrete_type, &declared_type, &var.generics, &var.aliases)
-                );
+            let declared_type_var = var.vars.iter().find(|v| {
+                type_assignable(
+                    &v.concrete_type,
+                    &declared_type,
+                    &var.generics,
+                    &var.aliases,
+                )
+            });
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.inner.entry(generic.clone()).or_default();
@@ -129,19 +128,21 @@ fn satisfies_condition(
             if *constraint < tmp {
                 constraint.type_ = Some(declared_type.clone());
                 constraint.generics = var.generics.clone();
-            } else if constraint.type_.as_ref().is_some_and(|t| { &declared_type != t }) {
+            } else if constraint
+                .type_
+                .as_ref()
+                .is_some_and(|t| &declared_type != t)
+            {
                 let mut current_type = str_to_type_name(constraint.type_.as_ref().unwrap());
                 let new_type = str_to_type_name(&declared_type);
 
                 // update the lifetimes if types compatible and lifetimes more specific
-                if
-                    let Some(mut generics) = type_assignable_generic_constraints(
-                        constraint.type_.as_ref().unwrap(),
-                        &declared_type,
-                        &var.generics,
-                        &var.aliases
-                    )
-                {
+                if let Some(mut generics) = type_assignable_generic_constraints(
+                    constraint.type_.as_ref().unwrap(),
+                    &declared_type,
+                    &var.generics,
+                    &var.aliases,
+                ) {
                     assign_lifetimes(&mut current_type, &new_type, &mut generics);
 
                     constraint.type_ = Some(to_string(&current_type));
@@ -228,7 +229,8 @@ fn satisfies_condition(
         WhenCondition::Not(inner) => {
             let (satisfied, nc) = satisfies_condition(inner, var, constraints);
 
-            let new_constraints = nc.inner
+            let new_constraints = nc
+                .inner
                 .into_iter()
                 .map(|(generic, constraint)| (generic, constraint.reverse()))
                 .collect();
@@ -240,19 +242,27 @@ fn satisfies_condition(
 
 impl From<&SpecBody> for TokenStream {
     fn from(spec_body: &SpecBody) -> Self {
-        let impl_body = spec_body.impl_.specialized.as_ref().expect("ImplBody not specialized");
+        let impl_body = spec_body
+            .impl_
+            .specialized
+            .as_ref()
+            .expect("ImplBody not specialized");
 
         let type_ = str_to_type_name(&spec_body.annotations.var_type);
         let trait_ = str_to_trait_name(&impl_body.trait_name);
         let generics = get_types_for_generics(spec_body);
         let fn_ = str_to_expr(&spec_body.annotations.fn_);
         let var = str_to_expr(("&".to_owned() + &spec_body.annotations.var).as_str());
-        let args = spec_body.annotations.args
+        let args = spec_body
+            .annotations
+            .args
             .iter()
             .map(|arg| str_to_expr(arg))
             .collect::<Vec<_>>();
 
-        let all_args = std::iter::once(var.clone()).chain(args.iter().cloned()).collect::<Vec<_>>();
+        let all_args = std::iter::once(var.clone())
+            .chain(args.iter().cloned())
+            .collect::<Vec<_>>();
 
         quote! {
             <#type_ as #trait_ #generics>::#fn_(#(#all_args),*)
@@ -261,7 +271,11 @@ impl From<&SpecBody> for TokenStream {
 }
 
 pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
-    let trait_body = spec.trait_.specialized.as_ref().expect("TraitBody not specialized");
+    let trait_body = spec
+        .trait_
+        .specialized
+        .as_ref()
+        .expect("TraitBody not specialized");
 
     let types = get_generics_types::<Vec<_>>(&trait_body.generics)
         .iter()
@@ -277,7 +291,8 @@ pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
 }
 
 fn get_type(generic: &str, constraints: &Constraints) -> String {
-    constraints.inner
+    constraints
+        .inner
         .get(generic)
         .and_then(|constraint| constraint.type_.clone())
         .unwrap_or_else(|| "_".into())
@@ -286,11 +301,11 @@ fn get_type(generic: &str, constraints: &Constraints) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::vec;
     use crate::annotations::Annotation;
-    use crate::vars::VarInfo;
     use crate::constraints::Constraint;
+    use crate::vars::VarInfo;
     use spec_trait_utils::types::Aliases;
+    use std::vec;
 
     fn get_var_body() -> VarBody {
         let mut aliases = Aliases::new();
@@ -324,7 +339,7 @@ mod tests {
             args_types: vec!["&MyType".to_string()],
             annotations: vec![
                 Annotation::Trait("MyType".to_string(), vec!["MyTrait".to_string()]),
-                Annotation::Trait("&MyType".to_string(), vec!["MyTrait".to_string()])
+                Annotation::Trait("&MyType".to_string(), vec!["MyTrait".to_string()]),
             ],
             ..Default::default()
         }
@@ -332,22 +347,17 @@ mod tests {
 
     #[test]
     fn test_satisfies_condition() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Type("T".into(), "&MyType".into()),
-                WhenCondition::Type("T".into(), "&MyOtherType".into()),
-                WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
-                WhenCondition::Type("T".into(), "&'b _".into())
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "&MyType".into()),
+            WhenCondition::Type("T".into(), "&MyOtherType".into()),
+            WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
+            WhenCondition::Type("T".into(), "&'b _".into()),
+        ]);
         let mut var = get_var_body();
         var.generics = "<'b, T>".to_string();
 
-        let (satisfies, constraints) = satisfies_condition(
-            &condition,
-            &var,
-            &Constraints::default()
-        );
+        let (satisfies, constraints) =
+            satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(satisfies);
 
@@ -431,12 +441,10 @@ mod tests {
 
     #[test]
     fn type_forbidden() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Type("T".into(), "&MyType".into()),
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "&MyType".into())))
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "&MyType".into()),
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "&MyType".into()))),
+        ]);
         let var = get_var_body();
 
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
@@ -446,12 +454,10 @@ mod tests {
 
     #[test]
     fn lifetime_forbidden() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Type("T".into(), "&'a _".into()),
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "&'a _".into())))
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "&'a _".into()),
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "&'a _".into()))),
+        ]);
         let var = get_var_body();
 
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
@@ -461,13 +467,11 @@ mod tests {
 
     #[test]
     fn most_specific_type() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Type("T".into(), "_".into()),
-                WhenCondition::Type("T".into(), "Vec<MyType>".into()),
-                WhenCondition::Type("T".into(), "Vec<_>".into())
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "_".into()),
+            WhenCondition::Type("T".into(), "Vec<MyType>".into()),
+            WhenCondition::Type("T".into(), "Vec<_>".into()),
+        ]);
         let var = VarBody {
             aliases: Aliases::default(),
             generics: "<T>".to_string(),
@@ -479,28 +483,27 @@ mod tests {
             }],
         };
 
-        let (satisfies, constraints) = satisfies_condition(
-            &condition,
-            &var,
-            &Constraints::default()
-        );
+        let (satisfies, constraints) =
+            satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(satisfies);
 
         let c = constraints.inner.get("T".into()).unwrap();
-        assert_eq!(c.type_.clone().unwrap().replace(" ", ""), "Vec<MyType>".to_string());
+        assert_eq!(
+            c.type_.clone().unwrap().replace(" ", ""),
+            "Vec<MyType>".to_string()
+        );
     }
 
     #[test]
     fn trait_forbidden() {
-        let condition = WhenCondition::All(
-            vec![
-                WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
-                WhenCondition::Not(
-                    Box::new(WhenCondition::Trait("T".into(), vec!["MyTrait".into()]))
-                )
-            ]
-        );
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Trait("T".into(), vec!["MyTrait".into()]),
+            WhenCondition::Not(Box::new(WhenCondition::Trait(
+                "T".into(),
+                vec!["MyTrait".into()],
+            ))),
+        ]);
         let var = get_var_body();
 
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
@@ -524,7 +527,10 @@ mod tests {
 
     #[test]
     fn single_impl() {
-        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into())))];
+        let impls = vec![get_impl_body(Some(WhenCondition::Type(
+            "T".into(),
+            "&MyType".into(),
+        )))];
         let traits = vec![get_trait_body(&impls[0])];
         let annotations = get_annotation_body();
 
@@ -551,7 +557,10 @@ mod tests {
     fn multiple_impls() {
         let impls = vec![
             get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into()))),
-            get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyTrait".into()])))
+            get_impl_body(Some(WhenCondition::Trait(
+                "T".into(),
+                vec!["MyTrait".into()],
+            ))),
         ];
         let traits = vec![get_trait_body(&impls[0])];
         let annotations = get_annotation_body();
@@ -579,7 +588,7 @@ mod tests {
     fn multiple_equally_specific_impls() {
         let impls = vec![
             get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into()))),
-            get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into())))
+            get_impl_body(Some(WhenCondition::Type("T".into(), "&MyType".into()))),
         ];
         let traits = vec![get_trait_body(&impls[0]), get_trait_body(&impls[1])];
         let annotations = get_annotation_body();
@@ -587,14 +596,20 @@ mod tests {
         let result = SpecBody::try_from((&impls, &traits, &annotations));
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Multiple implementations are equally specific");
+        assert_eq!(
+            result.unwrap_err(),
+            "Multiple implementations are equally specific"
+        );
     }
 
     #[test]
     fn no_valid_impl() {
         let impls = vec![
             get_impl_body(Some(WhenCondition::Type("T".into(), "&MyOtherType".into()))),
-            get_impl_body(Some(WhenCondition::Trait("T".into(), vec!["MyOtherTrait".into()])))
+            get_impl_body(Some(WhenCondition::Trait(
+                "T".into(),
+                vec!["MyOtherTrait".into()],
+            ))),
         ];
         let traits = vec![get_trait_body(&impls[0]), get_trait_body(&impls[1])];
         let annotations = get_annotation_body();
@@ -607,7 +622,10 @@ mod tests {
 
     #[test]
     fn impl_with_wildcard() {
-        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "Vec<_>".into())))];
+        let impls = vec![get_impl_body(Some(WhenCondition::Type(
+            "T".into(),
+            "Vec<_>".into(),
+        )))];
         let traits = vec![get_trait_body(&impls[0])];
         let mut annotations = get_annotation_body();
         annotations.args_types = vec!["Vec<MyType>".to_string()];
@@ -618,10 +636,13 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.inner
+            spec_body
+                .constraints
+                .inner
                 .get("T".into())
                 .unwrap()
-                .type_.clone()
+                .type_
+                .clone()
                 .unwrap()
                 .replace(" ", ""),
             "Vec<_>".to_string()
@@ -630,7 +651,10 @@ mod tests {
 
     #[test]
     fn impl_with_generic() {
-        let impls = vec![get_impl_body(Some(WhenCondition::Type("T".into(), "Vec<U>".into())))];
+        let impls = vec![get_impl_body(Some(WhenCondition::Type(
+            "T".into(),
+            "Vec<U>".into(),
+        )))];
         let traits = vec![get_trait_body(&impls[0])];
         let mut annotations = get_annotation_body();
         annotations.args_types = vec!["Vec<MyType>".to_string()];
@@ -641,10 +665,13 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.inner
+            spec_body
+                .constraints
+                .inner
                 .get("T".into())
                 .unwrap()
-                .type_.clone()
+                .type_
+                .clone()
                 .unwrap()
                 .replace(" ", ""),
             "Vec<U>".to_string()
@@ -653,18 +680,10 @@ mod tests {
 
     #[test]
     fn impl_with_conditioned_generics() {
-        let impls = vec![
-            get_impl_body(
-                Some(
-                    WhenCondition::All(
-                        vec![
-                            WhenCondition::Type("T".into(), "Vec<U>".into()),
-                            WhenCondition::Trait("U".into(), vec!["MyTrait".into()])
-                        ]
-                    )
-                )
-            )
-        ];
+        let impls = vec![get_impl_body(Some(WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "Vec<U>".into()),
+            WhenCondition::Trait("U".into(), vec!["MyTrait".into()]),
+        ])))];
         let traits = vec![get_trait_body(&impls[0])];
         let mut annotations = get_annotation_body();
         annotations.args_types = vec!["Vec<MyType>".to_string()];
@@ -675,36 +694,34 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.inner
+            spec_body
+                .constraints
+                .inner
                 .get("T".into())
                 .unwrap()
-                .type_.clone()
+                .type_
+                .clone()
                 .unwrap()
                 .replace(" ", ""),
             "Vec<U>".to_string()
         );
         assert!(
-            spec_body.constraints.inner
+            spec_body
+                .constraints
+                .inner
                 .get("U".into())
                 .unwrap()
-                .traits.contains(&"MyTrait".to_string())
+                .traits
+                .contains(&"MyTrait".to_string())
         );
     }
 
     #[test]
     fn impl_with_conditioned_generics_not_valid() {
-        let impls = vec![
-            get_impl_body(
-                Some(
-                    WhenCondition::All(
-                        vec![
-                            WhenCondition::Type("T".into(), "Vec<U>".into()),
-                            WhenCondition::Trait("U".into(), vec!["MyOtherTrait".into()])
-                        ]
-                    )
-                )
-            )
-        ];
+        let impls = vec![get_impl_body(Some(WhenCondition::All(vec![
+            WhenCondition::Type("T".into(), "Vec<U>".into()),
+            WhenCondition::Trait("U".into(), vec!["MyOtherTrait".into()]),
+        ])))];
         let traits = vec![get_trait_body(&impls[0])];
         let mut annotations = get_annotation_body();
         annotations.args_types = vec!["Vec<MyType>".to_string()];

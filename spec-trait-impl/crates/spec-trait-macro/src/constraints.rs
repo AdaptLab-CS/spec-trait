@@ -1,9 +1,9 @@
-use std::cmp::Ordering;
-use std::collections::{ HashMap };
 use proc_macro2::TokenStream;
-use spec_trait_utils::conversions::{ str_to_generics, str_to_type_name, to_string };
-use spec_trait_utils::types::{ replace_type, strip_lifetimes, type_assignable, Aliases };
-use spec_trait_utils::parsing::{ get_generics_types };
+use spec_trait_utils::conversions::{str_to_generics, str_to_type_name, to_string};
+use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::types::{Aliases, replace_type, strip_lifetimes, type_assignable};
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use syn::Type;
 
 /// constraint related to a single generic attribute
@@ -49,10 +49,11 @@ impl Eq for Constraint {}
 pub fn cmp_type_or_lifetime(
     this: &Constraint,
     other: &Constraint,
-    replace_fn: &dyn Fn(&mut Type, &str)
+    replace_fn: &dyn Fn(&mut Type, &str),
 ) -> Ordering {
     fn norm(ty: &Option<String>) -> Option<String> {
-        ty.as_ref().and_then(|s| if s == "_" { None } else { Some(s.clone()) })
+        ty.as_ref()
+            .and_then(|s| if s == "_" { None } else { Some(s.clone()) })
     }
 
     let a = norm(&this.type_);
@@ -60,10 +61,10 @@ pub fn cmp_type_or_lifetime(
 
     match (&a, &b) {
         // ('Vec<_>', 'Vec<T>')
-        (Some(a), Some(b)) if
-            type_assignable(a, b, &other.generics, &Aliases::default()) ||
-            type_assignable(b, a, &this.generics, &Aliases::default())
-        => {
+        (Some(a), Some(b))
+            if type_assignable(a, b, &other.generics, &Aliases::default())
+                || type_assignable(b, a, &this.generics, &Aliases::default()) =>
+        {
             let mut a = str_to_type_name(a);
             let mut b = str_to_type_name(b);
 
@@ -106,7 +107,11 @@ fn cmp_lifetimes(this: &Constraint, other: &Constraint) -> Ordering {
 impl Ord for Constraints {
     fn cmp(&self, other: &Self) -> Ordering {
         let all_keys: Vec<&String> = {
-            let mut keys = self.inner.keys().chain(other.inner.keys()).collect::<Vec<_>>();
+            let mut keys = self
+                .inner
+                .keys()
+                .chain(other.inner.keys())
+                .collect::<Vec<_>>();
             keys.sort();
             keys.dedup();
             keys
@@ -480,34 +485,46 @@ mod tests {
         let mut c1 = Constraints::default();
         let mut c2 = Constraints::default();
 
-        c1.inner.insert("T".to_string(), Constraint {
-            generics: "".to_string(),
-            type_: Some("TypeA".to_string()),
-            traits: vec!["Trait1".to_string()],
-            not_types: vec![],
-            not_traits: vec![],
-        });
-        c1.inner.insert("V".to_string(), Constraint {
-            generics: "".to_string(),
-            type_: Some("TypeA".to_string()),
-            traits: vec![],
-            not_types: vec![],
-            not_traits: vec![],
-        });
-        c2.inner.insert("T".to_string(), Constraint {
-            generics: "".to_string(),
-            type_: Some("TypeB".to_string()),
-            traits: vec![],
-            not_types: vec![],
-            not_traits: vec![],
-        });
-        c2.inner.insert("U".to_string(), Constraint {
-            generics: "".to_string(),
-            type_: None,
-            traits: vec!["Trait2".to_string()],
-            not_types: vec![],
-            not_traits: vec![],
-        });
+        c1.inner.insert(
+            "T".to_string(),
+            Constraint {
+                generics: "".to_string(),
+                type_: Some("TypeA".to_string()),
+                traits: vec!["Trait1".to_string()],
+                not_types: vec![],
+                not_traits: vec![],
+            },
+        );
+        c1.inner.insert(
+            "V".to_string(),
+            Constraint {
+                generics: "".to_string(),
+                type_: Some("TypeA".to_string()),
+                traits: vec![],
+                not_types: vec![],
+                not_traits: vec![],
+            },
+        );
+        c2.inner.insert(
+            "T".to_string(),
+            Constraint {
+                generics: "".to_string(),
+                type_: Some("TypeB".to_string()),
+                traits: vec![],
+                not_types: vec![],
+                not_traits: vec![],
+            },
+        );
+        c2.inner.insert(
+            "U".to_string(),
+            Constraint {
+                generics: "".to_string(),
+                type_: None,
+                traits: vec!["Trait2".to_string()],
+                not_types: vec![],
+                not_traits: vec![],
+            },
+        );
 
         assert!(c1 > c2);
         assert!(c2 < c1);

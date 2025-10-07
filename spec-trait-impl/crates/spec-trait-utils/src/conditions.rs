@@ -1,15 +1,18 @@
+use crate::parsing::{ParseTypeOrLifetimeOrTrait, parse_type_or_lifetime_or_trait};
 use proc_macro2::TokenStream;
-use serde::{ Deserialize, Serialize };
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fmt::{ Debug, Display, Formatter, Result as FmtResult };
-use std::hash::{ Hash, Hasher };
-use syn::{ Error, Ident, Token, parenthesized };
-use syn::parse::{ Parse, ParseStream };
-use crate::parsing::{ parse_type_or_lifetime_or_trait, ParseTypeOrLifetimeOrTrait };
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::hash::{Hash, Hasher};
+use syn::parse::{Parse, ParseStream};
+use syn::{Error, Ident, Token, parenthesized};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
-    Type(String /* generic */, String /* type (without lifetime) */),
+    Type(
+        String, /* generic */
+        String, /* type (without lifetime) */
+    ),
     Trait(String /* generic */, Vec<String> /* traits */),
     All(Vec<WhenCondition>),
     Any(Vec<WhenCondition>),
@@ -55,7 +58,7 @@ impl PartialEq for WhenCondition {
             (WhenCondition::Trait(g1, tr1), WhenCondition::Trait(g2, tr2)) => {
                 g1 == g2 && tr1.iter().collect::<HashSet<_>>() == tr2.iter().collect::<HashSet<_>>()
             }
-            | (WhenCondition::All(c1), WhenCondition::All(c2))
+            (WhenCondition::All(c1), WhenCondition::All(c2))
             | (WhenCondition::Any(c1), WhenCondition::Any(c2)) => {
                 c1.iter().collect::<HashSet<_>>() == c2.iter().collect::<HashSet<_>>()
             }
@@ -125,18 +128,26 @@ fn parse_aggregation(ident: Ident, input: ParseStream) -> Result<WhenCondition, 
     }
 
     if conditions.is_empty() {
-        return Err(Error::new(ident.span(), format!("`{}` requires at least one argument", ident)));
+        return Err(Error::new(
+            ident.span(),
+            format!("`{}` requires at least one argument", ident),
+        ));
     }
 
     match ident.to_string().as_str() {
         "all" => Ok(WhenCondition::All(conditions)),
         "any" => Ok(WhenCondition::Any(conditions)),
-        "not" =>
-            match conditions.as_slice() {
-                [condition] => Ok(WhenCondition::Not(Box::new(condition.clone()))),
-                _ => Err(Error::new(ident.span(), "`not` must have exactly one argument")),
-            }
-        _ => Err(Error::new(ident.span(), format!("Unknown aggregation function: {}", ident))),
+        "not" => match conditions.as_slice() {
+            [condition] => Ok(WhenCondition::Not(Box::new(condition.clone()))),
+            _ => Err(Error::new(
+                ident.span(),
+                "`not` must have exactly one argument",
+            )),
+        },
+        _ => Err(Error::new(
+            ident.span(),
+            format!("Unknown aggregation function: {}", ident),
+        )),
     }
 }
 
@@ -175,7 +186,9 @@ fn all_to_dnf(conditions: &Vec<WhenCondition>) -> WhenCondition {
         dnf = dnf
             .iter()
             .flat_map(|existing| {
-                cond_dnf.iter().map(move |c| [existing.clone(), vec![c.clone()]].concat())
+                cond_dnf
+                    .iter()
+                    .map(move |c| [existing.clone(), vec![c.clone()]].concat())
             })
             .collect();
     }
@@ -209,12 +222,22 @@ fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
     match condition {
         // not(A and B) -> not(A) or not(B)
         WhenCondition::All(inner) => {
-            let negated = inner.iter().cloned().map(Box::new).map(WhenCondition::Not).collect();
+            let negated = inner
+                .iter()
+                .cloned()
+                .map(Box::new)
+                .map(WhenCondition::Not)
+                .collect();
             to_dnf(&WhenCondition::Any(negated))
         }
         // not(A or B) -> not(A) and not(B)
         WhenCondition::Any(inner) => {
-            let negated = inner.iter().cloned().map(Box::new).map(WhenCondition::Not).collect();
+            let negated = inner
+                .iter()
+                .cloned()
+                .map(Box::new)
+                .map(WhenCondition::Not)
+                .collect();
             to_dnf(&WhenCondition::All(negated))
         }
         // not(not(A)) -> A
@@ -226,7 +249,7 @@ fn not_to_dnf(condition: &WhenCondition) -> WhenCondition {
 
 fn flatten_and_deduplicate(
     conditions: Vec<WhenCondition>,
-    wrapper: fn(Vec<WhenCondition>) -> WhenCondition
+    wrapper: fn(Vec<WhenCondition>) -> WhenCondition,
 ) -> WhenCondition {
     // remove duplicates
     let mut seen = HashSet::new();
@@ -277,7 +300,7 @@ mod tests {
             quote! { T = _ },
             quote! { T = Vec<_> },
             quote! { T = (_, _) },
-            quote! { T = &[_] }
+            quote! { T = &[_] },
         ];
         for input in inputs {
             let condition = WhenCondition::try_from(input);
@@ -289,7 +312,10 @@ mod tests {
     fn parse_single_trait_condition() {
         let input = quote! { T: Clone };
         let condition = WhenCondition::try_from(input).unwrap();
-        assert_eq!(condition, WhenCondition::Trait("T".into(), vec!["Clone".into()]));
+        assert_eq!(
+            condition,
+            WhenCondition::Trait("T".into(), vec!["Clone".into()])
+        );
     }
 
     #[test]
@@ -315,12 +341,10 @@ mod tests {
         let condition = WhenCondition::try_from(input).unwrap();
         assert_eq!(
             condition,
-            WhenCondition::All(
-                vec![
-                    WhenCondition::Trait("T".into(), vec!["Clone".into(), "Debug".into()]),
-                    WhenCondition::Type("T".into(), "& 'a _".into())
-                ]
-            )
+            WhenCondition::All(vec![
+                WhenCondition::Trait("T".into(), vec!["Clone".into(), "Debug".into()]),
+                WhenCondition::Type("T".into(), "& 'a _".into())
+            ])
         );
     }
 
@@ -328,7 +352,10 @@ mod tests {
     fn parse_lifetime_and_type_condition() {
         let input = quote! { T = &'a str };
         let condition = WhenCondition::try_from(input).unwrap();
-        assert_eq!(condition, WhenCondition::Type("T".into(), "& 'a str".into()));
+        assert_eq!(
+            condition,
+            WhenCondition::Type("T".into(), "& 'a str".into())
+        );
     }
 
     #[test]
@@ -337,12 +364,10 @@ mod tests {
         let condition = WhenCondition::try_from(input).unwrap();
         assert_eq!(
             condition,
-            WhenCondition::All(
-                vec![
-                    WhenCondition::Trait("T".into(), vec!["Clone".into()]),
-                    WhenCondition::Type("U".into(), "u32".into())
-                ]
-            )
+            WhenCondition::All(vec![
+                WhenCondition::Trait("T".into(), vec!["Clone".into()]),
+                WhenCondition::Type("U".into(), "u32".into())
+            ])
         );
     }
 
@@ -352,12 +377,10 @@ mod tests {
         let condition = WhenCondition::try_from(input).unwrap();
         assert_eq!(
             condition,
-            WhenCondition::Any(
-                vec![
-                    WhenCondition::Type("U".into(), "u32".into()),
-                    WhenCondition::Trait("T".into(), vec!["Clone".into()])
-                ]
-            )
+            WhenCondition::Any(vec![
+                WhenCondition::Type("U".into(), "u32".into()),
+                WhenCondition::Trait("T".into(), vec!["Clone".into()])
+            ])
         );
     }
 
@@ -367,7 +390,10 @@ mod tests {
         let condition = WhenCondition::try_from(input).unwrap();
         assert_eq!(
             condition,
-            WhenCondition::Not(Box::new(WhenCondition::Trait("T".into(), vec!["Clone".into()])))
+            WhenCondition::Not(Box::new(WhenCondition::Trait(
+                "T".into(),
+                vec!["Clone".into()]
+            )))
         );
     }
 
@@ -378,7 +404,7 @@ mod tests {
             quote! { any(any(T = i32)) },
             quote! { all(T = i32) },
             quote! { all(all(T = i32)) },
-            quote! { not(not(T = i32)) }
+            quote! { not(not(T = i32)) },
         ];
 
         for input in inputs {
@@ -393,39 +419,33 @@ mod tests {
             (
                 vec![
                     WhenCondition::Type("T".into(), "A".into()),
-                    WhenCondition::Type("T".into(), "A".into())
+                    WhenCondition::Type("T".into(), "A".into()),
                 ],
                 WhenCondition::Type("T".into(), "A".into()),
             ),
             (
                 vec![
                     WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
-                    WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into())))
+                    WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
                 ],
                 WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
             ),
             (
                 vec![
-                    WhenCondition::Any(
-                        vec![
-                            WhenCondition::Type("T".into(), "A".into()),
-                            WhenCondition::Type("T".into(), "B".into())
-                        ]
-                    ),
-                    WhenCondition::Any(
-                        vec![
-                            WhenCondition::Type("T".into(), "B".into()),
-                            WhenCondition::Type("T".into(), "A".into())
-                        ]
-                    )
-                ],
-                WhenCondition::Any(
-                    vec![
+                    WhenCondition::Any(vec![
                         WhenCondition::Type("T".into(), "A".into()),
-                        WhenCondition::Type("T".into(), "B".into())
-                    ]
-                ),
-            )
+                        WhenCondition::Type("T".into(), "B".into()),
+                    ]),
+                    WhenCondition::Any(vec![
+                        WhenCondition::Type("T".into(), "B".into()),
+                        WhenCondition::Type("T".into(), "A".into()),
+                    ]),
+                ],
+                WhenCondition::Any(vec![
+                    WhenCondition::Type("T".into(), "A".into()),
+                    WhenCondition::Type("T".into(), "B".into()),
+                ]),
+            ),
         ];
 
         for (input, expected) in inputs {
@@ -436,44 +456,33 @@ mod tests {
 
     #[test]
     fn normalization() {
-        let input =
-            quote! { any(not(all(T = A, all(T = B, T = C), any(U = D, U = C), not(not(T = A)), all(T = D), any(U = D))), all(T = A, any(T = B, T = C), T = D), any(all(T = A, T = B), all(T = B, T = A))) };
+        let input = quote! { any(not(all(T = A, all(T = B, T = C), any(U = D, U = C), not(not(T = A)), all(T = D), any(U = D))), all(T = A, any(T = B, T = C), T = D), any(all(T = A, T = B), all(T = B, T = A))) };
         let condition = WhenCondition::try_from(input).unwrap();
-        let expected = WhenCondition::Any(
-            vec![
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "B".into()))),
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "C".into()))),
-                WhenCondition::All(
-                    vec![
-                        WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "D".into()))),
-                        WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "C".into())))
-                    ]
-                ),
-                WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "D".into()))),
+        let expected = WhenCondition::Any(vec![
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "A".into()))),
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "B".into()))),
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "C".into()))),
+            WhenCondition::All(vec![
                 WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "D".into()))),
-                WhenCondition::All(
-                    vec![
-                        WhenCondition::Type("T".into(), "A".into()),
-                        WhenCondition::Type("T".into(), "B".into()),
-                        WhenCondition::Type("T".into(), "D".into())
-                    ]
-                ),
-                WhenCondition::All(
-                    vec![
-                        WhenCondition::Type("T".into(), "A".into()),
-                        WhenCondition::Type("T".into(), "C".into()),
-                        WhenCondition::Type("T".into(), "D".into())
-                    ]
-                ),
-                WhenCondition::All(
-                    vec![
-                        WhenCondition::Type("T".into(), "A".into()),
-                        WhenCondition::Type("T".into(), "B".into())
-                    ]
-                )
-            ]
-        );
+                WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "C".into()))),
+            ]),
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "D".into()))),
+            WhenCondition::Not(Box::new(WhenCondition::Type("U".into(), "D".into()))),
+            WhenCondition::All(vec![
+                WhenCondition::Type("T".into(), "A".into()),
+                WhenCondition::Type("T".into(), "B".into()),
+                WhenCondition::Type("T".into(), "D".into()),
+            ]),
+            WhenCondition::All(vec![
+                WhenCondition::Type("T".into(), "A".into()),
+                WhenCondition::Type("T".into(), "C".into()),
+                WhenCondition::Type("T".into(), "D".into()),
+            ]),
+            WhenCondition::All(vec![
+                WhenCondition::Type("T".into(), "A".into()),
+                WhenCondition::Type("T".into(), "B".into()),
+            ]),
+        ]);
         assert_eq!(condition, expected);
     }
 }

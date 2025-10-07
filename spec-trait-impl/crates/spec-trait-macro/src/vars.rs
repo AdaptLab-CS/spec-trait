@@ -1,24 +1,17 @@
 use std::collections::HashSet;
 
+use crate::SpecBody;
+use crate::annotations::{Annotation, AnnotationBody};
 use spec_trait_utils::conversions::{
-    str_to_generics,
-    str_to_lifetime,
-    str_to_type_name,
-    to_string,
+    str_to_generics, str_to_lifetime, str_to_type_name, to_string,
 };
 use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::get_generics_types;
 use spec_trait_utils::traits::TraitBody;
-use syn::{ FnArg, TraitItemFn, Type };
-use crate::annotations::{ Annotation, AnnotationBody };
 use spec_trait_utils::types::{
-    get_concrete_type,
-    type_contains,
-    type_assignable,
-    type_assignable_generic_constraints,
-    Aliases,
+    Aliases, get_concrete_type, type_assignable, type_assignable_generic_constraints, type_contains,
 };
-use crate::SpecBody;
+use syn::{FnArg, TraitItemFn, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct VarInfo {
@@ -47,7 +40,11 @@ impl From<&SpecBody> for VarBody {
         let aliases = get_type_aliases(&spec.annotations.annotations);
         let generics = spec.impl_.impl_generics.clone();
         let vars = get_vars(&spec.annotations, &spec.impl_, &spec.trait_, &aliases);
-        VarBody { aliases, generics, vars }
+        VarBody {
+            aliases,
+            generics,
+            vars,
+        }
     }
 }
 
@@ -56,7 +53,10 @@ pub fn get_type_aliases(ann: &[Annotation]) -> Aliases {
 
     for a in ann {
         if let Annotation::Alias(type_, alias) = a {
-            aliases.entry(type_.clone()).or_default().push(alias.clone());
+            aliases
+                .entry(type_.clone())
+                .or_default()
+                .push(alias.clone());
         }
     }
 
@@ -67,7 +67,7 @@ fn get_vars(
     ann: &AnnotationBody,
     impl_: &ImplBody,
     trait_: &TraitBody,
-    aliases: &Aliases
+    aliases: &Aliases,
 ) -> Vec<VarInfo> {
     get_generics_types::<Vec<_>>(&impl_.impl_generics)
         .iter()
@@ -77,7 +77,7 @@ fn get_vars(
                 g,
                 impl_.specialized.as_ref().unwrap(),
                 ann,
-                aliases
+                aliases,
             );
 
             match trait_.get_corresponding_generic(&str_to_generics(&impl_.trait_generics), g) {
@@ -88,7 +88,7 @@ fn get_vars(
                         trait_,
                         impl_,
                         ann,
-                        aliases
+                        aliases,
                     );
 
                     from_trait.into_iter().chain(from_type).collect::<Vec<_>>()
@@ -96,12 +96,13 @@ fn get_vars(
 
                 // get from specialized instead
                 None => {
-                    let trait_generic = trait_.specialized
+                    let trait_generic = trait_
+                        .specialized
                         .as_ref()
                         .unwrap()
                         .get_corresponding_generic(
                             &str_to_generics(&impl_.specialized.as_ref().unwrap().trait_generics),
-                            g
+                            g,
                         );
 
                     if let Some(trait_generic) = trait_generic {
@@ -110,13 +111,19 @@ fn get_vars(
                             trait_.specialized.as_ref().unwrap(),
                             impl_.specialized.as_ref().unwrap(),
                             ann,
-                            aliases
+                            aliases,
                         );
 
-                        from_trait.into_iter().chain(from_type_specialized).collect::<Vec<_>>()
+                        from_trait
+                            .into_iter()
+                            .chain(from_type_specialized)
+                            .collect::<Vec<_>>()
                     } else {
                         // get from type only
-                        from_type.into_iter().chain(from_type_specialized).collect::<Vec<_>>()
+                        from_type
+                            .into_iter()
+                            .chain(from_type_specialized)
+                            .collect::<Vec<_>>()
                     }
                 }
             }
@@ -127,18 +134,18 @@ fn get_vars(
 }
 
 /**
-    Get the parameter types from a trait function.
-    # Example
-    `fn foo(&self, x: T, y: u32);` returns `vec!["T", "u32"]`
- */
+   Get the parameter types from a trait function.
+   # Example
+   `fn foo(&self, x: T, y: u32);` returns `vec!["T", "u32"]`
+*/
 fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
-    trait_fn.sig.inputs
+    trait_fn
+        .sig
+        .inputs
         .iter()
-        .filter_map(|arg| {
-            match arg {
-                FnArg::Typed(pat_type) => Some(to_string(&pat_type.ty)),
-                _ => None,
-            }
+        .filter_map(|arg| match arg {
+            FnArg::Typed(pat_type) => Some(to_string(&pat_type.ty)),
+            _ => None,
         })
         .collect()
 }
@@ -148,7 +155,7 @@ fn get_generic_constraints_from_trait(
     trait_: &TraitBody,
     impl_: &ImplBody,
     ann: &AnnotationBody,
-    aliases: &Aliases
+    aliases: &Aliases,
 ) -> Vec<VarInfo> {
     let trait_fn = trait_.find_fn(&ann.fn_, ann.args.len()).unwrap();
     let param_types = get_param_types(&trait_fn);
@@ -174,7 +181,7 @@ fn get_generic_constraints_from_trait(
         concrete_type,
         trait_type_definition,
         &trait_.generics,
-        aliases
+        aliases,
     );
 
     if let Some(generics_map) = constrained_generics {
@@ -202,7 +209,7 @@ fn get_generic_constraints_from_type(
     impl_generic: &str,
     impl_: &ImplBody,
     ann: &AnnotationBody,
-    aliases: &Aliases
+    aliases: &Aliases,
 ) -> Vec<VarInfo> {
     if !type_contains(&str_to_type_name(&impl_.type_name), impl_generic) {
         return vec![];
@@ -212,7 +219,7 @@ fn get_generic_constraints_from_type(
         &ann.var_type,
         &impl_.type_name,
         &impl_.impl_generics,
-        aliases
+        aliases,
     );
 
     constrained_generics
@@ -231,12 +238,11 @@ fn get_generic_constraints_from_type(
 /// Get the traits associated with a type from annotations.
 fn get_type_traits(type_: &str, ann: &[Annotation], aliases: &Aliases) -> Vec<String> {
     ann.iter()
-        .flat_map(|a| {
-            match a {
-                Annotation::Trait(t, traits) if type_assignable(type_, t, "", aliases) =>
-                    traits.clone(),
-                _ => vec![],
+        .flat_map(|a| match a {
+            Annotation::Trait(t, traits) if type_assignable(type_, t, "", aliases) => {
+                traits.clone()
             }
+            _ => vec![],
         })
         .collect()
 }
@@ -248,12 +254,11 @@ fn get_concrete_type_with_lifetime(type_: &str, ann: &[Annotation], aliases: &Al
 
     let lt_from_ann = ann
         .iter()
-        .filter_map(|a| {
-            match a {
-                Annotation::Lifetime(t, lt) if type_assignable(&concrete_type, t, "", aliases) =>
-                    Some(lt.clone()),
-                _ => None,
+        .filter_map(|a| match a {
+            Annotation::Lifetime(t, lt) if type_assignable(&concrete_type, t, "", aliases) => {
+                Some(lt.clone())
             }
+            _ => None,
         })
         .collect::<HashSet<_>>();
 
@@ -261,16 +266,17 @@ fn get_concrete_type_with_lifetime(type_: &str, ann: &[Annotation], aliases: &Al
         Type::Reference(tr) => {
             let lt_from_ty = tr.clone().lifetime.map(|lt| lt.to_string());
 
-            let lifetimes = lt_from_ann.into_iter().chain(lt_from_ty).collect::<HashSet<_>>();
+            let lifetimes = lt_from_ann
+                .into_iter()
+                .chain(lt_from_ty)
+                .collect::<HashSet<_>>();
 
             match lifetimes.len() {
                 0 => concrete_type,
                 1 => {
                     let mut tr_with_lifetime = tr.clone();
-                    tr_with_lifetime.lifetime = lifetimes
-                        .iter()
-                        .next()
-                        .map(|lt| str_to_lifetime(lt));
+                    tr_with_lifetime.lifetime =
+                        lifetimes.iter().next().map(|lt| str_to_lifetime(lt));
                     to_string(&Type::Reference(tr_with_lifetime))
                 }
                 _ => panic!("Multiple lifetimes found for type {}", type_),
@@ -291,7 +297,7 @@ mod tests {
         let ann = vec![
             Annotation::Alias("A".into(), "a1".into()),
             Annotation::Alias("A".into(), "a2".into()),
-            Annotation::Alias("B".into(), "b1".into())
+            Annotation::Alias("B".into(), "b1".into()),
         ];
 
         let result = get_type_aliases(&ann);
@@ -316,13 +322,16 @@ mod tests {
         let ann = vec![
             Annotation::Trait("u32".into(), vec!["Copy".into(), "Clone".into()]),
             Annotation::Trait("MyType".into(), vec!["Debug".into()]),
-            Annotation::Trait("Vec<_>".into(), vec!["Debug".into()])
+            Annotation::Trait("Vec<_>".into(), vec!["Debug".into()]),
         ];
         let mut aliases = Aliases::new();
         aliases.insert("u32".into(), vec!["MyType".into()]);
 
         let result = get_type_traits("u32", &ann, &aliases);
-        assert_eq!(result, vec!["Copy".to_string(), "Clone".to_string(), "Debug".to_string()]);
+        assert_eq!(
+            result,
+            vec!["Copy".to_string(), "Clone".to_string(), "Debug".to_string()]
+        );
 
         let result = get_type_traits("Vec<_>", &ann, &aliases);
         assert_eq!(result, vec!["Debug".to_string()]);
@@ -340,18 +349,21 @@ mod tests {
         )).unwrap();
 
         let trait_body = TraitBody::try_from(
-            syn
-                ::parse_str::<TokenStream>(
-                    "trait MyTrait<A, B> { fn foo(&self, x: A, y: u32, z: Vec<B>); }"
-                )
-                .unwrap()
+            syn::parse_str::<TokenStream>(
+                "trait MyTrait<A, B> { fn foo(&self, x: A, y: u32, z: Vec<B>); }",
+            )
+            .unwrap(),
         )
-            .unwrap()
-            .specialize(&impl_body);
+        .unwrap()
+        .specialize(&impl_body);
 
         let ann = AnnotationBody {
             fn_: "foo".to_string(),
-            args_types: vec!["i32".to_string(), "u32".to_string(), "Vec<&'static i32>".to_string()],
+            args_types: vec![
+                "i32".to_string(),
+                "u32".to_string(),
+                "Vec<&'static i32>".to_string(),
+            ],
             args: vec!["1i32".to_string(), "2u32".to_string(), "vec![]".to_string()],
             var: "x".to_string(),
             var_type: "MyType".to_string(),
@@ -363,18 +375,9 @@ mod tests {
         let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
 
         assert_eq!(result.len(), 3);
-        let t = result
-            .iter()
-            .find(|v| v.impl_generic == "T")
-            .unwrap();
-        let u = result
-            .iter()
-            .find(|v| v.impl_generic == "U")
-            .unwrap();
-        let v = result
-            .iter()
-            .find(|v| v.impl_generic == "V")
-            .unwrap();
+        let t = result.iter().find(|v| v.impl_generic == "T").unwrap();
+        let u = result.iter().find(|v| v.impl_generic == "U").unwrap();
+        let v = result.iter().find(|v| v.impl_generic == "V").unwrap();
         assert_eq!(
             t,
             &(VarInfo {
@@ -438,14 +441,19 @@ mod tests {
                 "&&i32".to_string(),
                 "(String, u32, i32)".to_string(),
                 "&[u32]".to_string(),
-                "&'static Vec<i32>".to_string()
+                "&'static Vec<i32>".to_string(),
             ],
-            args: vec!["x".to_string(), "y".to_string(), "z".to_string(), "w".to_string()],
+            args: vec![
+                "x".to_string(),
+                "y".to_string(),
+                "z".to_string(),
+                "w".to_string(),
+            ],
             var: "x".to_string(),
             var_type: "Vec<MyType>".to_string(),
             annotations: vec![
                 Annotation::Trait("&i32".into(), vec!["Debug".into()]),
-                Annotation::Lifetime("&i32".into(), "'a".into())
+                Annotation::Lifetime("&i32".into(), "'a".into()),
             ],
         };
 
@@ -455,27 +463,12 @@ mod tests {
         println!("{:#?}", result);
 
         assert_eq!(result.len(), 5);
-        let t = result
-            .iter()
-            .find(|v| v.impl_generic == "T")
-            .unwrap();
-        let u = result
-            .iter()
-            .find(|v| v.impl_generic == "U")
-            .unwrap();
+        let t = result.iter().find(|v| v.impl_generic == "T").unwrap();
+        let u = result.iter().find(|v| v.impl_generic == "U").unwrap();
         let v = result.iter().find(|v| v.impl_generic == "V");
-        let w = result
-            .iter()
-            .find(|v| v.impl_generic == "W")
-            .unwrap();
-        let x = result
-            .iter()
-            .find(|v| v.impl_generic == "X")
-            .unwrap();
-        let y = result
-            .iter()
-            .find(|v| v.impl_generic == "Y")
-            .unwrap();
+        let w = result.iter().find(|v| v.impl_generic == "W").unwrap();
+        let x = result.iter().find(|v| v.impl_generic == "X").unwrap();
+        let y = result.iter().find(|v| v.impl_generic == "Y").unwrap();
         assert_eq!(
             t,
             &(VarInfo {

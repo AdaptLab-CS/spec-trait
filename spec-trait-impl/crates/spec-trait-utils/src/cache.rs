@@ -1,10 +1,10 @@
-use crate::traits::TraitBody;
-use crate::impls::ImplBody;
 use crate::env::get_cache_path;
-use crate::types::{ type_assignable, Aliases };
-use serde::{ Deserialize, Serialize };
+use crate::impls::ImplBody;
+use crate::traits::TraitBody;
+use crate::types::{Aliases, type_assignable};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::collections::{ HashMap, HashSet };
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct CrateCache {
@@ -72,7 +72,8 @@ pub fn get_trait_by_name(trait_name: &str) -> Option<TraitBody> {
 
 pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
     let cache = read_cache(None);
-    cache.traits
+    cache
+        .traits
         .into_iter()
         .filter(|tr| tr.find_fn(fn_name, args_len).is_some())
         .collect()
@@ -81,19 +82,16 @@ pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
 pub fn get_impls_by_type_and_traits(
     type_name: &str,
     traits: &[TraitBody],
-    aliases: &Aliases
+    aliases: &Aliases,
 ) -> Vec<ImplBody> {
     let cache = read_cache(None);
-    let traits_names = traits
-        .iter()
-        .map(|tr| &tr.name)
-        .collect::<HashSet<_>>();
-    cache.impls
+    let traits_names = traits.iter().map(|tr| &tr.name).collect::<HashSet<_>>();
+    cache
+        .impls
         .into_iter()
-        .filter(
-            |imp|
-                traits_names.contains(&imp.trait_name) &&
-                type_assignable(type_name, &imp.type_name, &imp.impl_generics, aliases)
-        )
+        .filter(|imp| {
+            traits_names.contains(&imp.trait_name)
+                && type_assignable(type_name, &imp.type_name, &imp.impl_generics, aliases)
+        })
         .collect()
 }
