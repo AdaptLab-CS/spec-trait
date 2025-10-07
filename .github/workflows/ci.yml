@@ -48,13 +48,13 @@ jobs:
         run: rustup component add --toolchain ${{ matrix.toolchain }} rustfmt
       - name: Run cargo build
         working-directory: spec-trait-inst
-        run: cargo build --verbose
+        run: cargo +${{ matrix.toolchain }} build --verbose
       - name: Run cargo test
         working-directory: spec-trait-inst
-        run: cargo test --verbose -- --test-threads=1 --nocapture
+        run: cargo +${{ matrix.toolchain }} test --verbose -- --test-threads=1 --nocapture
       - name: Run cargo clippy
         working-directory: spec-trait-inst
-        run: cargo clippy --verbose -- -D warnings
+        run: cargo +${{ matrix.toolchain }} clippy --verbose -- -D warnings
       - name: Run cargo fmt
         working-directory: spec-trait-inst
-        run: cargo fmt -- --check
+        run: cargo +${{ matrix.toolchain }} fmt -- --check
