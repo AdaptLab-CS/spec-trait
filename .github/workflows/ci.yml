@@ -1,32 +1,7 @@
 name: CI
 
 on:
-  push:
-    paths:
-      - 'spec-trait-inst/src/**'
-      - 'spec-trait-inst/Cargo.lock'
-      - 'spec-trait-inst/Cargo.toml'
-      - 'spec-trait-inst/rustfmt.toml'
-      - 'spec-trait-inst/config/**'
-      - 'spec-trait-impl/src/**'
-      - 'spec-trait-impl/crates/**'
-      - 'spec-trait-impl/Cargo.lock'
-      - 'spec-trait-impl/Cargo.toml'
-      - 'spec-trait-impl/tests/**'
-      - '.github/workflows/**'
-  pull_request:
-    paths:
-      - 'spec-trait-inst/src/**'
-      - 'spec-trait-inst/Cargo.lock'
-      - 'spec-trait-inst/Cargo.toml'
-      - 'spec-trait-inst/rustfmt.toml'
-      - 'spec-trait-inst/config/**'
-      - 'spec-trait-impl/src/**'
-      - 'spec-trait-impl/crates/**'
-      - 'spec-trait-impl/Cargo.lock'
-      - 'spec-trait-impl/Cargo.toml'
-      - 'spec-trait-impl/tests/**'
-      - '.github/workflows/**'
+  workflow_call: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -70,7 +45,7 @@ jobs:
       - name: Run cargo fmt (spec-trait-inst)
         working-directory: spec-trait-inst
         run: cargo +${{ matrix.toolchain }} fmt -- --check
-      
+
       # spec-trait-impl checks
       - name: Run cargo build (spec-trait-impl)
         working-directory: spec-trait-impl

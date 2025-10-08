@@ -1,0 +1,21 @@
+name: PULL REQUEST CI
+
+on:
+  pull_request:
+    paths:
+      - "spec-trait-inst/src/**"
+      - "spec-trait-inst/Cargo.lock"
+      - "spec-trait-inst/Cargo.toml"
+      - "spec-trait-inst/rustfmt.toml"
+      - "spec-trait-inst/config/**"
+      - "spec-trait-impl/src/**"
+      - "spec-trait-impl/crates/**"
+      - "spec-trait-impl/Cargo.lock"
+      - "spec-trait-impl/Cargo.toml"
+      - "spec-trait-impl/tests/**"
+      - ".github/workflows/**"
+
+jobs:
+  call-ci:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
