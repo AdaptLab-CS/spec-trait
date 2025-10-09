@@ -124,32 +124,6 @@ fn satisfies_condition(
             tmp.type_ = Some(declared_type.clone());
             tmp.generics = var.generics.clone();
 
-            // update the type if it is more specific than the current one
-            if *constraint < tmp {
-                constraint.type_ = Some(declared_type.clone());
-                constraint.generics = var.generics.clone();
-            } else if constraint
-                .type_
-                .as_ref()
-                .is_some_and(|t| &declared_type != t)
-            {
-                let mut current_type = str_to_type_name(constraint.type_.as_ref().unwrap());
-                let new_type = str_to_type_name(&declared_type);
-
-                // update the lifetimes if types compatible and lifetimes more specific
-                if let Some(mut generics) = type_assignable_generic_constraints(
-                    constraint.type_.as_ref().unwrap(),
-                    &declared_type,
-                    &var.generics,
-                    &var.aliases,
-                ) {
-                    assign_lifetimes(&mut current_type, &new_type, &mut generics);
-
-                    constraint.type_ = Some(to_string(&current_type));
-                    constraint.generics = var.generics.clone();
-                }
-            }
-
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the type does not match
                 generic_var.is_none_or(
@@ -170,6 +144,35 @@ fn satisfies_condition(
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
                 );
 
+            constraint.generics = var.generics.clone();
+            if violates_constraints {
+                constraint.not_types.push(declared_type.clone());
+            } else {
+                // update the type if it is more specific than the current one
+                if *constraint < tmp {
+                    constraint.type_ = Some(declared_type.clone());
+                } else if constraint
+                    .type_
+                    .as_ref()
+                    .is_some_and(|t| &declared_type != t)
+                {
+                    let mut current_type = str_to_type_name(constraint.type_.as_ref().unwrap());
+                    let new_type = str_to_type_name(&declared_type);
+
+                    // update the lifetimes if types compatible and lifetimes more specific
+                    if let Some(mut generics) = type_assignable_generic_constraints(
+                        constraint.type_.as_ref().unwrap(),
+                        &declared_type,
+                        &var.generics,
+                        &var.aliases,
+                    ) {
+                        assign_lifetimes(&mut current_type, &new_type, &mut generics);
+
+                        constraint.type_ = Some(to_string(&current_type));
+                    }
+                }
+            }
+
             (!violates_constraints, new_constraints)
         }
         WhenCondition::Trait(generic, traits) => {
@@ -177,9 +180,7 @@ fn satisfies_condition(
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.inner.entry(generic.clone()).or_default();
-            constraint.traits.extend(traits.clone());
-            constraint.generics = var.generics.clone();
-
+            
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the trait does not match
                 generic_var.is_none_or(|v| traits.iter().any(|t| !v.traits.contains(t))) ||
@@ -194,6 +195,13 @@ fn satisfies_condition(
                         );
                     declared_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
+                
+                constraint.generics = var.generics.clone();
+                if violates_constraints {
+                    constraint.not_traits.extend(traits.clone());
+                } else {
+                    constraint.traits.extend(traits.clone());
+                }
 
             (!violates_constraints, new_constraints)
         }
@@ -229,13 +237,7 @@ fn satisfies_condition(
         WhenCondition::Not(inner) => {
             let (satisfied, nc) = satisfies_condition(inner, var, constraints);
 
-            let new_constraints = nc
-                .inner
-                .into_iter()
-                .map(|(generic, constraint)| (generic, constraint.reverse()))
-                .collect();
-
-            (!satisfied, new_constraints)
+            (!satisfied, nc)
         }
     }
 }
@@ -509,6 +511,24 @@ mod tests {
         let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(!satisfies);
+    }
+
+    #[test]
+    fn multiple_not_conditions() {
+        let condition = WhenCondition::All(vec![
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "i32".into()))),
+            WhenCondition::Type("T".into(), "&MyType".into()),
+            WhenCondition::Not(Box::new(WhenCondition::Type("T".into(), "u32".into()))),
+        ]);
+        let var = get_var_body();
+
+        let (satisfies, constraints) = satisfies_condition(&condition, &var, &Constraints::default());
+
+        assert!(satisfies);
+        let c = constraints.inner.get("T".into()).unwrap();
+        assert_eq!(c.type_, Some("& MyType".into()));
+        assert!(c.not_types.contains(&"i32".to_string()));
+        assert!(c.not_types.contains(&"u32".to_string()));
     }
 
     #[test]

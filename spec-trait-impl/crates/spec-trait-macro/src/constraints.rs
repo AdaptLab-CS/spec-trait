@@ -161,22 +161,6 @@ impl FromIterator<(String, Constraint)> for Constraints {
     }
 }
 
-impl Constraint {
-    /// reverses the constraint, i.e. type_ becomes not_types and viceversa
-    pub fn reverse(&self) -> Self {
-        if self.not_types.len() > 1 {
-            panic!("can't reverse with multiple not_types");
-        }
-        Constraint {
-            generics: self.generics.clone(),
-            type_: self.not_types.first().cloned(),
-            traits: self.not_traits.clone(),
-            not_types: self.type_.clone().into_iter().collect(),
-            not_traits: self.traits.clone(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

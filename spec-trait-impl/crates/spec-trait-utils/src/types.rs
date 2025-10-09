@@ -387,10 +387,10 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
 pub fn replace_lifetime(ty: &mut Type, prev: &str, new: &str) {
     match ty {
         Type::Reference(r) => {
-            if let Some(lifetime) = &r.lifetime
-                && lifetime.to_string() == prev
-            {
-                r.lifetime = Some(str_to_lifetime(new));
+            if let Some(lifetime) = &r.lifetime {
+                if lifetime.to_string() == prev {
+                    r.lifetime = Some(str_to_lifetime(new));
+                }
             }
             replace_lifetime(&mut r.elem, prev, new);
         }
