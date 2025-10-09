@@ -232,6 +232,13 @@ impl<T, U> Foo<U> for T {
     }
 }
 
+#[when(all(not(T = i32), not(T = ZST)))]
+impl<T, U> Foo<U> for T {
+    fn foo(&self, _x: U) {
+        println!("Foo impl T where T is not i32 or ZST");
+    }
+}
+
 fn main() {
     let zst = ZST;
     let zst2 = ZST2;
@@ -283,4 +290,5 @@ fn main() {
     spec! { x.foo(1u8); Vec<i32>; [u8]; u8 = MyType } // -> "Foo impl T where T is Vec<_> and U is MyType"
     spec! { 1i32.foo("str"); i32; [&str] } // -> "Foo impl T where U is &str"
     // spec! { zst.foo("str"); ZST; [&str] } // TODO: fix                                                      // -> "Foo impl T where U is &str"
+    spec! { 1u8.foo(1u8); u8; [u8] } // -> "Foo impl T where T is not i32 or ZST"
 }
