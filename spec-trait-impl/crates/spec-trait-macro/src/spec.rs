@@ -180,7 +180,7 @@ fn satisfies_condition(
 
             let mut new_constraints = constraints.clone();
             let constraint = new_constraints.inner.entry(generic.clone()).or_default();
-            
+
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the trait does not match
                 generic_var.is_none_or(|v| traits.iter().any(|t| !v.traits.contains(t))) ||
@@ -195,13 +195,13 @@ fn satisfies_condition(
                         );
                     declared_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
                 });
-                
-                constraint.generics = var.generics.clone();
-                if violates_constraints {
-                    constraint.not_traits.extend(traits.clone());
-                } else {
-                    constraint.traits.extend(traits.clone());
-                }
+
+            constraint.generics = var.generics.clone();
+            if violates_constraints {
+                constraint.not_traits.extend(traits.clone());
+            } else {
+                constraint.traits.extend(traits.clone());
+            }
 
             (!violates_constraints, new_constraints)
         }
@@ -522,7 +522,8 @@ mod tests {
         ]);
         let var = get_var_body();
 
-        let (satisfies, constraints) = satisfies_condition(&condition, &var, &Constraints::default());
+        let (satisfies, constraints) =
+            satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(satisfies);
         let c = constraints.inner.get("T".into()).unwrap();
