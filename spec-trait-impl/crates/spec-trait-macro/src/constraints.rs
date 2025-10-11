@@ -128,6 +128,7 @@ impl Ord for Constraints {
 /// Compare two constraint maps by comparing their constraints one by one.
 fn cmp_constraint_map(this: &ConstraintMap, other: &ConstraintMap) -> Ordering {
     let mut all_keys = this.keys().chain(other.keys()).collect::<Vec<_>>();
+    all_keys.sort();
     all_keys.dedup();
 
     let default = Constraint::default();
