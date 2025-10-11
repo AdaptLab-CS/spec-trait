@@ -1,12 +1,14 @@
 use crate::annotations::AnnotationBody;
-use crate::constraints::Constraints;
+use crate::constraints::{Constraint, ConstraintMap, Constraints};
 use crate::vars::VarBody;
 use proc_macro2::TokenStream;
 use quote::quote;
 use spec_trait_utils::conditions::WhenCondition;
-use spec_trait_utils::conversions::{str_to_expr, str_to_trait_name, str_to_type_name, to_string};
+use spec_trait_utils::conversions::{
+    str_to_expr, str_to_generics, str_to_trait_name, str_to_type_name, to_string,
+};
 use spec_trait_utils::impls::ImplBody;
-use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::parsing::{get_generics_lifetimes, get_generics_types};
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{
     assign_lifetimes, get_concrete_type, type_assignable, type_assignable_generic_constraints,
@@ -31,6 +33,18 @@ impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
             .iter()
             .filter_map(|impl_| {
                 let trait_ = traits.iter().find(|tr| tr.name == impl_.trait_name)?;
+
+                if get_generics_types::<Vec<_>>(&trait_.generics).len()
+                    != get_generics_types::<Vec<_>>(&impl_.trait_generics).len()
+                    || get_generics_lifetimes::<Vec<_>>(&trait_.generics).len()
+                        != get_generics_lifetimes::<Vec<_>>(&impl_.trait_generics).len()
+                {
+                    panic!(
+                        "Trait and Impl generics do not match for trait {} and impl {}",
+                        trait_.name, impl_.type_name
+                    );
+                }
+
                 let specialized_trait = trait_.specialize(impl_);
                 let default = SpecBody {
                     impl_: impl_.clone(),
@@ -90,7 +104,7 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
 
             if satisfied {
                 let mut with_constraints = default.clone();
-                with_constraints.constraints = constraints;
+                with_constraints.constraints = fill_trait_constraints(&constraints, &default);
                 Some(with_constraints)
             } else {
                 None
@@ -118,7 +132,10 @@ fn satisfies_condition(
             });
 
             let mut new_constraints = constraints.clone();
-            let constraint = new_constraints.inner.entry(generic.clone()).or_default();
+            let constraint = new_constraints
+                .from_impl
+                .entry(generic.clone())
+                .or_default();
 
             let mut tmp = constraint.clone();
             tmp.type_ = Some(declared_type.clone());
@@ -179,7 +196,10 @@ fn satisfies_condition(
             let generic_var = var.vars.iter().find(|v: &_| v.impl_generic == *generic);
 
             let mut new_constraints = constraints.clone();
-            let constraint = new_constraints.inner.entry(generic.clone()).or_default();
+            let constraint = new_constraints
+                .from_impl
+                .entry(generic.clone())
+                .or_default();
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the trait does not match
@@ -242,6 +262,38 @@ fn satisfies_condition(
     }
 }
 
+fn fill_trait_constraints(constraints: &Constraints, spec: &SpecBody) -> Constraints {
+    let mut constraints = constraints.clone();
+    constraints.from_trait = get_trait_constraints(&spec.trait_, &spec.impl_, &constraints);
+    constraints.from_specialized_trait = get_trait_constraints(
+        spec.trait_.specialized.as_ref().unwrap(),
+        spec.impl_.specialized.as_ref().unwrap(),
+        &constraints,
+    );
+    constraints.from_type = Constraint {
+        generics: spec.impl_.impl_generics.clone(),
+        type_: Some(spec.impl_.type_name.clone()),
+        ..Default::default()
+    };
+    constraints
+}
+
+fn get_trait_constraints(
+    trait_: &TraitBody,
+    impl_: &ImplBody,
+    constraints: &Constraints,
+) -> ConstraintMap {
+    let mut new_constraints = ConstraintMap::new();
+    for trait_generic in get_generics_types::<Vec<_>>(&trait_.generics) {
+        let corresponding_generic = impl_
+            .get_corresponding_generic(&str_to_generics(&trait_.generics), &trait_generic)
+            .unwrap();
+        let constraint = constraints.from_impl.get(&corresponding_generic);
+        new_constraints.insert(trait_generic, constraint.cloned().unwrap_or_default());
+    }
+    new_constraints
+}
+
 impl From<&SpecBody> for TokenStream {
     fn from(spec_body: &SpecBody) -> Self {
         let impl_body = spec_body
@@ -294,7 +346,7 @@ pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
 
 fn get_type(generic: &str, constraints: &Constraints) -> String {
     constraints
-        .inner
+        .from_impl
         .get(generic)
         .and_then(|constraint| constraint.type_.clone())
         .unwrap_or_else(|| "_".into())
@@ -363,7 +415,7 @@ mod tests {
 
         assert!(satisfies);
 
-        let c = constraints.inner.get("T".into()).unwrap();
+        let c = constraints.from_impl.get("T".into()).unwrap();
         assert_eq!(c.type_, Some("& 'b MyType".into()));
         assert!(c.traits.contains(&"MyTrait".into()));
     }
@@ -490,7 +542,7 @@ mod tests {
 
         assert!(satisfies);
 
-        let c = constraints.inner.get("T".into()).unwrap();
+        let c = constraints.from_impl.get("T".into()).unwrap();
         assert_eq!(
             c.type_.clone().unwrap().replace(" ", ""),
             "Vec<MyType>".to_string()
@@ -526,7 +578,7 @@ mod tests {
             satisfies_condition(&condition, &var, &Constraints::default());
 
         assert!(satisfies);
-        let c = constraints.inner.get("T".into()).unwrap();
+        let c = constraints.from_impl.get("T".into()).unwrap();
         assert_eq!(c.type_, Some("& MyType".into()));
         assert!(c.not_types.contains(&"i32".to_string()));
         assert!(c.not_types.contains(&"u32".to_string()));
@@ -561,7 +613,7 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.inner.get("T".into()),
+            spec_body.constraints.from_impl.get("T".into()),
             Some(
                 &(Constraint {
                     generics: "<T, U>".to_string(),
@@ -592,7 +644,7 @@ mod tests {
         let spec_body = result.unwrap();
         assert_eq!(spec_body.impl_.trait_name, "MyTrait");
         assert_eq!(
-            spec_body.constraints.inner.get("T".into()),
+            spec_body.constraints.from_impl.get("T".into()),
             Some(
                 &(Constraint {
                     generics: "<T, U>".to_string(),
@@ -659,7 +711,7 @@ mod tests {
         assert_eq!(
             spec_body
                 .constraints
-                .inner
+                .from_impl
                 .get("T".into())
                 .unwrap()
                 .type_
@@ -688,7 +740,7 @@ mod tests {
         assert_eq!(
             spec_body
                 .constraints
-                .inner
+                .from_impl
                 .get("T".into())
                 .unwrap()
                 .type_
@@ -717,7 +769,7 @@ mod tests {
         assert_eq!(
             spec_body
                 .constraints
-                .inner
+                .from_impl
                 .get("T".into())
                 .unwrap()
                 .type_
@@ -729,7 +781,7 @@ mod tests {
         assert!(
             spec_body
                 .constraints
-                .inner
+                .from_impl
                 .get("U".into())
                 .unwrap()
                 .traits
@@ -750,5 +802,68 @@ mod tests {
         let result = SpecBody::try_from((&impls, &traits, &annotations));
 
         assert!(!result.is_ok());
+    }
+
+    #[test]
+    fn test_fill_trait_constraints() {
+        let impl_ = get_impl_body(None);
+        let trait_ = get_trait_body(&impl_);
+        let annotations = get_annotation_body();
+
+        // prepare initial constraints that contain a mapping for the impl generic "T"
+        let mut constraints = Constraints::default();
+        constraints.from_impl.insert(
+            "T".into(),
+            Constraint {
+                generics: impl_.impl_generics.clone(),
+                type_: Some("& MyType".into()),
+                traits: vec!["MyTrait".into()],
+                ..Default::default()
+            },
+        );
+
+        let spec = SpecBody {
+            impl_,
+            trait_,
+            annotations,
+            constraints: Constraints::default(),
+        };
+
+        let filled = fill_trait_constraints(&constraints, &spec);
+
+        let c = filled.from_trait.get("A").unwrap();
+        let sc = filled.from_specialized_trait.get("__G_0__").unwrap();
+        assert_eq!(
+            c.type_.as_ref().map(|s| s.replace(" ", "")),
+            Some("&MyType".to_string())
+        );
+        assert!(c.traits.contains(&"MyTrait".to_string()));
+        assert_eq!(filled.from_type.type_.as_ref(), Some(&"MyType".to_string()));
+        assert_eq!(
+            sc.type_.as_ref().map(|s| s.replace(" ", "")),
+            Some("&MyType".to_string())
+        );
+        assert!(sc.traits.contains(&"MyTrait".to_string()));
+    }
+
+    #[test]
+    fn test_fill_trait_constraints_with_no_from_impl_inserts_defaults() {
+        let impl_ = get_impl_body(None);
+        let trait_ = get_trait_body(&impl_);
+        let annotations = get_annotation_body();
+
+        let constraints = Constraints::default();
+        let spec = SpecBody {
+            impl_,
+            trait_,
+            annotations,
+            constraints: Constraints::default(),
+        };
+
+        let filled = fill_trait_constraints(&constraints, &spec);
+
+        let c = filled.from_trait.get("A").unwrap();
+        assert_eq!(c, &Constraint::default());
+        assert_eq!(filled.from_type.type_.as_ref(), Some(&"MyType".to_string()));
     }
 }
