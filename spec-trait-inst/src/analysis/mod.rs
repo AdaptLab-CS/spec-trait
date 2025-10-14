@@ -1,8 +1,6 @@
 pub mod sti_analysis;
 pub mod utils;
 
-use std::ops::Deref;
-
 use crate::CliArgs;
 use rustc_middle::mir;
 use rustc_middle::ty;

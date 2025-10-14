@@ -1,7 +1,7 @@
 mod sti_visitor;
 
 use super::Analyzer;
-use rustc_hir::{def_id::LOCAL_CRATE, TraitItemId};
+use rustc_hir::def_id::LOCAL_CRATE;
 use std::{cell::Cell, time::Duration};
 use sti_visitor::STIVisitor;
 

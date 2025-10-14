@@ -1,9 +1,9 @@
-use std::collections::HashSet;
 use super::Analyzer;
 use rustc_hir::{
     intravisit::{FnKind, Visitor, VisitorExt},
-    HirId, Impl, Item, ItemKind, TraitImplHeader, 
+    HirId, Impl, Item, ItemKind, TraitImplHeader,
 };
+use std::collections::HashSet;
 
 // TODO(bruzzone): remove when `analyzer` is used.
 #[allow(dead_code)]
@@ -17,7 +17,10 @@ pub struct STIVisitor<'tcx, 'a> {
 // Guardare le tre diverse tipologie di linear: copy move e borrow
 impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
     pub fn new(analyzer: &'a Analyzer<'tcx>) -> Self {
-        Self { analyzer, visited_traits: HashSet::new() }
+        Self {
+            analyzer,
+            visited_traits: HashSet::new(),
+        }
     }
 
     /// The entry point of the visitor.
@@ -146,7 +149,6 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 bounds,
                 trait_item_refs,
             ) => {
-                
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 for bound in bounds {
