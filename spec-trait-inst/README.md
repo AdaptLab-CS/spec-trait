@@ -45,7 +45,7 @@ or
 
 ```
 cd tests/workspaces/first
-LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-insts [--PLUGIN_ARG] -- [--CARGO_ARG]
+LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst [--PLUGIN_ARG] -- [--CARGO_ARG]
 ```
 
 ### Driver (`rustc` wrapper)

@@ -44,7 +44,6 @@ impl<'tcx> Analyzer<'tcx> {
 
     pub fn run(&self) {
         self.pre_process_cli_args();
-        println!("CIAO");
         self.run_analysis("STIAnalysis", |analyzer| {
             STIAnalysis::new(analyzer).run();
         });

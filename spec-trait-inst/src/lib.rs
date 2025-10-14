@@ -151,7 +151,6 @@ impl rustc_driver::Callbacks for PluginCallbacks {
     ) -> rustc_driver::Compilation {
         // Abort if errors occurred during expansion.
         compiler.sess.dcx().abort_if_errors();
-        println!("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO");
         Analyzer::<'tcx>::new(tcx, self.args.clone()).run();
         compiler.sess.dcx().abort_if_errors();
 
