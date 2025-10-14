@@ -1,7 +1,8 @@
+use std::collections::HashSet;
 use super::Analyzer;
 use rustc_hir::{
     intravisit::{FnKind, Visitor, VisitorExt},
-    HirId, Impl, Item, ItemKind, TraitImplHeader,
+    HirId, Impl, Item, ItemKind, TraitImplHeader, 
 };
 
 // TODO(bruzzone): remove when `analyzer` is used.
@@ -9,12 +10,14 @@ use rustc_hir::{
 pub struct STIVisitor<'tcx, 'a> {
     // The analyzer contains the `TyCtxt`
     analyzer: &'a Analyzer<'tcx>,
+
+    visited_traits: HashSet<rustc_hir::OwnerId>,
 }
 
 // Guardare le tre diverse tipologie di linear: copy move e borrow
 impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
     pub fn new(analyzer: &'a Analyzer<'tcx>) -> Self {
-        Self { analyzer }
+        Self { analyzer, visited_traits: HashSet::new() }
     }
 
     /// The entry point of the visitor.
@@ -143,12 +146,17 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 bounds,
                 trait_item_refs,
             ) => {
+                
                 self.visit_ident(ident);
                 self.visit_generics(generics);
                 for bound in bounds {
                     self.visit_param_bound(bound);
                 }
                 for trait_item_ref in trait_item_refs {
+                    self.visited_traits.insert(trait_item_ref.owner_id);
+                    // let owner_id = self.visited_traits.iter().last().unwrap();
+                    // let trait_item = self.analyzer.tcx.hir_owner_node(*owner_id).expect_trait_item();
+
                     self.visit_trait_item_ref(trait_item_ref);
                 }
             }

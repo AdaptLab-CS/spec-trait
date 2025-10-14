@@ -1,7 +1,7 @@
 mod sti_visitor;
 
 use super::Analyzer;
-use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_hir::{def_id::LOCAL_CRATE, TraitItemId};
 use std::{cell::Cell, time::Duration};
 use sti_visitor::STIVisitor;
 
@@ -14,6 +14,7 @@ pub struct STIAnalysis<'tcx, 'a> {
 impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
     pub fn new(analyzer: &'a Analyzer<'tcx>) -> Self {
         let krate_name = analyzer.tcx.crate_name(LOCAL_CRATE).to_string();
+        log::info!("Initialized STIAnalysis for crate {}", krate_name);
         Self {
             analyzer,
             krate_name,
