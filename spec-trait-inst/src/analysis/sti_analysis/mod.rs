@@ -1,3 +1,4 @@
+mod distance;
 mod sti_visitor;
 
 use super::Analyzer;
