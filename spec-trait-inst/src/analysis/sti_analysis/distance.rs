@@ -1,60 +1,47 @@
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Label {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    G,
-    H,
-    I,
+/// A simple tree node structure.
+pub struct Node<T: Eq> {
+    pub label: T,
+    pub children: Vec<Node<T>>,
 }
 
-#[derive(Debug)]
-pub struct Node {
-    pub label: Label,
-    pub children: Vec<Node>,
-}
-
-impl Node {
+impl<T: Eq> Node<T> {
     pub fn size(&self) -> usize {
         1 + self.children.iter().map(|c| c.size()).sum::<usize>()
     }
 }
 
-impl Into<usize> for &Node {
-    fn into(self) -> usize {
-        self as *const _ as usize
+impl<T: Eq> From<&Node<T>> for usize {
+    fn from(t: &Node<T>) -> Self {
+        t as *const _ as usize
     }
 }
 
-#[derive(Debug)]
-struct KeyRoot<'a> {
-    node: &'a Node,
-    sub_forest: Vec<&'a Node>,
+/// A keyroot in a tree, consisting of a node and its sub-forest.
+struct KeyRoot<'a, T: Eq> {
+    node: &'a Node<T>,
+    sub_forest: Vec<&'a Node<T>>,
 }
 
 type TreeDistanceTable = HashMap<(usize, usize), usize>;
 type ForestDistanceTable = Vec<Vec<usize>>;
 
 /// Computes the similarity between two trees based on their edit distance.
-pub fn compute_similarity(a: &Node, b: &Node) -> f64 {
+pub fn compute_similarity<T: Eq>(a: &Node<T>, b: &Node<T>) -> f64 {
     let dist = compute_distance(a, b) as f64;
     let max_size = a.size().max(b.size()) as f64;
     1.0 - (dist / max_size)
 }
 
 /// Computes the zss edit distance between two trees.
-pub fn compute_distance(a: &Node, b: &Node) -> usize {
+pub fn compute_distance<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
     let mut td = TreeDistanceTable::new();
     tree_distance(a, b, &mut td)
 }
 
 /// Computes the tree distance between two trees.
-fn tree_distance(a: &Node, b: &Node, td: &mut TreeDistanceTable) -> usize {
+fn tree_distance<T: Eq>(a: &Node<T>, b: &Node<T>, td: &mut TreeDistanceTable) -> usize {
     let key = (a.into(), b.into());
 
     // check if distance already computed
@@ -73,12 +60,12 @@ fn tree_distance(a: &Node, b: &Node, td: &mut TreeDistanceTable) -> usize {
 }
 
 /// Extracts keyroots from a tree.
-fn get_key_roots(node: &Node) -> Vec<KeyRoot<'_>> {
+fn get_key_roots<'a, T: Eq>(node: &'a Node<T>) -> Vec<KeyRoot<'a, T>> {
     get_key_roots_recursive(node)
 }
 
 /// Recursively collects keyroots from the tree.
-fn get_key_roots_recursive(node: &Node) -> Vec<KeyRoot<'_>> {
+fn get_key_roots_recursive<'a, T: Eq>(node: &'a Node<T>) -> Vec<KeyRoot<'a, T>> {
     let mut key_roots = vec![];
 
     // traverse children first (post-order traversal)
@@ -94,12 +81,16 @@ fn get_key_roots_recursive(node: &Node) -> Vec<KeyRoot<'_>> {
 }
 
 /// Computes the distance between two forests using their keyroots.
-fn forest_distance_keyroots(kr1: &[KeyRoot], kr2: &[KeyRoot], td: &mut TreeDistanceTable) -> usize {
+fn forest_distance_keyroots<T: Eq>(
+    kr1: &[KeyRoot<T>],
+    kr2: &[KeyRoot<T>],
+    td: &mut TreeDistanceTable,
+) -> usize {
     compute_forest_distance(kr1.len(), kr2.len(), |i, j| {
         let kr_1 = &kr1[i];
         let kr_2 = &kr2[j];
 
-        let relabel = relabel_cost(&kr_1.node, &kr_2.node);
+        let relabel = relabel_cost(kr_1.node, kr_2.node);
         let sub_forest_dist = forest_distance(&kr_1.sub_forest, &kr_2.sub_forest, td);
 
         relabel + sub_forest_dist
@@ -107,7 +98,7 @@ fn forest_distance_keyroots(kr1: &[KeyRoot], kr2: &[KeyRoot], td: &mut TreeDista
 }
 
 /// Computes the distance between two forests.
-fn forest_distance(f1: &[&Node], f2: &[&Node], td: &mut TreeDistanceTable) -> usize {
+fn forest_distance<T: Eq>(f1: &[&Node<T>], f2: &[&Node<T>], td: &mut TreeDistanceTable) -> usize {
     compute_forest_distance(f1.len(), f2.len(), |i, j| tree_distance(f1[i], f2[j], td))
 }
 
@@ -153,7 +144,7 @@ fn insert_cost(fd: &ForestDistanceTable, i: usize, j: usize) -> usize {
 }
 
 /// Computes the cost of relabeling a node.
-fn relabel_cost(a: &Node, b: &Node) -> usize {
+fn relabel_cost<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
     let needs_relabel = a.label != b.label;
     let cost = 1;
     if needs_relabel {
@@ -166,6 +157,19 @@ fn relabel_cost(a: &Node, b: &Node) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(PartialEq, Eq)]
+    enum Label {
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+        I,
+    }
 
     #[test]
     fn compute_distance_equal() {
