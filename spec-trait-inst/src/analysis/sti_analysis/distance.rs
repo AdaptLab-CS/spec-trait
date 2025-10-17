@@ -19,6 +19,12 @@ pub struct Node {
     pub children: Vec<Node>,
 }
 
+impl Node {
+    pub fn size(&self) -> usize {
+        1 + self.children.iter().map(|c| c.size()).sum::<usize>()
+    }
+}
+
 impl Into<usize> for &Node {
     fn into(self) -> usize {
         self as *const _ as usize
@@ -33,6 +39,13 @@ struct KeyRoot<'a> {
 
 type TreeDistanceTable = HashMap<(usize, usize), usize>;
 type ForestDistanceTable = Vec<Vec<usize>>;
+
+/// Computes the similarity between two trees based on their edit distance.
+pub fn compute_similarity(a: &Node, b: &Node) -> f64 {
+    let dist = compute_distance(a, b) as f64;
+    let max_size = a.size().max(b.size()) as f64;
+    1.0 - (dist / max_size)
+}
 
 /// Computes the zss edit distance between two trees.
 pub fn compute_distance(a: &Node, b: &Node) -> usize {
@@ -193,7 +206,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 0);
+        assert_eq!(similarity, 1.0);
     }
 
     #[test]
@@ -239,7 +254,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
+        assert_eq!(similarity, 0.75);
     }
 
     #[test]
@@ -280,7 +297,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 2);
+        assert_eq!(similarity, 0.5);
     }
 
     #[test]
@@ -326,7 +345,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
+        assert_eq!(similarity, 0.75);
     }
 
     #[test]
@@ -361,7 +382,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
+        assert!((similarity - 0.667).abs() < 0.001);
     }
 
     #[test]
@@ -408,7 +431,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
+        assert_eq!(similarity, 0.75);
     }
 
     #[test]
@@ -450,7 +475,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
+        assert!((similarity - 0.667).abs() < 0.001);
     }
 
     #[test]
@@ -492,7 +519,9 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 3);
+        assert_eq!(similarity, 0.0);
     }
 
     #[test]
@@ -575,6 +604,8 @@ mod tests {
         };
 
         let distance = compute_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 3);
+        assert!((similarity - 0.625).abs() < 0.001);
     }
 }
