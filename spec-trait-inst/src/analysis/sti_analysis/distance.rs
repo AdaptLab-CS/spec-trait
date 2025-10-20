@@ -18,10 +18,10 @@ impl<T: Eq> From<&Node<T>> for usize {
     }
 }
 
-/// A keyroot in a tree, consisting of a node and its sub-forest.
-struct KeyRoot<'a, T: Eq> {
-    node: &'a Node<T>,
-    sub_forest: Vec<&'a Node<T>>,
+/// Post-order traversal and left-most indices.
+struct PostOrder<'a, T: Eq> {
+    nodes: Vec<&'a Node<T>>,
+    leftmost: Vec<usize>,
 }
 
 type TreeDistanceTable = HashMap<(usize, usize), usize>;
@@ -29,96 +29,141 @@ type ForestDistanceTable = Vec<Vec<usize>>;
 
 /// Computes the similarity between two trees based on their edit distance.
 pub fn compute_similarity<T: Eq>(a: &Node<T>, b: &Node<T>) -> f64 {
-    let dist = compute_distance(a, b) as f64;
+    let dist = compute_tree_distance(a, b) as f64;
     let max_size = a.size().max(b.size()) as f64;
     1.0 - (dist / max_size)
 }
 
 /// Computes the zss edit distance between two trees.
-pub fn compute_distance<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
-    let mut td = TreeDistanceTable::new();
-    tree_distance(a, b, &mut td)
-}
+pub fn compute_tree_distance<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
+    let post_a = post_order_and_leftmost(a);
+    let post_b = post_order_and_leftmost(b);
 
-/// Computes the tree distance between two trees.
-fn tree_distance<T: Eq>(a: &Node<T>, b: &Node<T>, td: &mut TreeDistanceTable) -> usize {
-    let key = (a.into(), b.into());
-
-    // check if distance already computed
-    if let Some(&dist) = td.get(&key) {
-        return dist;
+    // handle empty trees quickly
+    if post_a.nodes.len() == 0 {
+        return post_b.nodes.len(); // all insertions
+    }
+    if post_b.nodes.len() == 0 {
+        return post_a.nodes.len(); // all deletions
     }
 
-    // compute distance using keyroots
-    let kr_a = get_key_roots(a);
-    let kr_b = get_key_roots(b);
+    // compute key-roots: last index for each leftmost value
+    let kr_a = get_key_roots(&post_a.leftmost);
+    let kr_b = get_key_roots(&post_b.leftmost);
 
-    let dist = forest_distance_keyroots(&kr_a, &kr_b, td);
-    td.insert(key, dist);
+    // tree distances, indexed by post-order indices
+    let mut treedist = TreeDistanceTable::new();
 
-    dist
-}
-
-/// Extracts keyroots from a tree.
-fn get_key_roots<'a, T: Eq>(node: &'a Node<T>) -> Vec<KeyRoot<'a, T>> {
-    get_key_roots_recursive(node)
-}
-
-/// Recursively collects keyroots from the tree.
-fn get_key_roots_recursive<'a, T: Eq>(node: &'a Node<T>) -> Vec<KeyRoot<'a, T>> {
-    let mut key_roots = vec![];
-
-    // traverse children first (post-order traversal)
-    for child in &node.children {
-        key_roots.extend(get_key_roots_recursive(child));
+    // iteratively compute key-root distances
+    for &ia in &kr_a {
+        for &ib in &kr_b {
+            compute_key_root_distance(ia, ib, &post_a, &post_b, &mut treedist);
+        }
     }
-    key_roots.push(KeyRoot {
-        node,
-        sub_forest: vec![],
-    });
 
-    key_roots
+    // the index of the root in post order is the last index of the list
+    let root_idx_a = post_a.nodes.len() - 1;
+    let root_idx_b = post_b.nodes.len() - 1;
+    *treedist.get(&(root_idx_a, root_idx_b)).unwrap()
 }
 
-/// Computes the distance between two forests using their keyroots.
-fn forest_distance_keyroots<T: Eq>(
-    kr1: &[KeyRoot<T>],
-    kr2: &[KeyRoot<T>],
+/// Collect post-order and left-most for a tree.
+fn post_order_and_leftmost<'a, T: Eq>(root: &'a Node<T>) -> PostOrder<'a, T> {
+    let mut nodes = Vec::new();
+    collect_post_order(root, &mut nodes);
+
+    let n = nodes.len();
+
+    // index of the node in post order by its pointer
+    let mut ptr_to_idx = HashMap::with_capacity(n);
+    for (i, nd) in nodes.iter().enumerate() {
+        ptr_to_idx.insert(usize::from(*nd), i);
+    }
+
+    let mut leftmost = vec![0usize; n];
+    for (i, node) in nodes.iter().enumerate() {
+        if node.children.is_empty() {
+            leftmost[i] = i;
+        } else {
+            let first_child = &node.children[0];
+            let child_post_idx = ptr_to_idx[&first_child.into()];
+            leftmost[i] = leftmost[child_post_idx];
+        }
+    }
+
+    PostOrder { nodes, leftmost }
+}
+
+/// Collect nodes in post order.
+fn collect_post_order<'a, T: Eq>(n: &'a Node<T>, out: &mut Vec<&'a Node<T>>) {
+    for c in &n.children {
+        collect_post_order(c, out);
+    }
+    out.push(n);
+}
+
+/// Collect key-roots (last occurrence of each left-most).
+fn get_key_roots(left_most: &[usize]) -> Vec<usize> {
+    let mut last = HashMap::with_capacity(left_most.len());
+    for (i, &lm) in left_most.iter().enumerate() {
+        last.insert(lm, i);
+    }
+    let mut keyroots_a = last.values().copied().collect::<Vec<_>>();
+    keyroots_a.sort_unstable();
+    keyroots_a
+}
+
+fn compute_key_root_distance<T: Eq>(
+    kr_a: usize,
+    kr_b: usize,
+    post_a: &PostOrder<T>,
+    post_b: &PostOrder<T>,
     td: &mut TreeDistanceTable,
-) -> usize {
-    compute_forest_distance(kr1.len(), kr2.len(), |i, j| {
-        let kr_1 = &kr1[i];
-        let kr_2 = &kr2[j];
+) {
+    let kr_a_leftmost = post_a.leftmost[kr_a];
+    let kr_b_leftmost = post_b.leftmost[kr_b];
 
-        let relabel = relabel_cost(kr_1.node, kr_2.node);
-        let sub_forest_dist = forest_distance(&kr_1.sub_forest, &kr_2.sub_forest, td);
+    let n = kr_a - kr_a_leftmost + 1; // size of forest in A
+    let m = kr_b - kr_b_leftmost + 1; // size of forest in B
 
-        relabel + sub_forest_dist
-    })
-}
-
-/// Computes the distance between two forests.
-fn forest_distance<T: Eq>(f1: &[&Node<T>], f2: &[&Node<T>], td: &mut TreeDistanceTable) -> usize {
-    compute_forest_distance(f1.len(), f2.len(), |i, j| tree_distance(f1[i], f2[j], td))
-}
-
-/// Unified DP computation for forest distance.
-fn compute_forest_distance<F>(n: usize, m: usize, mut match_cost_fn: F) -> usize
-where
-    F: FnMut(usize, usize) -> usize,
-{
     let mut fd = init_forest_distance(n, m);
 
     for i in 1..=n {
         for j in 1..=m {
-            let remove = remove_cost(&fd, i, j);
-            let insert = insert_cost(&fd, i, j);
-            let match_ = fd[i - 1][j - 1] + match_cost_fn(i - 1, j - 1);
-            fd[i][j] = remove.min(insert).min(match_);
+            let post_a_i = kr_a_leftmost + i - 1; // index in post-order in A
+            let post_b_i = kr_b_leftmost + j - 1; // index in post-order in B
+
+            let td_key = (post_a_i, post_b_i); // key for tree distance table
+
+            let left_a_i = post_a.leftmost[post_a_i]; // leftmost of current index in A
+            let left_b_i = post_b.leftmost[post_b_i]; // leftmost of current index in B
+
+            // both node_a and node_b are roots of their respective (sub)trees in this forest
+            if left_a_i == kr_a_leftmost && left_b_i == kr_b_leftmost {
+                let node_a = post_a.nodes[post_a_i]; // node at current index in A
+                let node_b = post_b.nodes[post_b_i]; // node at current index in B
+
+                let remove = remove_cost(&fd, i, j);
+                let insert = insert_cost(&fd, i, j);
+                let relabel = relabel_cost(node_a, node_b);
+                let match_ = fd[i - 1][j - 1] + relabel;
+                let val = remove.min(insert).min(match_);
+
+                fd[i][j] = val;
+                td.insert(td_key, val);
+            } else {
+                let pre_a = left_a_i - kr_a_leftmost; // nodes before current subtree in A
+                let pre_b = left_b_i - kr_b_leftmost; // nodes before current subtree in B
+
+                let remove = remove_cost(&fd, i, j);
+                let insert = insert_cost(&fd, i, j);
+                let sub_forest_dist = *td.get(&td_key).unwrap();
+                let match_ = fd[pre_a][pre_b] + sub_forest_dist;
+
+                fd[i][j] = remove.min(insert).min(match_);
+            }
         }
     }
-
-    fd[n][m]
 }
 
 /// Initializes the forest distance table with base cases.
@@ -209,7 +254,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 0);
         assert_eq!(similarity, 1.0);
@@ -257,7 +302,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
         assert_eq!(similarity, 0.75);
@@ -300,7 +345,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 2);
         assert_eq!(similarity, 0.5);
@@ -348,7 +393,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
         assert_eq!(similarity, 0.75);
@@ -385,7 +430,7 @@ mod tests {
             }],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
         assert!((similarity - 0.667).abs() < 0.001);
@@ -434,7 +479,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
         assert_eq!(similarity, 0.75);
@@ -478,7 +523,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 1);
         assert!((similarity - 0.667).abs() < 0.001);
@@ -522,7 +567,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 3);
         assert_eq!(similarity, 0.0);
@@ -607,7 +652,7 @@ mod tests {
             ],
         };
 
-        let distance = compute_distance(&tree1, &tree2);
+        let distance = compute_tree_distance(&tree1, &tree2);
         let similarity = compute_similarity(&tree1, &tree2);
         assert_eq!(distance, 3);
         assert!((similarity - 0.625).abs() < 0.001);
