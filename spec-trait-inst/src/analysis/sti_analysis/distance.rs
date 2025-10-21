@@ -113,6 +113,7 @@ fn get_key_roots(left_most: &[usize]) -> Vec<usize> {
     keyroots_a
 }
 
+/// Computes the tree distance for the subtrees rooted at kr_a and kr_b.
 fn compute_key_root_distance<T: Eq>(
     kr_a: usize,
     kr_b: usize,

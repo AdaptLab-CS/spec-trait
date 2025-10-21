@@ -1,11 +1,10 @@
 use super::Analyzer;
 use rustc_hir::{
     intravisit::{FnKind, Visitor, VisitorExt},
-    HirId, Impl, Item, ItemKind, TraitImplHeader,
+    HirId, Impl, Item, ItemKind,
 };
 use std::collections::HashSet;
 
-// TODO(bruzzone): remove when `analyzer` is used.
 #[allow(dead_code)]
 pub struct STIVisitor<'tcx, 'a> {
     // The analyzer contains the `TyCtxt`
@@ -39,16 +38,9 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     fn visit_item(&mut self, item: &'tcx Item) {
         log::debug!("Visiting item: {:?}", item);
 
-        let Item {
-            owner_id: _,
-            kind,
-            span: _,
-            vis_span: _,
-            has_delayed_lints: _,
-        } = item;
         self.visit_id(item.hir_id());
 
-        match *kind {
+        match item.kind {
             ItemKind::ExternCrate(orig_name, ident) => {
                 if let Some(orig_name) = orig_name {
                     self.visit_name(orig_name);
@@ -118,16 +110,8 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 items,
             }) => {
                 self.visit_generics(generics);
-                if let Some(TraitImplHeader {
-                    constness: _,
-                    safety: _,
-                    polarity: _,
-                    defaultness: _,
-                    defaultness_span: _,
-                    trait_ref,
-                }) = of_trait
-                {
-                    self.visit_trait_ref(trait_ref);
+                if let Some(trait_header) = of_trait {
+                    self.visit_trait_ref(&trait_header.trait_ref);
                 }
                 self.visit_ty_unambig(self_ty);
                 for item in items {

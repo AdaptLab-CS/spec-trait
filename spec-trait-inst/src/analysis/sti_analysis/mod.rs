@@ -1,4 +1,5 @@
 mod distance;
+mod fn_tree;
 mod sti_visitor;
 
 use super::Analyzer;
