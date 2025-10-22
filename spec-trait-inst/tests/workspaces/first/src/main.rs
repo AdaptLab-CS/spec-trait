@@ -1,5 +1,5 @@
 #[derive(Clone)]
-struct T{
+struct T {
     value: i32,
 }
 

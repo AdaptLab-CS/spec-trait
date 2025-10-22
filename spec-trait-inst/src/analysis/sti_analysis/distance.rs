@@ -1,25 +1,27 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 /// A simple tree node structure.
-pub struct Node<T: Eq> {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Node<T: Eq + Debug> {
     pub label: T,
     pub children: Vec<Node<T>>,
 }
 
-impl<T: Eq> Node<T> {
+impl<T: Eq + Debug> Node<T> {
     pub fn size(&self) -> usize {
         1 + self.children.iter().map(|c| c.size()).sum::<usize>()
     }
 }
 
-impl<T: Eq> From<&Node<T>> for usize {
+impl<T: Eq + Debug> From<&Node<T>> for usize {
     fn from(t: &Node<T>) -> Self {
         t as *const _ as usize
     }
 }
 
 /// Post-order traversal and left-most indices.
-struct PostOrder<'a, T: Eq> {
+struct PostOrder<'a, T: Eq + Debug> {
     nodes: Vec<&'a Node<T>>,
     leftmost: Vec<usize>,
 }
@@ -28,14 +30,14 @@ type TreeDistanceTable = HashMap<(usize, usize), usize>;
 type ForestDistanceTable = Vec<Vec<usize>>;
 
 /// Computes the similarity between two trees based on their edit distance.
-pub fn compute_similarity<T: Eq>(a: &Node<T>, b: &Node<T>) -> f64 {
+pub fn compute_similarity<T: Eq + Debug>(a: &Node<T>, b: &Node<T>) -> f64 {
     let dist = compute_tree_distance(a, b) as f64;
     let max_size = a.size().max(b.size()) as f64;
     1.0 - (dist / max_size)
 }
 
 /// Computes the zss edit distance between two trees.
-pub fn compute_tree_distance<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
+pub fn compute_tree_distance<T: Eq + Debug>(a: &Node<T>, b: &Node<T>) -> usize {
     let post_a = post_order_and_leftmost(a);
     let post_b = post_order_and_leftmost(b);
 
@@ -68,7 +70,7 @@ pub fn compute_tree_distance<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
 }
 
 /// Collect post-order and left-most for a tree.
-fn post_order_and_leftmost<'a, T: Eq>(root: &'a Node<T>) -> PostOrder<'a, T> {
+fn post_order_and_leftmost<'a, T: Eq + Debug>(root: &'a Node<T>) -> PostOrder<'a, T> {
     let mut nodes = Vec::new();
     collect_post_order(root, &mut nodes);
 
@@ -95,7 +97,7 @@ fn post_order_and_leftmost<'a, T: Eq>(root: &'a Node<T>) -> PostOrder<'a, T> {
 }
 
 /// Collect nodes in post order.
-fn collect_post_order<'a, T: Eq>(n: &'a Node<T>, out: &mut Vec<&'a Node<T>>) {
+fn collect_post_order<'a, T: Eq + Debug>(n: &'a Node<T>, out: &mut Vec<&'a Node<T>>) {
     for c in &n.children {
         collect_post_order(c, out);
     }
@@ -114,7 +116,7 @@ fn get_key_roots(left_most: &[usize]) -> Vec<usize> {
 }
 
 /// Computes the tree distance for the subtrees rooted at kr_a and kr_b.
-fn compute_key_root_distance<T: Eq>(
+fn compute_key_root_distance<T: Eq + Debug>(
     kr_a: usize,
     kr_b: usize,
     post_a: &PostOrder<T>,
@@ -190,7 +192,7 @@ fn insert_cost(fd: &ForestDistanceTable, i: usize, j: usize) -> usize {
 }
 
 /// Computes the cost of relabeling a node.
-fn relabel_cost<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
+fn relabel_cost<T: Eq + Debug>(a: &Node<T>, b: &Node<T>) -> usize {
     let needs_relabel = a.label != b.label;
     let cost = 1;
     if needs_relabel {
@@ -204,7 +206,7 @@ fn relabel_cost<T: Eq>(a: &Node<T>, b: &Node<T>) -> usize {
 mod tests {
     use super::*;
 
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Debug)]
     enum Label {
         A,
         B,
