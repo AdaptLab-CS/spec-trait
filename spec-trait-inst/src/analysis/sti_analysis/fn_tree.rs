@@ -1,7 +1,10 @@
 use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
-use rustc_hir::{BinOpKind, Block, Body, Expr, ExprKind, PatKind, QPath, Stmt, StmtKind};
+use rustc_hir::{
+    BinOp, BinOpKind, Block, Body, Expr, ExprKind, Pat, PatExpr, PatExprKind, PatKind, QPath,
+    RangeEnd, Stmt, StmtKind,
+};
 
 /// Different types of nodes in the body of a function.
 #[derive(Eq, PartialEq, Debug)]
@@ -72,11 +75,8 @@ pub enum NodeType {
     // Multiple children (fields)
     Struct(String), // struct name
 
-    // Multiple children (fields)
-    Union(String), // union name
-
     // Two children (action, target)
-    Action, // method call (target) / match (target) / match arm (guard) / if (condition) / loop (condition)
+    Nested, // method call (target) / match (target) / match arm (guard) / if (condition)
 
     Unknown,
 }
@@ -138,15 +138,100 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
         self.path.pop();
     }
 
-    fn pat_to_name(&self, pat: &rustc_hir::Pat<'tcx>) -> String {
+    fn pat_to_string(&self, pat: &Pat<'tcx>) -> String {
         match &pat.kind {
+            PatKind::Missing => "...".to_string(),
             PatKind::Binding(_, _, ident, _) => ident.name.to_string(),
             PatKind::Wild => "_".to_string(),
+            PatKind::Struct(qpath, fields, _) => {
+                let struct_name = self.qpath_to_string(qpath);
+                let field_names = fields
+                    .iter()
+                    .map(|f| self.pat_to_string(&f.pat))
+                    .collect::<Vec<_>>();
+                format!("{} {{ {} }}", struct_name, field_names.join(", "))
+            }
+            PatKind::TupleStruct(qpath, fields, _) => {
+                let struct_name = self.qpath_to_string(qpath);
+                let field_names = fields
+                    .iter()
+                    .map(|f| self.pat_to_string(f))
+                    .collect::<Vec<_>>();
+                format!("{}({})", struct_name, field_names.join(", "))
+            }
+            PatKind::Or(pats) => {
+                let pat_names = pats
+                    .iter()
+                    .map(|p| self.pat_to_string(p))
+                    .collect::<Vec<_>>();
+                format!("{}", pat_names.join(" | "))
+            }
+            PatKind::Never => "!".to_string(),
+            PatKind::Tuple(fields, _) => {
+                let field_names = fields
+                    .iter()
+                    .map(|f| self.pat_to_string(f))
+                    .collect::<Vec<_>>();
+                format!("({})", field_names.join(", "))
+            }
+            PatKind::Box(sub) => {
+                let sub_name = self.pat_to_string(sub);
+                format!("Box<{}>", sub_name)
+            }
+            PatKind::Deref(sub) => {
+                let sub_name = self.pat_to_string(sub);
+                format!("*{}", sub_name)
+            }
+            PatKind::Ref(sub, _) => {
+                let sub_name = self.pat_to_string(sub);
+                format!("&{}", sub_name)
+            }
+            PatKind::Expr(expr) => self.pat_expr_to_string(*expr),
+            PatKind::Guard(pat, expr) => {
+                let pat_name = self.pat_to_string(pat);
+                let expr_name = self.expr_to_string(expr);
+                format!("{} if {}", pat_name, expr_name)
+            }
+            PatKind::Range(start, end, end_included) => {
+                let start_name = start
+                    .map(|s| self.pat_expr_to_string(s))
+                    .unwrap_or("_".to_string());
+                let end_name = end
+                    .map(|e| self.pat_expr_to_string(e))
+                    .unwrap_or("_".to_string());
+                let sep = if *end_included == RangeEnd::Included {
+                    "..="
+                } else {
+                    ".."
+                };
+                format!("{} {} {}", start_name, sep, end_name)
+            }
+            PatKind::Slice(start, mid, end) => {
+                let mut parts = Vec::new();
+                for s in *start {
+                    parts.push(self.pat_to_string(s));
+                }
+                if let Some(m) = mid {
+                    parts.push(format!("..{}", self.pat_to_string(m)));
+                }
+                for e in *end {
+                    parts.push(self.pat_to_string(e));
+                }
+                format!("[{}]", parts.join(", "))
+            }
             _ => format!("{:?}", pat),
         }
     }
 
-    fn qpath_to_name(&self, qpath: &QPath<'tcx>) -> String {
+    fn pat_expr_to_string(&self, expr: &PatExpr<'tcx>) -> String {
+        match &expr.kind {
+            PatExprKind::Lit { lit, negated: _ } => self.lit_to_string(lit.node),
+            PatExprKind::Path(qpath) => self.qpath_to_string(qpath),
+            _ => format!("{:?}", expr.kind),
+        }
+    }
+
+    fn qpath_to_string(&self, qpath: &QPath<'tcx>) -> String {
         match qpath {
             QPath::Resolved(_, path) => path
                 .segments
@@ -154,11 +239,17 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 .map(|s| s.ident.to_string())
                 .unwrap_or(format!("{:?}", path)),
             QPath::TypeRelative(_, segment) => segment.ident.to_string(),
-            QPath::LangItem(_, _) => format!("{:?}", qpath),
+            QPath::LangItem(i, _) => {
+                if let Some(def_id) = self.analyzer.tcx.lang_items().get(*i) {
+                    self.analyzer.tcx.def_path_str(def_id)
+                } else {
+                    i.name().to_string()
+                }
+            }
         }
     }
 
-    fn binop_to_string(&self, op: &rustc_hir::BinOp) -> String {
+    fn bin_op_to_string(&self, op: &BinOp) -> String {
         match op.node {
             BinOpKind::Add => "+".to_string(),
             BinOpKind::Sub => "-".to_string(),
@@ -178,7 +269,6 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             BinOpKind::Gt => ">".to_string(),
             BinOpKind::And => "&&".to_string(),
             BinOpKind::Or => "||".to_string(),
-            _ => format!("{:?}", op.node),
         }
     }
 
@@ -188,6 +278,10 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             LitKind::Int(i, _) => format!("{}", i),
             LitKind::Bool(b) => format!("{}", b),
             LitKind::Char(c) => format!("'{}'", c),
+            LitKind::Float(f, _) => format!("{}", f),
+            LitKind::ByteStr(bs, _) => format!("b\"{:?}\"", bs),
+            LitKind::CStr(bs, _) => format!("c\"{:?}\"", bs),
+            LitKind::Byte(b) => format!("b'{}'", b),
             _ => format!("{:?}", lit),
         }
     }
@@ -195,7 +289,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
     fn expr_to_string(&self, expr: &Expr<'tcx>) -> String {
         match &expr.kind {
             ExprKind::Lit(lit) => self.lit_to_string(lit.node),
-            ExprKind::Path(qpath) => self.qpath_to_name(qpath),
+            ExprKind::Path(qpath) => self.qpath_to_string(qpath),
             ExprKind::Field(base, ident) => format!("{}.{}", self.expr_to_string(base), ident),
             _ => format!("{:?}", expr.kind),
         }
@@ -230,11 +324,12 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
     fn visit_stmt(&mut self, stmt: &'tcx Stmt<'tcx>) {
         match &stmt.kind {
             StmtKind::Let(local) => {
-                let name = self.pat_to_name(local.pat);
+                let name = self.pat_to_string(local.pat);
                 self.push_node(NodeType::Let(name));
                 if let Some(init) = local.init {
                     self.visit_expr(init);
                 }
+                self.pop_node();
                 self.pop_node();
             }
             StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
@@ -243,16 +338,13 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             StmtKind::Item(_) => {
                 self.add_leaf(NodeType::Unknown);
             }
-            StmtKind::Semi(expr) => {
-                self.visit_expr(expr);
-            }
         }
     }
 
     fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
         match &expr.kind {
             ExprKind::Binary(op, left, right) => {
-                self.push_node(NodeType::Op(self.binop_to_string(op)));
+                self.push_node(NodeType::Op(self.bin_op_to_string(op)));
                 self.visit_expr(left);
                 self.visit_expr(right);
                 self.pop_node();
@@ -262,7 +354,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.add_leaf(NodeType::Lit(s));
             }
             ExprKind::Path(qpath) => {
-                let name = self.qpath_to_name(qpath);
+                let name = self.qpath_to_string(qpath);
                 self.add_leaf(NodeType::Var(name));
             }
             ExprKind::Call(callee, args) => {
@@ -288,12 +380,14 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.pop_node();
             }
             ExprKind::If(cond, then_block, else_opt) => {
-                self.push_node(NodeType::Action);
+                self.push_node(NodeType::Nested);
 
                 self.push_node(NodeType::If);
                 self.visit_expr(then_block);
                 if let Some(else_expr) = else_opt {
+                    self.push_node(NodeType::Else);
                     self.visit_expr(else_expr);
+                    self.pop_node();
                 }
                 self.pop_node();
 
@@ -318,7 +412,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.push_node(NodeType::Match);
                 self.visit_expr(scrutinee);
                 for arm in *arms {
-                    let pat_text = self.pat_to_name(&arm.pat);
+                    let pat_text = self.pat_to_string(&arm.pat);
                     self.push_node(NodeType::MatchArm(pat_text));
                     if let Some(guard) = &arm.guard {
                         self.visit_expr(guard);
@@ -347,11 +441,33 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.visit_expr(sub);
             }
             ExprKind::Struct(qpath, fields, _) => {
-                self.push_node(NodeType::Struct(self.qpath_to_name(qpath)));
+                self.push_node(NodeType::Struct(self.qpath_to_string(qpath)));
                 for field in *fields {
                     self.push_node(NodeType::Var(field.ident.to_string()));
                     self.visit_expr(&field.expr);
                 }
+                self.pop_node();
+            }
+            ExprKind::Loop(body, _, _, _) => {
+                self.push_node(NodeType::Loop);
+                self.visit_block_expr(body);
+                self.pop_node();
+                self.pop_node();
+            }
+            ExprKind::Break(_, expr) => {
+                self.push_node(NodeType::Jump("break".to_string()));
+                if let Some(break_expr) = expr {
+                    self.visit_expr(break_expr);
+                }
+                self.pop_node();
+            }
+            ExprKind::Yield(expr, _) => {
+                self.push_node(NodeType::Jump("yield".to_string()));
+                self.visit_expr(expr);
+                self.pop_node();
+            }
+            ExprKind::Continue(_) => {
+                self.add_leaf(NodeType::Jump("continue".to_string()));
                 self.pop_node();
             }
             other => {
