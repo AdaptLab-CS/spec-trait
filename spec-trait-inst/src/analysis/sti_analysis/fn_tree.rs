@@ -407,11 +407,13 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ExprKind::MethodCall(segment, target, args, _) => {
                 let name = segment.ident.to_string();
+                self.push_node(NodeType::Nested);
                 self.push_node(NodeType::MethodCall(name));
                 self.visit_expr(target);
                 for arg in *args {
                     self.visit_expr(arg);
                 }
+                self.pop_node();
                 self.pop_node();
             }
             ExprKind::Block(block, _) => {
@@ -458,17 +460,21 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.pop_node();
             }
             ExprKind::Match(scrutinee, arms, _) => {
+                self.push_node(NodeType::Nested);
                 self.push_node(NodeType::Match);
                 self.visit_expr(scrutinee);
                 for arm in *arms {
                     let pat_text = self.pat_to_string(&arm.pat);
+                    self.push_node(NodeType::Nested);
                     self.push_node(NodeType::MatchArm(pat_text));
                     if let Some(guard) = &arm.guard {
                         self.visit_expr(guard);
                     }
                     self.visit_expr(&arm.body);
                     self.pop_node();
+                    self.pop_node();
                 }
+                self.pop_node();
                 self.pop_node();
             }
             ExprKind::AddrOf(_, _, sub) => {
