@@ -2,9 +2,33 @@ use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
-    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, Expr, ExprKind, Item, ItemKind,
-    Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd, Stmt, StmtKind, UnOp,
+    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, ConstArg, ConstArgKind, Expr, ExprKind,
+    Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd, Stmt,
+    StmtKind, UnOp,
 };
+
+#[derive(Eq, PartialEq, Debug)]
+pub enum VarKind {
+    Static,
+    Const,
+    Local,
+    Field,
+    LetExpr,
+}
+
+#[derive(Eq, PartialEq, Debug)]
+pub enum JumpKind {
+    Break,
+    Continue,
+    Return,
+    Yield,
+}
+
+#[derive(Eq, PartialEq, Debug)]
+pub enum CollectionKind {
+    Array,
+    Tuple,
+}
 
 /// Different types of nodes in the body of a function.
 #[derive(Eq, PartialEq, Debug)]
@@ -12,23 +36,17 @@ pub enum NodeType {
     // No children
     Use(String), // use path
 
-    // Single child (expression)
-    Static(String), // static name
-
-    // Single child (expression)
-    Const(String), // constant name
-
-    // Single child (expression)
-    Let(String), // variable name
-
-    // Single child (expression)
-    Assign(String), // variable name
-
     // No children
     Lit(String), // literal value
 
+    // Single child (expression)
+    VarDef(VarKind, String), // variable / field name
+
     // No children
-    Var(String), // variable / parameter name
+    VarUse(String), // variable / field name
+
+    // Single child (expression)
+    Assign(String), // variable name
 
     // Multiple children (operands)
     Op(String), // operator symbol
@@ -52,7 +70,7 @@ pub enum NodeType {
     MatchArm(String), // pattern
 
     // Single child (expression)
-    Jump(String), // break / continue / return / yield
+    Jump(JumpKind),
 
     // Multiple children (body, optional for declarations)
     FnDef(
@@ -61,14 +79,7 @@ pub enum NodeType {
     ),
 
     // Multiple children (arguments)
-    FnCall(String), // function name
-
-    // TODO: consider merging with FnCall
-    // Multiple children (arguments)
-    MethodCall(String), // method name
-
-    // No children
-    Param(String), // parameter name
+    FnCall(String), // function / method name
 
     // No children
     Enum(
@@ -80,10 +91,10 @@ pub enum NodeType {
     Struct(String), // struct name
 
     // Multiple children (elements)
-    Collection(String), // array / tuple
+    Collection(CollectionKind),
 
     // Two children (action, target)
-    Nested, // method call (target) / param (target) / match (target) / match arm (condition) / if (condition)
+    Nested, // method call (target) / var use (param target) / match (target) / match arm (condition) / if (condition) / else (condition)
 
     Unknown,
 }
@@ -326,7 +337,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             self.visit_stmt(stmt);
         }
         if let Some(expr) = &block.expr {
-            self.push_node(NodeType::Jump("return".to_string()));
+            self.push_node(NodeType::Jump(JumpKind::Return));
             self.visit_expr(expr);
             self.pop_node();
         }
@@ -336,7 +347,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
         match &stmt.kind {
             StmtKind::Let(local) => {
                 let name = self.pat_to_string(local.pat);
-                self.push_node(NodeType::Let(name));
+                self.push_node(NodeType::VarDef(VarKind::Local, name));
                 if let Some(init) = local.init {
                     self.visit_expr(init);
                 }
@@ -349,6 +360,27 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             StmtKind::Item(id) => {
                 let item = self.analyzer.tcx.hir_item(*id);
                 self.visit_item(item);
+            }
+        }
+    }
+
+    fn visit_const_arg(&mut self, c: &'tcx ConstArg<'tcx>) {
+        match &c.kind {
+            ConstArgKind::Path(qpath) => {
+                let name = self.qpath_to_string(qpath);
+                self.add_leaf(NodeType::VarUse(name));
+            }
+            ConstArgKind::Anon(anon_const) => {
+                let body = self.analyzer.tcx.hir_body(anon_const.body);
+                self.push_node(NodeType::Nested);
+                self.push_node(NodeType::Block);
+                self.visit_body_expr(body);
+                self.pop_node();
+                self.pop_node();
+            }
+            ConstArgKind::Infer(_, _) => {
+                log::debug!("Unhandled const arg: {:?}", c);
+                self.add_leaf(NodeType::Unknown);
             }
         }
     }
@@ -372,7 +404,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ExprKind::Path(qpath) => {
                 let name = self.qpath_to_string(qpath);
-                self.add_leaf(NodeType::Var(name));
+                self.add_leaf(NodeType::VarUse(name));
             }
             ExprKind::Call(callee, args) => {
                 let name = self.expr_to_string(callee);
@@ -385,7 +417,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             ExprKind::MethodCall(segment, target, args, _) => {
                 let name = segment.ident.to_string();
                 self.push_node(NodeType::Nested);
-                self.push_node(NodeType::MethodCall(name));
+                self.push_node(NodeType::FnCall(name));
                 self.visit_expr(target);
                 for arg in *args {
                     self.visit_expr(arg);
@@ -415,7 +447,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.pop_node();
             }
             ExprKind::Ret(opt) => {
-                self.push_node(NodeType::Jump("return".to_string()));
+                self.push_node(NodeType::Jump(JumpKind::Return));
                 if let Some(ret_expr) = opt {
                     self.visit_expr(ret_expr);
                 }
@@ -469,8 +501,9 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             ExprKind::Struct(qpath, fields, _) => {
                 self.push_node(NodeType::Struct(self.qpath_to_string(qpath)));
                 for field in *fields {
-                    self.push_node(NodeType::Var(field.ident.to_string()));
+                    self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
                     self.visit_expr(&field.expr);
+                    self.pop_node();
                 }
                 self.pop_node();
             }
@@ -481,29 +514,29 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.pop_node();
             }
             ExprKind::Break(_, expr) => {
-                self.push_node(NodeType::Jump("break".to_string()));
+                self.push_node(NodeType::Jump(JumpKind::Break));
                 if let Some(break_expr) = expr {
                     self.visit_expr(break_expr);
                 }
                 self.pop_node();
             }
             ExprKind::Yield(expr, _) => {
-                self.push_node(NodeType::Jump("yield".to_string()));
+                self.push_node(NodeType::Jump(JumpKind::Yield));
                 self.visit_expr(expr);
                 self.pop_node();
             }
             ExprKind::Continue(_) => {
-                self.add_leaf(NodeType::Jump("continue".to_string()));
+                self.add_leaf(NodeType::Jump(JumpKind::Continue));
             }
             ExprKind::Array(elements) => {
-                self.push_node(NodeType::Collection("array".to_string()));
+                self.push_node(NodeType::Collection(CollectionKind::Array));
                 for elem in *elements {
                     self.visit_expr(elem);
                 }
                 self.pop_node();
             }
             ExprKind::Tup(elements) => {
-                self.push_node(NodeType::Collection("tuple".to_string()));
+                self.push_node(NodeType::Collection(CollectionKind::Tuple));
                 for elem in *elements {
                     self.visit_expr(elem);
                 }
@@ -522,26 +555,34 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ExprKind::Field(base, field) => {
                 self.push_node(NodeType::Nested);
-                self.add_leaf(NodeType::Param(field.to_string()));
+                self.add_leaf(NodeType::VarUse(field.to_string()));
                 self.visit_expr(base);
                 self.pop_node();
             }
             ExprKind::Index(base, index, _) => {
-                self.push_node(NodeType::MethodCall("get".to_string()));
-                self.visit_expr(base);
+                // x[i] ==> x.get(i).unwrap()
+                self.push_node(NodeType::Nested);
+                self.add_leaf(NodeType::FnCall("unwrap".to_string()));
+                self.push_node(NodeType::Nested);
+                self.add_leaf(NodeType::FnCall("get".to_string()));
                 self.visit_expr(index);
                 self.pop_node();
-                self.push_node(NodeType::MethodCall("unwrap".to_string()));
+                self.visit_expr(base);
+                self.pop_node();
                 self.pop_node();
             }
             ExprKind::Repeat(element, count) => {
-                self.push_node(NodeType::Collection("array".to_string()));
+                self.push_node(NodeType::Collection(CollectionKind::Array));
                 self.push_node(NodeType::Op("repeat".to_string()));
                 self.visit_expr(element);
-
-                log::debug!("Unhandled repeat: {:?}", count);
-                self.add_leaf(NodeType::Unknown); // TODO: handle count
+                self.visit_const_arg(count);
                 self.pop_node();
+                self.pop_node();
+            }
+            ExprKind::Let(expr) => {
+                let name = self.pat_to_string(expr.pat);
+                self.push_node(NodeType::VarDef(VarKind::LetExpr, name));
+                self.visit_expr(expr.init);
                 self.pop_node();
             }
             other => {
@@ -558,7 +599,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ItemKind::Static(_, ident, _, body_id) => {
                 let name = ident.to_string();
-                self.push_node(NodeType::Static(name));
+                self.push_node(NodeType::VarDef(VarKind::Static, name));
                 let body = self.analyzer.tcx.hir_body(*body_id);
                 self.visit_body_expr(body);
                 self.pop_node();
@@ -566,7 +607,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ItemKind::Const(ident, _, _, body_id) => {
                 let name = ident.to_string();
-                self.push_node(NodeType::Const(name));
+                self.push_node(NodeType::VarDef(VarKind::Const, name));
                 let body = self.analyzer.tcx.hir_body(*body_id);
                 self.visit_body_expr(body);
                 self.pop_node();
@@ -594,7 +635,7 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 let name = ident.to_string();
                 self.push_node(NodeType::Struct(name));
                 for field in variant_data.fields() {
-                    self.push_node(NodeType::Var(field.ident.to_string()));
+                    self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
                     self.pop_node();
                 }
                 self.pop_node();

@@ -116,7 +116,6 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 for item in items {
                     self.visit_foreign_item_ref(item);
                 }
-                // walk_list!(visitor, visit_foreign_item_ref, items);
             }
             ItemKind::GlobalAsm { asm: _, fake_body } => {
                 self.visit_nested_body(fake_body);
