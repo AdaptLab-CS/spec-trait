@@ -2,8 +2,8 @@ use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
-    BinOp, BinOpKind, Block, Body, Expr, ExprKind, Pat, PatExpr, PatExprKind, PatKind, QPath,
-    RangeEnd, Stmt, StmtKind,
+    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, Expr, ExprKind, Item, ItemKind, Pat,
+    PatExpr, PatExprKind, PatKind, QPath, RangeEnd, Stmt, StmtKind, UnOp,
 };
 
 /// Different types of nodes in the body of a function.
@@ -56,15 +56,19 @@ pub enum NodeType {
 
     // Multiple children (body, optional for declarations)
     FnDef(
-        String, // function name (optional for closures)
-        usize,  // number of parameters
+        Option<String>, // function name (optional for closures)
+        usize,          // number of parameters
     ),
 
     // Multiple children (arguments)
     FnCall(String), // function name
 
+    // TODO: consider merging with FnCall
     // Multiple children (arguments)
     MethodCall(String), // method name
+
+    // No children
+    Param(String), // parameter name
 
     // No children
     Enum(
@@ -75,8 +79,11 @@ pub enum NodeType {
     // Multiple children (fields)
     Struct(String), // struct name
 
+    // Multiple children (elements)
+    Collection(String), // array / tuple
+
     // Two children (action, target)
-    Nested, // method call (target) / match (target) / match arm (guard) / if (condition)
+    Nested, // method call (target) / param (target) / match (target) / match arm (condition) / if (condition)
 
     Unknown,
 }
@@ -136,6 +143,25 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
     /// pop current node (ascend)
     fn pop_node(&mut self) {
         self.path.pop();
+    }
+
+    fn assign_op_to_binary_op(&self, op: &AssignOp) -> BinOp {
+        let node = match op.node {
+            AssignOpKind::AddAssign => BinOpKind::Add,
+            AssignOpKind::SubAssign => BinOpKind::Sub,
+            AssignOpKind::MulAssign => BinOpKind::Mul,
+            AssignOpKind::DivAssign => BinOpKind::Div,
+            AssignOpKind::RemAssign => BinOpKind::Rem,
+            AssignOpKind::BitXorAssign => BinOpKind::BitXor,
+            AssignOpKind::BitAndAssign => BinOpKind::BitAnd,
+            AssignOpKind::BitOrAssign => BinOpKind::BitOr,
+            AssignOpKind::ShlAssign => BinOpKind::Shl,
+            AssignOpKind::ShrAssign => BinOpKind::Shr,
+        };
+        BinOp {
+            span: op.span,
+            node,
+        }
     }
 
     fn pat_to_string(&self, pat: &Pat<'tcx>) -> String {
@@ -272,6 +298,14 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
         }
     }
 
+    fn un_op_to_string(&self, op: &UnOp) -> String {
+        match op {
+            UnOp::Not => "!".to_string(),
+            UnOp::Neg => "-".to_string(),
+            UnOp::Deref => "*".to_string(),
+        }
+    }
+
     fn lit_to_string(&self, lit: LitKind) -> String {
         match lit {
             LitKind::Str(s, _) => format!("\"{}\"", s),
@@ -335,8 +369,9 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
                 self.visit_expr(expr);
             }
-            StmtKind::Item(_) => {
-                self.add_leaf(NodeType::Unknown);
+            StmtKind::Item(id) => {
+                let item = self.analyzer.tcx.hir_item(*id);
+                self.visit_item(item);
             }
         }
     }
@@ -347,6 +382,11 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.push_node(NodeType::Op(self.bin_op_to_string(op)));
                 self.visit_expr(left);
                 self.visit_expr(right);
+                self.pop_node();
+            }
+            ExprKind::Unary(op, sub) => {
+                self.push_node(NodeType::Op(self.un_op_to_string(op)));
+                self.visit_expr(sub);
                 self.pop_node();
             }
             ExprKind::Lit(lit) => {
@@ -408,6 +448,15 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.visit_expr(rhs);
                 self.pop_node();
             }
+            ExprKind::AssignOp(assign_op, lhs, rhs) => {
+                let name = self.expr_to_string(lhs);
+                let op = self.assign_op_to_binary_op(&assign_op);
+
+                self.push_node(NodeType::Assign(name));
+                self.push_node(NodeType::Op(self.bin_op_to_string(&op)));
+                self.visit_expr(rhs);
+                self.pop_node();
+            }
             ExprKind::Match(scrutinee, arms, _) => {
                 self.push_node(NodeType::Match);
                 self.visit_expr(scrutinee);
@@ -422,18 +471,8 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 }
                 self.pop_node();
             }
-            ExprKind::Unary(_, sub) => {
-                self.push_node(NodeType::Op("unary".to_string()));
-                self.visit_expr(sub);
-                self.pop_node();
-            }
             ExprKind::AddrOf(_, _, sub) => {
                 self.push_node(NodeType::Op("addr_of".to_string()));
-                self.visit_expr(sub);
-                self.pop_node();
-            }
-            ExprKind::Cast(sub, _) => {
-                self.push_node(NodeType::Op("cast".to_string()));
                 self.visit_expr(sub);
                 self.pop_node();
             }
@@ -468,9 +507,113 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ExprKind::Continue(_) => {
                 self.add_leaf(NodeType::Jump("continue".to_string()));
+            }
+            ExprKind::Array(elements) => {
+                self.push_node(NodeType::Collection("array".to_string()));
+                for elem in *elements {
+                    self.visit_expr(elem);
+                }
+                self.pop_node();
+            }
+            ExprKind::Tup(elements) => {
+                self.push_node(NodeType::Collection("tuple".to_string()));
+                for elem in *elements {
+                    self.visit_expr(elem);
+                }
+                self.pop_node();
+            }
+            ExprKind::Use(path, _) => {
+                let name = self.expr_to_string(path);
+                self.add_leaf(NodeType::Use(name));
+            }
+            ExprKind::Closure(closure) => {
+                let param_count = closure.fn_decl.inputs.len();
+                let body = self.analyzer.tcx.hir_body(closure.body);
+                self.push_node(NodeType::FnDef(None, param_count));
+                self.visit_body_expr(body);
+                self.pop_node();
+            }
+            ExprKind::Field(base, field) => {
+                self.push_node(NodeType::Nested);
+                self.add_leaf(NodeType::Param(field.to_string()));
+                self.visit_expr(base);
+                self.pop_node();
+            }
+            ExprKind::Index(base, index, _) => {
+                self.push_node(NodeType::MethodCall("get".to_string()));
+                self.visit_expr(base);
+                self.visit_expr(index);
+                self.pop_node();
+                self.push_node(NodeType::MethodCall("unwrap".to_string()));
+                self.pop_node();
+            }
+            ExprKind::Repeat(element, count) => {
+                self.push_node(NodeType::Collection("array".to_string()));
+                self.push_node(NodeType::Op("repeat".to_string()));
+                self.visit_expr(element);
+
+                log::debug!("Unhandled repeat: {:?}", count);
+                self.add_leaf(NodeType::Unknown); // TODO: handle count
+                self.pop_node();
                 self.pop_node();
             }
             other => {
+                log::debug!("Unhandled expr: {:?}", other);
+                self.add_leaf(NodeType::Unknown);
+            }
+        }
+    }
+
+    fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
+        match &item.kind {
+            ItemKind::Use(path, _) => {
+                self.add_leaf(NodeType::Use(format!("{:?}", path)));
+            }
+            ItemKind::Static(_, ident, _, body_id) => {
+                let name = ident.to_string();
+                self.push_node(NodeType::Static(name));
+                let body = self.analyzer.tcx.hir_body(*body_id);
+                self.visit_body_expr(body);
+                self.pop_node();
+                self.pop_node();
+            }
+            ItemKind::Const(ident, _, _, body_id) => {
+                let name = ident.to_string();
+                self.push_node(NodeType::Const(name));
+                let body = self.analyzer.tcx.hir_body(*body_id);
+                self.visit_body_expr(body);
+                self.pop_node();
+                self.pop_node();
+            }
+            ItemKind::Fn {
+                sig,
+                ident,
+                body: body_id,
+                ..
+            } => {
+                let name = ident.to_string();
+                let body = self.analyzer.tcx.hir_body(*body_id);
+                let param_count = sig.decl.inputs.len();
+                self.push_node(NodeType::FnDef(Some(name), param_count));
+                self.visit_body_expr(body);
+                self.pop_node();
+            }
+            ItemKind::Enum(ident, _, def) => {
+                let name = ident.to_string();
+                let variants = def.variants.len();
+                self.add_leaf(NodeType::Enum(name, variants));
+            }
+            ItemKind::Struct(ident, _, variant_data) => {
+                let name = ident.to_string();
+                self.push_node(NodeType::Struct(name));
+                for field in variant_data.fields() {
+                    self.push_node(NodeType::Var(field.ident.to_string()));
+                    self.pop_node();
+                }
+                self.pop_node();
+            }
+            other => {
+                log::debug!("Unhandled item: {:?}", other);
                 self.add_leaf(NodeType::Unknown);
             }
         }
