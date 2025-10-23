@@ -2,8 +2,8 @@ use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
-    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, Expr, ExprKind, Item, ItemKind, Pat,
-    PatExpr, PatExprKind, PatKind, QPath, RangeEnd, Stmt, StmtKind, UnOp,
+    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, Expr, ExprKind, Item, ItemKind,
+    Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd, Stmt, StmtKind, UnOp,
 };
 
 /// Different types of nodes in the body of a function.
@@ -276,34 +276,11 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
     }
 
     fn bin_op_to_string(&self, op: &BinOp) -> String {
-        match op.node {
-            BinOpKind::Add => "+".to_string(),
-            BinOpKind::Sub => "-".to_string(),
-            BinOpKind::Mul => "*".to_string(),
-            BinOpKind::Div => "/".to_string(),
-            BinOpKind::Rem => "%".to_string(),
-            BinOpKind::BitXor => "^".to_string(),
-            BinOpKind::BitAnd => "&".to_string(),
-            BinOpKind::BitOr => "|".to_string(),
-            BinOpKind::Shl => "<<".to_string(),
-            BinOpKind::Shr => ">>".to_string(),
-            BinOpKind::Eq => "==".to_string(),
-            BinOpKind::Lt => "<".to_string(),
-            BinOpKind::Le => "<=".to_string(),
-            BinOpKind::Ne => "!=".to_string(),
-            BinOpKind::Ge => ">=".to_string(),
-            BinOpKind::Gt => ">".to_string(),
-            BinOpKind::And => "&&".to_string(),
-            BinOpKind::Or => "||".to_string(),
-        }
+        op.node.as_str().to_string()
     }
 
     fn un_op_to_string(&self, op: &UnOp) -> String {
-        match op {
-            UnOp::Not => "!".to_string(),
-            UnOp::Neg => "-".to_string(),
-            UnOp::Deref => "*".to_string(),
-        }
+        op.as_str().to_string()
     }
 
     fn lit_to_string(&self, lit: LitKind) -> String {
@@ -477,8 +454,12 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.pop_node();
                 self.pop_node();
             }
-            ExprKind::AddrOf(_, _, sub) => {
-                self.push_node(NodeType::Op("addr_of".to_string()));
+            ExprKind::AddrOf(_, m, sub) => {
+                let str = match m {
+                    Mutability::Not => "&",
+                    Mutability::Mut => "&mut",
+                };
+                self.push_node(NodeType::Op(str.to_string()));
                 self.visit_expr(sub);
                 self.pop_node();
             }
