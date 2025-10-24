@@ -1,10 +1,7 @@
 use super::fn_tree::FnTree;
 use super::Analyzer;
-use rustc_hir::{
-    intravisit::{nested_filter::NestedFilter, FnKind, Visitor, VisitorExt},
-    HirId, Impl, Item, ItemKind,
-};
-use rustc_middle::ty;
+use rustc_hir::intravisit::{FnKind, Visitor, VisitorExt};
+use rustc_hir::{BodyId, HirId, Impl, Item, ItemKind, OwnerId};
 use std::collections::HashSet;
 
 #[allow(dead_code)]
@@ -12,7 +9,7 @@ pub struct STIVisitor<'tcx, 'a> {
     // The analyzer contains the `TyCtxt`
     analyzer: &'a Analyzer<'tcx>,
 
-    visited_traits: HashSet<rustc_hir::OwnerId>,
+    visited_traits: HashSet<OwnerId>,
 }
 
 // Guardare le tre diverse tipologie di linear: copy move e borrow
@@ -35,27 +32,10 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
     }
 }
 
-pub struct NestedFilterAll;
-impl<'tcx> NestedFilter<'tcx> for NestedFilterAll {
-    type MaybeTyCtxt = ty::TyCtxt<'tcx>;
-    /// Whether the visitor visits nested "item-like" things.
-    /// E.g., item, impl-item.
-    const INTER: bool = true;
-    /// Whether the visitor visits "intra item-like" things.
-    /// E.g., function body, closure, `AnonConst`
-    const INTRA: bool = true;
-}
-
 // NOTE(bruzzone): `visit_ty_unambig` and `visit_const_arg_unambig` are defined in VisitorExt, so we need to import it.
 impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
-    type NestedFilter = NestedFilterAll;
-
-    fn maybe_tcx(&mut self) -> Self::MaybeTyCtxt {
-        self.analyzer.tcx
-    }
-
-    fn visit_nested_body(&mut self, id: rustc_hir::BodyId) -> Self::Result {
-        let body = self.maybe_tcx().hir_body(id);
+    fn visit_nested_body(&mut self, id: BodyId) -> Self::Result {
+        let body = self.analyzer.tcx.hir_body(id);
         let mut tree_visitor = FnTree::new(self.analyzer);
         log::debug!("Building function tree for body id: {:?}", id);
         tree_visitor.build_from_body(body);
@@ -181,8 +161,5 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 }
             }
         }
-
-        // Continue walking the item.
-        rustc_hir::intravisit::walk_item(self, item);
     }
 }
