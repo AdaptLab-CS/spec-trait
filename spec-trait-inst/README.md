@@ -38,7 +38,7 @@ clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_
 
 ```bash
 cd tests/workspaces/first
-cargo run --manifest-path ../../../Cargo.toml --bin cargo-spec-trait-insts [--CARGO_ARG] -- [--PLUGIN_ARG]
+cargo run --manifest-path ../../../Cargo.toml --bin cargo-spec-trait-inst [--CARGO_ARG] -- [--PLUGIN_ARG]
 ```
 
 or

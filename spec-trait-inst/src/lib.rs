@@ -39,6 +39,10 @@ pub struct CliArgs {
     #[clap(long)]
     print_mir: bool,
 
+    // Print nested bodies
+    #[clap(long)]
+    print_nested_bodies: bool,
+
     // Provide a file to filter the analysis
     #[clap(long)]
     filter_with_file: Option<String>,

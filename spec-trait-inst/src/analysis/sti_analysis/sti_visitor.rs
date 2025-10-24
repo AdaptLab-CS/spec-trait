@@ -35,12 +35,15 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
 // NOTE(bruzzone): `visit_ty_unambig` and `visit_const_arg_unambig` are defined in VisitorExt, so we need to import it.
 impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     fn visit_nested_body(&mut self, id: BodyId) -> Self::Result {
-        let body = self.analyzer.tcx.hir_body(id);
-        let mut tree_visitor = BodyTree::new(self.analyzer);
         log::debug!("Building body tree for body id: {:?}", id);
-        tree_visitor.build_from_body(body);
-        let node = tree_visitor.root;
-        log::debug!("Body tree built: {:#?}", node);
+
+        let mut body_tree = BodyTree::new(self.analyzer);
+        body_tree.build_from_body_id(&id);
+
+        if self.analyzer.cli_args.print_nested_bodies {
+            log::debug!("Printing body tree for body id: {:?}", id);
+            log::debug!("{:#?}", body_tree.root);
+        }
     }
 
     fn visit_item(&mut self, item: &'tcx Item) {

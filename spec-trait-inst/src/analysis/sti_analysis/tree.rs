@@ -2,9 +2,9 @@ use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
-    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, ConstArg, ConstArgKind, Expr, ExprKind,
-    Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd, Stmt,
-    StmtKind, UnOp,
+    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, BodyId, ConstArg, ConstArgKind, Expr,
+    ExprKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd,
+    Stmt, StmtKind, UnOp,
 };
 
 #[derive(Eq, PartialEq, Debug)]
@@ -97,9 +97,11 @@ pub enum NodeType {
 pub struct BodyTree<'tcx, 'a> {
     pub analyzer: &'a Analyzer<'tcx>,
 
+    /// root node of the tree
     pub root: Node<NodeType>,
 
-    // stack of indices representing path from root to current node
+    /// stack of indices representing path from root to current node
+    /// used to navigate the tree during construction
     path: Vec<usize>,
 }
 
@@ -313,13 +315,14 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     }
 
     /// entry point to (re)build the tree from a Body
-    pub fn build_from_body(&mut self, body: &'tcx Body<'tcx>) {
+    pub fn build_from_body_id(&mut self, id: &BodyId) {
         self.root = Node {
             label: NodeType::Block,
             children: Vec::new(),
         };
         self.path.clear();
 
+        let body = self.analyzer.tcx.hir_body(*id);
         self.visit_body_expr(body);
     }
 
