@@ -42,7 +42,7 @@ pub enum NodeType {
     // Single child (expression)
     VarDef(VarKind, String), // variable / field name
 
-    // No children
+    // Single child (optional target)
     VarUse(String), // variable / field name
 
     // Single child (expression)
@@ -54,31 +54,28 @@ pub enum NodeType {
     // Multiple children (expressions)
     Block,
 
-    // Multiple children (expressions)
+    // Single child (body)
     Loop,
 
-    // Multiple children (expressions)
+    // Three children (condition, then block, else block)
     If,
 
-    // Multiple children (expressions / if)
-    Else,
-
-    // Multiple children (match arms)
+    // Two children (target, match arms block)
     Match,
 
-    // Multiple children (expressions)
+    // Two children (optional guard, body)
     MatchArm(String), // pattern
 
     // Single child (expression)
     Jump(JumpKind),
 
-    // Multiple children (body, optional for declarations)
+    // Single child (optional body)
     FnDef(
         Option<String>, // function name (optional for closures)
         usize,          // number of parameters
     ),
 
-    // Multiple children (arguments)
+    // Two children (optional target, arguments tuple)
     FnCall(String), // function / method name
 
     // No children
@@ -92,9 +89,6 @@ pub enum NodeType {
 
     // Multiple children (elements)
     Collection(CollectionKind),
-
-    // Two children (action, target)
-    Nested, // method call (target) / var use (param target) / match (target) / match arm (condition) / if (condition) / else (condition)
 
     Unknown,
 }
@@ -372,10 +366,8 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ConstArgKind::Anon(anon_const) => {
                 let body = self.analyzer.tcx.hir_body(anon_const.body);
-                self.push_node(NodeType::Nested);
                 self.push_node(NodeType::Block);
                 self.visit_body_expr(body);
-                self.pop_node();
                 self.pop_node();
             }
             ConstArgKind::Infer(_, _) => {
@@ -409,20 +401,27 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             ExprKind::Call(callee, args) => {
                 let name = self.expr_to_string(callee);
                 self.push_node(NodeType::FnCall(name));
+
+                self.push_node(NodeType::Collection(CollectionKind::Tuple));
                 for arg in *args {
                     self.visit_expr(arg);
                 }
+                self.pop_node();
+
                 self.pop_node();
             }
             ExprKind::MethodCall(segment, target, args, _) => {
                 let name = segment.ident.to_string();
-                self.push_node(NodeType::Nested);
                 self.push_node(NodeType::FnCall(name));
+
                 self.visit_expr(target);
+
+                self.push_node(NodeType::Collection(CollectionKind::Tuple));
                 for arg in *args {
                     self.visit_expr(arg);
                 }
                 self.pop_node();
+
                 self.pop_node();
             }
             ExprKind::Block(block, _) => {
@@ -431,18 +430,18 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.pop_node();
             }
             ExprKind::If(cond, then_block, else_opt) => {
-                self.push_node(NodeType::Nested);
-
                 self.push_node(NodeType::If);
+                self.visit_expr(cond);
+
+                self.push_node(NodeType::Block);
                 self.visit_expr(then_block);
-                if let Some(else_expr) = else_opt {
-                    self.push_node(NodeType::Else);
-                    self.visit_expr(else_expr);
-                    self.pop_node();
-                }
                 self.pop_node();
 
-                self.visit_expr(cond);
+                self.push_node(NodeType::Block);
+                if let Some(else_expr) = else_opt {
+                    self.visit_expr(else_expr);
+                }
+                self.pop_node();
 
                 self.pop_node();
             }
@@ -468,22 +467,27 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 self.visit_expr(rhs);
                 self.pop_node();
             }
-            ExprKind::Match(scrutinee, arms, _) => {
-                self.push_node(NodeType::Nested);
+            ExprKind::Match(target, arms, _) => {
                 self.push_node(NodeType::Match);
-                self.visit_expr(scrutinee);
+                self.visit_expr(target);
+
+                self.push_node(NodeType::Block);
                 for arm in *arms {
                     let pat_text = self.pat_to_string(&arm.pat);
-                    self.push_node(NodeType::Nested);
                     self.push_node(NodeType::MatchArm(pat_text));
+
                     if let Some(guard) = &arm.guard {
                         self.visit_expr(guard);
                     }
+
+                    self.push_node(NodeType::Block);
                     self.visit_expr(&arm.body);
                     self.pop_node();
+
                     self.pop_node();
                 }
                 self.pop_node();
+
                 self.pop_node();
             }
             ExprKind::AddrOf(_, m, sub) => {
@@ -509,8 +513,11 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             }
             ExprKind::Loop(body, _, _, _) => {
                 self.push_node(NodeType::Loop);
+
+                self.push_node(NodeType::Block);
                 self.visit_block_expr(body);
                 self.pop_node();
+
                 self.pop_node();
             }
             ExprKind::Break(_, expr) => {
@@ -550,25 +557,30 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 let param_count = closure.fn_decl.inputs.len();
                 let body = self.analyzer.tcx.hir_body(closure.body);
                 self.push_node(NodeType::FnDef(None, param_count));
+
+                self.push_node(NodeType::Block);
                 self.visit_body_expr(body);
+                self.pop_node();
+
                 self.pop_node();
             }
             ExprKind::Field(base, field) => {
-                self.push_node(NodeType::Nested);
-                self.add_leaf(NodeType::VarUse(field.to_string()));
+                self.push_node(NodeType::VarUse(field.to_string()));
                 self.visit_expr(base);
                 self.pop_node();
             }
             ExprKind::Index(base, index, _) => {
                 // x[i] ==> x.get(i).unwrap()
-                self.push_node(NodeType::Nested);
                 self.add_leaf(NodeType::FnCall("unwrap".to_string()));
-                self.push_node(NodeType::Nested);
+
                 self.add_leaf(NodeType::FnCall("get".to_string()));
+
+                self.visit_expr(base);
+
+                self.push_node(NodeType::Collection(CollectionKind::Tuple));
                 self.visit_expr(index);
                 self.pop_node();
-                self.visit_expr(base);
-                self.pop_node();
+
                 self.pop_node();
             }
             ExprKind::Repeat(element, count) => {
@@ -617,13 +629,20 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
                 sig,
                 ident,
                 body: body_id,
+                has_body,
                 ..
             } => {
                 let name = ident.to_string();
-                let body = self.analyzer.tcx.hir_body(*body_id);
                 let param_count = sig.decl.inputs.len();
                 self.push_node(NodeType::FnDef(Some(name), param_count));
-                self.visit_body_expr(body);
+
+                if *has_body {
+                    let body = self.analyzer.tcx.hir_body(*body_id);
+                    self.push_node(NodeType::Block);
+                    self.visit_body_expr(body);
+                    self.pop_node();
+                }
+
                 self.pop_node();
             }
             ItemKind::Enum(ident, _, def) => {
@@ -634,10 +653,18 @@ impl<'tcx, 'a> FnTree<'tcx, 'a> {
             ItemKind::Struct(ident, _, variant_data) => {
                 let name = ident.to_string();
                 self.push_node(NodeType::Struct(name));
+
                 for field in variant_data.fields() {
                     self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
+
+                    if let Some(init) = field.default {
+                        let body = self.analyzer.tcx.hir_body(init.body);
+                        self.visit_body_expr(body);
+                    }
+
                     self.pop_node();
                 }
+
                 self.pop_node();
             }
             other => {
