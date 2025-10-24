@@ -33,67 +33,68 @@ pub enum CollectionKind {
 /// Different types of nodes in the body of a function.
 #[derive(Eq, PartialEq, Debug)]
 pub enum NodeType {
-    // No children
+    /// No children
     Use(String), // use path
 
-    // No children
+    /// No children
     Lit(String), // literal value
 
-    // Single child (expression)
+    /// Single child (expression)
     VarDef(VarKind, String), // variable / field name
 
-    // Single child (optional target)
+    /// Single child (optional target)
     VarUse(String), // variable / field name
 
-    // Single child (expression)
+    /// Single child (expression)
     Assign(String), // variable name
 
-    // Multiple children (operands)
+    /// Multiple children (operands)
     Op(String), // operator symbol
 
-    // Multiple children (expressions)
+    /// Multiple children (expressions)
     Block,
 
-    // Single child (body)
+    /// Single child (body)
     Loop,
 
-    // Three children (condition, then block, else block)
+    /// Three children (condition, then block, else block)
     If,
 
-    // Two children (target, match arms block)
+    /// Two children (target, match arms block)
     Match,
 
-    // Two children (optional guard, body)
+    /// Two children (optional guard, body)
     MatchArm(String), // pattern
 
-    // Single child (expression)
+    /// Single child (expression)
     Jump(JumpKind),
 
-    // Single child (optional body)
+    /// Single child (optional body)
     FnDef(
         Option<String>, // function name (optional for closures)
         usize,          // number of parameters
     ),
 
-    // Two children (optional target, arguments tuple)
+    /// Two children (optional target, arguments tuple)
     FnCall(String), // function / method name
 
-    // No children
+    /// No children
     Enum(
         String, // enum name
         usize,  // number of variants
     ),
 
-    // Multiple children (fields)
+    /// Multiple children (fields)
     Struct(String), // struct name
 
-    // Multiple children (elements)
+    /// Multiple children (elements)
     Collection(CollectionKind),
 
+    /// Unhandled node
     Unknown,
 }
 
-pub struct FnTree<'tcx, 'a> {
+pub struct BodyTree<'tcx, 'a> {
     pub analyzer: &'a Analyzer<'tcx>,
 
     pub root: Node<NodeType>,
@@ -102,7 +103,7 @@ pub struct FnTree<'tcx, 'a> {
     path: Vec<usize>,
 }
 
-impl<'tcx, 'a> FnTree<'tcx, 'a> {
+impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     pub fn new(analyzer: &'a Analyzer<'tcx>) -> Self {
         Self {
             analyzer,

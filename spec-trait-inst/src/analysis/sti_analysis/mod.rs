@@ -1,6 +1,6 @@
 mod distance;
-mod fn_tree;
 mod sti_visitor;
+mod tree;
 
 use super::Analyzer;
 use rustc_hir::def_id::LOCAL_CRATE;
