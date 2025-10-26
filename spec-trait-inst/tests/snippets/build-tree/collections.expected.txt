@@ -1,0 +1,624 @@
+Node {
+    label: Block,
+    children: [
+        Node {
+            label: VarDef(
+                Local,
+                "x",
+            ),
+            children: [
+                Node {
+                    label: Collection(
+                        Array,
+                    ),
+                    children: [
+                        Node {
+                            label: Lit(
+                                "1",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Lit(
+                                "2",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Lit(
+                                "3",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Lit(
+                                "4",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Lit(
+                                "5",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "y",
+            ),
+            children: [
+                Node {
+                    label: Op(
+                        "&",
+                    ),
+                    children: [
+                        Node {
+                            label: FnCall(
+                                "unwrap",
+                            ),
+                            children: [
+                                Node {
+                                    label: FnCall(
+                                        "get",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "x",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: Collection(
+                                                Tuple,
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: Struct(
+                                                        "std::ops::Range",
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: VarDef(
+                                                                Field,
+                                                                "start",
+                                                            ),
+                                                            children: [
+                                                                Node {
+                                                                    label: Lit(
+                                                                        "1",
+                                                                    ),
+                                                                    children: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Node {
+                                                            label: VarDef(
+                                                                Field,
+                                                                "end",
+                                                            ),
+                                                            children: [
+                                                                Node {
+                                                                    label: Lit(
+                                                                        "4",
+                                                                    ),
+                                                                    children: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: Collection(
+                                        Tuple,
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "z",
+            ),
+            children: [
+                Node {
+                    label: Collection(
+                        Array,
+                    ),
+                    children: [
+                        Node {
+                            label: Op(
+                                "repeat",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "0",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Block,
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "10",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "w",
+            ),
+            children: [
+                Node {
+                    label: Collection(
+                        Tuple,
+                    ),
+                    children: [
+                        Node {
+                            label: FnCall(
+                                "unwrap",
+                            ),
+                            children: [
+                                Node {
+                                    label: FnCall(
+                                        "get",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "x",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: Collection(
+                                                Tuple,
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: Lit(
+                                                        "2",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: Collection(
+                                        Tuple,
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: Lit(
+                                "3",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "(v, _)",
+            ),
+            children: [
+                Node {
+                    label: VarUse(
+                        "w",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "[u, .._]",
+            ),
+            children: [
+                Node {
+                    label: VarUse(
+                        "x",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: Match,
+            children: [
+                Node {
+                    label: VarUse(
+                        "x",
+                    ),
+                    children: [],
+                },
+                Node {
+                    label: Block,
+                    children: [
+                        Node {
+                            label: MatchArm(
+                                "[first, _, third, .._]",
+                            ),
+                            children: [
+                                Node {
+                                    label: Op(
+                                        ">",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Op(
+                                                "+",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "first",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: VarUse(
+                                                        "third",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                        Node {
+                                            label: Lit(
+                                                "3",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Op(
+                                                "+",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "first",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: FnCall(
+                                                        "len",
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: FnCall(
+                                                                "unwrap",
+                                                            ),
+                                                            children: [
+                                                                Node {
+                                                                    label: FnCall(
+                                                                        "get",
+                                                                    ),
+                                                                    children: [
+                                                                        Node {
+                                                                            label: VarUse(
+                                                                                "z",
+                                                                            ),
+                                                                            children: [],
+                                                                        },
+                                                                        Node {
+                                                                            label: Collection(
+                                                                                Tuple,
+                                                                            ),
+                                                                            children: [
+                                                                                Node {
+                                                                                    label: Struct(
+                                                                                        "std::ops::Range",
+                                                                                    ),
+                                                                                    children: [
+                                                                                        Node {
+                                                                                            label: VarDef(
+                                                                                                Field,
+                                                                                                "start",
+                                                                                            ),
+                                                                                            children: [
+                                                                                                Node {
+                                                                                                    label: Lit(
+                                                                                                        "0",
+                                                                                                    ),
+                                                                                                    children: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                        Node {
+                                                                                            label: VarDef(
+                                                                                                Field,
+                                                                                                "end",
+                                                                                            ),
+                                                                                            children: [
+                                                                                                Node {
+                                                                                                    label: Lit(
+                                                                                                        "2",
+                                                                                                    ),
+                                                                                                    children: [],
+                                                                                                },
+                                                                                            ],
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                                Node {
+                                                                    label: Collection(
+                                                                        Tuple,
+                                                                    ),
+                                                                    children: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                        Node {
+                                                            label: Collection(
+                                                                Tuple,
+                                                            ),
+                                                            children: [],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: MatchArm(
+                                "_",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "true",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Block,
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "sum",
+            ),
+            children: [
+                Node {
+                    label: Op(
+                        "+",
+                    ),
+                    children: [
+                        Node {
+                            label: Op(
+                                "+",
+                            ),
+                            children: [
+                                Node {
+                                    label: FnCall(
+                                        "unwrap",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: FnCall(
+                                                "get",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "x",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Collection(
+                                                        Tuple,
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: Lit(
+                                                                "0",
+                                                            ),
+                                                            children: [],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                        Node {
+                                            label: Collection(
+                                                Tuple,
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: FnCall(
+                                        "unwrap",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: FnCall(
+                                                "get",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "y",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Collection(
+                                                        Tuple,
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: Lit(
+                                                                "1",
+                                                            ),
+                                                            children: [],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                        Node {
+                                            label: Collection(
+                                                Tuple,
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: FnCall(
+                                "len",
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "z",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Collection(
+                                        Tuple,
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Assign(
+                "sum",
+            ),
+            children: [
+                Node {
+                    label: Op(
+                        "+",
+                    ),
+                    children: [
+                        Node {
+                            label: VarUse(
+                                "sum",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Op(
+                                "+",
+                            ),
+                            children: [
+                                Node {
+                                    label: Op(
+                                        "+",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "u",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: VarUse(
+                                                "v",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: VarUse(
+                                        "1",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "w",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Jump(
+                Return,
+            ),
+            children: [
+                Node {
+                    label: VarUse(
+                        "sum",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+    ],
+}

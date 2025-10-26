@@ -468,9 +468,11 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let name = self.expr_to_string(lhs);
                 let op = self.assign_op_to_binary_op(&assign_op);
 
-                self.push_node(NodeType::Assign(name));
+                self.push_node(NodeType::Assign(name.to_string()));
                 self.push_node(NodeType::Op(self.bin_op_to_string(&op)));
+                self.add_leaf(NodeType::VarUse(name));
                 self.visit_expr(rhs);
+                self.pop_node();
                 self.pop_node();
             }
             ExprKind::Match(target, arms, _) => {
@@ -574,15 +576,19 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::Index(base, index, _) => {
                 // x[i] ==> x.get(i).unwrap()
-                self.add_leaf(NodeType::FnCall("unwrap".to_string()));
+                self.push_node(NodeType::FnCall("unwrap".to_string()));
 
-                self.add_leaf(NodeType::FnCall("get".to_string()));
+                self.push_node(NodeType::FnCall("get".to_string()));
 
                 self.visit_expr(base);
 
                 self.push_node(NodeType::Collection(CollectionKind::Tuple));
                 self.visit_expr(index);
                 self.pop_node();
+
+                self.pop_node();
+
+                self.add_leaf(NodeType::Collection(CollectionKind::Tuple));
 
                 self.pop_node();
             }

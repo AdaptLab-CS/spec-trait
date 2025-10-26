@@ -183,6 +183,68 @@ Node {
             ],
         },
         Node {
+            label: Enum(
+                "Value",
+                1,
+            ),
+            children: [],
+        },
+        Node {
+            label: If,
+            children: [
+                Node {
+                    label: VarDef(
+                        LetExpr,
+                        "Number(x)",
+                    ),
+                    children: [
+                        Node {
+                            label: FnCall(
+                                "Number",
+                            ),
+                            children: [
+                                Node {
+                                    label: Collection(
+                                        Tuple,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "42",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                Node {
+                    label: Block,
+                    children: [
+                        Node {
+                            label: Jump(
+                                Return,
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "x",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                Node {
+                    label: Block,
+                    children: [],
+                },
+            ],
+        },
+        Node {
             label: Jump(
                 Return,
             ),

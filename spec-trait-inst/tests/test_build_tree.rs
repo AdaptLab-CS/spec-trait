@@ -34,4 +34,5 @@ mod test_build_tree {
     build_test!(if_else);
     build_test!(fn_def_call);
     build_test!(matches);
+    build_test!(collections);
 }
