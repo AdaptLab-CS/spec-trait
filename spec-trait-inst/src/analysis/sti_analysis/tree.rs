@@ -563,9 +563,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let param_count = closure.fn_decl.inputs.len();
                 self.push_node(NodeType::FnDef(None, param_count));
 
-                self.push_node(NodeType::Block);
                 self.visit_body_expr(&closure.body);
-                self.pop_node();
 
                 self.pop_node();
             }
@@ -638,9 +636,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.push_node(NodeType::FnDef(Some(name), param_count));
 
                 if *has_body {
-                    self.push_node(NodeType::Block);
                     self.visit_body_expr(body_id);
-                    self.pop_node();
                 } else {
                     self.add_leaf(NodeType::Block);
                 }

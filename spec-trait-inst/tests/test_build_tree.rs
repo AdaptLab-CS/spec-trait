@@ -11,27 +11,27 @@ mod test_build_tree {
         let (output, _) = run_with_cargo_bin_and_snippet(&snippet, &["--print-nested-bodies"])?;
         let expected = std::fs::read_to_string(format!("{FOLDER}/{name}.expected.txt")).unwrap();
 
-        println!("Output:\n{}", output);
+        println!("Formatted Output:\n{}", output); // TODO: remove
         let output = output.split_whitespace().collect::<String>();
         let expected = expected.split_whitespace().collect::<String>();
 
+        println!("Output:\n{}\nExpected:\n{}", output, expected);
         assert!(output.contains(&expected));
 
         Ok(())
     }
 
-    #[test]
-    fn test_var_def_use() -> Result<(), String> {
-        run_test("var_def_use")
+    macro_rules! build_test {
+        ($fn_name:ident) => {
+            #[test]
+            fn $fn_name() -> Result<(), String> {
+                run_test(stringify!($fn_name))
+            }
+        };
     }
 
-    #[test]
-    fn test_if_else() -> Result<(), String> {
-        run_test("if_else")
-    }
-
-    #[test]
-    fn test_match() -> Result<(), String> {
-        run_test("match")
-    }
+    build_test!(var_def_use);
+    build_test!(if_else);
+    build_test!(fn_def_call);
+    build_test!(matches);
 }
