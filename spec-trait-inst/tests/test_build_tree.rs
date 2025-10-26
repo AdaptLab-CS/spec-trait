@@ -29,4 +29,9 @@ mod test_build_tree {
     fn test_if_else() -> Result<(), String> {
         run_test("if_else")
     }
+
+    #[test]
+    fn test_match() -> Result<(), String> {
+        run_test("match")
+    }
 }

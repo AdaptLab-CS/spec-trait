@@ -1,0 +1,362 @@
+Node {
+    label: Block,
+    children: [
+        Node {
+            label: VarDef(
+                Local,
+                "x",
+            ),
+            children: [
+                Node {
+                    label: Lit(
+                        "10",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: Match,
+            children: [
+                Node {
+                    label: Op(
+                        "*",
+                    ),
+                    children: [
+                        Node {
+                            label: VarUse(
+                                "x",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Lit(
+                                "2",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+                Node {
+                    label: Block,
+                    children: [
+                        Node {
+                            label: MatchArm(
+                                "0",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "true",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "0",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: MatchArm(
+                                "10 | 20",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "true",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "10",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: MatchArm(
+                                "5 ..= 15",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "true",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "15",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: MatchArm(
+                                "n @ 30 .. 50",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "true",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "n",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: MatchArm(
+                                "oth",
+                            ),
+                            children: [
+                                Node {
+                                    label: Op(
+                                        "==",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Op(
+                                                "%",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "oth",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Lit(
+                                                        "2",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                        Node {
+                                            label: Lit(
+                                                "0",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Op(
+                                                "/",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "oth",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Lit(
+                                                        "2",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: MatchArm(
+                                "_",
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "true",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Block,
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Enum(
+                "Value",
+                2,
+            ),
+            children: [],
+        },
+        Node {
+            label: Jump(
+                Return,
+            ),
+            children: [
+                Node {
+                    label: Match,
+                    children: [
+                        Node {
+                            label: FnCall(
+                                "Number",
+                            ),
+                            children: [
+                                Node {
+                                    label: Collection(
+                                        Tuple,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "42",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: Block,
+                            children: [
+                                Node {
+                                    label: MatchArm(
+                                        "Number(n)",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Op(
+                                                ">",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "n",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Lit(
+                                                        "0",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                        Node {
+                                            label: VarUse(
+                                                "n",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: MatchArm(
+                                        "Number(_)",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "true",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: Op(
+                                                "-",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: Lit(
+                                                        "1",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: MatchArm(
+                                        "Text(_)",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "true",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: Op(
+                                                "-",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: Lit(
+                                                        "10",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}

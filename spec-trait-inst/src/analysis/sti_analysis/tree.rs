@@ -63,13 +63,13 @@ pub enum NodeType {
     /// Two children (target, match arms block)
     Match,
 
-    /// Two children (optional guard, body)
+    /// Two children (guard, body)
     MatchArm(String), // pattern
 
     /// Single child (expression)
     Jump(JumpKind),
 
-    /// Single child (optional body)
+    /// Single child (body)
     FnDef(
         Option<String>, // function name (optional for closures)
         usize,          // number of parameters
@@ -175,7 +175,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     fn pat_to_string(&self, pat: &Pat<'tcx>) -> String {
         match &pat.kind {
             PatKind::Missing => "...".to_string(),
-            PatKind::Binding(_, _, ident, _) => ident.name.to_string(),
+            PatKind::Binding(_, _, ident, sub) => {
+                if let Some(sub) = sub {
+                    let sub_name = self.pat_to_string(sub);
+                    return format!("{} @ {}", ident, sub_name);
+                }
+                ident.to_string()
+            }
             PatKind::Wild => "_".to_string(),
             PatKind::Struct(qpath, fields, _) => {
                 let struct_name = self.qpath_to_string(qpath);
@@ -478,11 +484,11 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
                     if let Some(guard) = &arm.guard {
                         self.visit_expr(guard);
+                    } else {
+                        self.add_leaf(NodeType::Lit("true".to_string()));
                     }
 
-                    self.push_node(NodeType::Block);
                     self.visit_expr(&arm.body);
-                    self.pop_node();
 
                     self.pop_node();
                 }
@@ -635,6 +641,8 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                     self.push_node(NodeType::Block);
                     self.visit_body_expr(body_id);
                     self.pop_node();
+                } else {
+                    self.add_leaf(NodeType::Block);
                 }
 
                 self.pop_node();
