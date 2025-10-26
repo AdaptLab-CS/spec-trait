@@ -1,0 +1,206 @@
+Node {
+    label: Block,
+    children: [
+        Node {
+            label: VarDef(
+                Local,
+                "x",
+            ),
+            children: [
+                Node {
+                    label: Lit(
+                        "10",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: If,
+            children: [
+                Node {
+                    label: Op(
+                        "||",
+                    ),
+                    children: [
+                        Node {
+                            label: Op(
+                                ">",
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "x",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Lit(
+                                        "5",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: Op(
+                                "<=",
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "x",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Op(
+                                        "-",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "20",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                Node {
+                    label: Block,
+                    children: [
+                        Node {
+                            label: Jump(
+                                Return,
+                            ),
+                            children: [
+                                Node {
+                                    label: Lit(
+                                        "10",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                Node {
+                    label: If,
+                    children: [
+                        Node {
+                            label: Op(
+                                "==",
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "x",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: Lit(
+                                        "0",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: Block,
+                            children: [
+                                Node {
+                                    label: Jump(
+                                        Break,
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: Block,
+                            children: [
+                                Node {
+                                    label: Jump(
+                                        Continue,
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: If,
+            children: [
+                Node {
+                    label: Op(
+                        "<",
+                    ),
+                    children: [
+                        Node {
+                            label: VarUse(
+                                "x",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: Lit(
+                                "0",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+                Node {
+                    label: Block,
+                    children: [
+                        Node {
+                            label: Jump(
+                                Return,
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "x",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+                Node {
+                    label: Block,
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: Jump(
+                Return,
+            ),
+            children: [
+                Node {
+                    label: Op(
+                        "-",
+                    ),
+                    children: [
+                        Node {
+                            label: Lit(
+                                "1",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}

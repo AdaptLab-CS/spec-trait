@@ -42,7 +42,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
 
         if self.analyzer.cli_args.print_nested_bodies {
             log::debug!("Printing body tree for body id: {:?}", id);
-            log::debug!("{:#?}", body_tree.root);
+            println!("{:#?}", body_tree.root);
         }
     }
 

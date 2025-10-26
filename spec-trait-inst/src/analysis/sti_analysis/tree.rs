@@ -2,7 +2,7 @@ use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
-    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, Body, BodyId, ConstArg, ConstArgKind, Expr,
+    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, BodyId, ConstArg, ConstArgKind, Expr,
     ExprKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd,
     Stmt, StmtKind, UnOp,
 };
@@ -322,11 +322,11 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         };
         self.path.clear();
 
-        let body = self.analyzer.tcx.hir_body(*id);
-        self.visit_body_expr(body);
+        self.visit_body_expr(id);
     }
 
-    fn visit_body_expr(&mut self, body: &'tcx Body<'tcx>) {
+    fn visit_body_expr(&mut self, id: &BodyId) {
+        let body = self.analyzer.tcx.hir_body(*id);
         self.visit_expr(&body.value);
     }
 
@@ -350,7 +350,6 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                     self.visit_expr(init);
                 }
                 self.pop_node();
-                self.pop_node();
             }
             StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
                 self.visit_expr(expr);
@@ -369,9 +368,8 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.add_leaf(NodeType::VarUse(name));
             }
             ConstArgKind::Anon(anon_const) => {
-                let body = self.analyzer.tcx.hir_body(anon_const.body);
                 self.push_node(NodeType::Block);
-                self.visit_body_expr(body);
+                self.visit_body_expr(&anon_const.body);
                 self.pop_node();
             }
             ConstArgKind::Infer(_, _) => {
@@ -437,15 +435,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.push_node(NodeType::If);
                 self.visit_expr(cond);
 
-                self.push_node(NodeType::Block);
                 self.visit_expr(then_block);
-                self.pop_node();
 
-                self.push_node(NodeType::Block);
                 if let Some(else_expr) = else_opt {
                     self.visit_expr(else_expr);
+                } else {
+                    self.add_leaf(NodeType::Block);
                 }
-                self.pop_node();
 
                 self.pop_node();
             }
@@ -559,11 +555,10 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::Closure(closure) => {
                 let param_count = closure.fn_decl.inputs.len();
-                let body = self.analyzer.tcx.hir_body(closure.body);
                 self.push_node(NodeType::FnDef(None, param_count));
 
                 self.push_node(NodeType::Block);
-                self.visit_body_expr(body);
+                self.visit_body_expr(&closure.body);
                 self.pop_node();
 
                 self.pop_node();
@@ -616,17 +611,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             ItemKind::Static(_, ident, _, body_id) => {
                 let name = ident.to_string();
                 self.push_node(NodeType::VarDef(VarKind::Static, name));
-                let body = self.analyzer.tcx.hir_body(*body_id);
-                self.visit_body_expr(body);
-                self.pop_node();
+                self.visit_body_expr(body_id);
                 self.pop_node();
             }
             ItemKind::Const(ident, _, _, body_id) => {
                 let name = ident.to_string();
                 self.push_node(NodeType::VarDef(VarKind::Const, name));
-                let body = self.analyzer.tcx.hir_body(*body_id);
-                self.visit_body_expr(body);
-                self.pop_node();
+                self.visit_body_expr(body_id);
                 self.pop_node();
             }
             ItemKind::Fn {
@@ -641,9 +632,8 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.push_node(NodeType::FnDef(Some(name), param_count));
 
                 if *has_body {
-                    let body = self.analyzer.tcx.hir_body(*body_id);
                     self.push_node(NodeType::Block);
-                    self.visit_body_expr(body);
+                    self.visit_body_expr(body_id);
                     self.pop_node();
                 }
 
@@ -662,8 +652,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                     self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
 
                     if let Some(init) = field.default {
-                        let body = self.analyzer.tcx.hir_body(init.body);
-                        self.visit_body_expr(body);
+                        self.visit_body_expr(&init.body);
                     }
 
                     self.pop_node();
