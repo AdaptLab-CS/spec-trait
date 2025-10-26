@@ -42,10 +42,10 @@ pub fn compute_tree_distance<T: Eq + Debug>(a: &Node<T>, b: &Node<T>) -> usize {
     let post_b = post_order_and_leftmost(b);
 
     // handle empty trees quickly
-    if post_a.nodes.len() == 0 {
+    if post_a.nodes.is_empty() {
         return post_b.nodes.len(); // all insertions
     }
-    if post_b.nodes.len() == 0 {
+    if post_b.nodes.is_empty() {
         return post_a.nodes.len(); // all deletions
     }
 

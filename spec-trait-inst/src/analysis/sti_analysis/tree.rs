@@ -187,7 +187,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let struct_name = self.qpath_to_string(qpath);
                 let field_names = fields
                     .iter()
-                    .map(|f| self.pat_to_string(&f.pat))
+                    .map(|f| self.pat_to_string(f.pat))
                     .collect::<Vec<_>>();
                 format!("{} {{ {} }}", struct_name, field_names.join(", "))
             }
@@ -204,7 +204,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                     .iter()
                     .map(|p| self.pat_to_string(p))
                     .collect::<Vec<_>>();
-                format!("{}", pat_names.join(" | "))
+                pat_names.join(" | ")
             }
             PatKind::Never => "!".to_string(),
             PatKind::Tuple(fields, _) => {
@@ -226,7 +226,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let sub_name = self.pat_to_string(sub);
                 format!("&{}", sub_name)
             }
-            PatKind::Expr(expr) => self.pat_expr_to_string(*expr),
+            PatKind::Expr(expr) => self.pat_expr_to_string(expr),
             PatKind::Guard(pat, expr) => {
                 let pat_name = self.pat_to_string(pat);
                 let expr_name = self.expr_to_string(expr);
@@ -273,14 +273,9 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
     fn qpath_to_string(&self, qpath: &QPath<'tcx>) -> String {
         match qpath {
-            QPath::Resolved(_, path) => path
-                .segments
-                .iter()
-                .map(|s| s.ident.to_string())
-                .collect::<Vec<_>>()
-                .join("::"),
-            QPath::TypeRelative(t, segment) => {
-                format!("{}::{}", self.type_to_string(t), segment.ident)
+            QPath::Resolved(_, path) => self.path_to_string(path),
+            QPath::TypeRelative(ty, segment) => {
+                format!("{}::{}", self.type_to_string(ty), segment.ident)
             }
             QPath::LangItem(i, _) => {
                 if let Some(def_id) = self.analyzer.tcx.lang_items().get(*i) {
@@ -355,7 +350,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
     fn visit_body_expr(&mut self, id: &BodyId) {
         let body = self.analyzer.tcx.hir_body(*id);
-        self.visit_expr(&body.value);
+        self.visit_expr(body.value);
     }
 
     fn visit_block_expr(&mut self, block: &'tcx Block<'tcx>) {
@@ -488,7 +483,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::AssignOp(assign_op, lhs, rhs) => {
                 let name = self.expr_to_string(lhs);
-                let op = self.assign_op_to_binary_op(&assign_op);
+                let op = self.assign_op_to_binary_op(assign_op);
 
                 self.push_node(NodeType::Assign(name.to_string()));
                 self.push_node(NodeType::Op(self.bin_op_to_string(&op)));
@@ -503,16 +498,16 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
                 self.push_node(NodeType::Block);
                 for arm in *arms {
-                    let pat_text = self.pat_to_string(&arm.pat);
+                    let pat_text = self.pat_to_string(arm.pat);
                     self.push_node(NodeType::MatchArm(pat_text));
 
-                    if let Some(guard) = &arm.guard {
+                    if let Some(guard) = arm.guard {
                         self.visit_expr(guard);
                     } else {
                         self.add_leaf(NodeType::Lit("true".to_string()));
                     }
 
-                    self.visit_expr(&arm.body);
+                    self.visit_expr(arm.body);
 
                     self.pop_node();
                 }
@@ -536,7 +531,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.push_node(NodeType::Struct(self.qpath_to_string(qpath)));
                 for field in *fields {
                     self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
-                    self.visit_expr(&field.expr);
+                    self.visit_expr(field.expr);
                     self.pop_node();
                 }
                 self.pop_node();
