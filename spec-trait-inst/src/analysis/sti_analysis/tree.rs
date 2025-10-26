@@ -3,8 +3,8 @@ use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
     AssignOp, AssignOpKind, BinOp, BinOpKind, Block, BodyId, ConstArg, ConstArgKind, Expr,
-    ExprKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, QPath, RangeEnd,
-    Stmt, StmtKind, UnOp,
+    ExprKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, Path, QPath,
+    RangeEnd, Stmt, StmtKind, Ty, TyKind, UnOp,
 };
 
 #[derive(Eq, PartialEq, Debug)]
@@ -275,10 +275,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match qpath {
             QPath::Resolved(_, path) => path
                 .segments
-                .last()
+                .iter()
                 .map(|s| s.ident.to_string())
-                .unwrap_or(format!("{:?}", path)),
-            QPath::TypeRelative(_, segment) => segment.ident.to_string(),
+                .collect::<Vec<_>>()
+                .join("::"),
+            QPath::TypeRelative(t, segment) => {
+                format!("{}::{}", self.type_to_string(t), segment.ident)
+            }
             QPath::LangItem(i, _) => {
                 if let Some(def_id) = self.analyzer.tcx.lang_items().get(*i) {
                     self.analyzer.tcx.def_path_str(def_id)
@@ -286,6 +289,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                     i.name().to_string()
                 }
             }
+        }
+    }
+
+    fn type_to_string(&self, ty: &Ty<'tcx>) -> String {
+        match ty.kind {
+            TyKind::Path(qpath) => self.qpath_to_string(&qpath),
+            _ => format!("{:?}", ty.kind),
         }
     }
 
@@ -320,6 +330,14 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         }
     }
 
+    fn path_to_string<T>(&self, path: &Path<'tcx, T>) -> String {
+        path.segments
+            .iter()
+            .map(|s| s.ident.to_string())
+            .collect::<Vec<_>>()
+            .join("::")
+    }
+
     /// entry point to (re)build the tree from a Body
     pub fn build_from_body_id(&mut self, id: &BodyId) {
         self.root = Node {
@@ -329,6 +347,10 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         self.path.clear();
 
         self.visit_body_expr(id);
+
+        if self.root.children.len() == 1 && self.root.children[0].label == NodeType::Block {
+            self.root = self.root.children.remove(0);
+        }
     }
 
     fn visit_body_expr(&mut self, id: &BodyId) {
@@ -616,7 +638,8 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     fn visit_item(&mut self, item: &'tcx Item<'tcx>) {
         match &item.kind {
             ItemKind::Use(path, _) => {
-                self.add_leaf(NodeType::Use(format!("{:?}", path)));
+                let name = self.path_to_string(*path);
+                self.add_leaf(NodeType::Use(name));
             }
             ItemKind::Static(_, ident, _, body_id) => {
                 let name = ident.to_string();

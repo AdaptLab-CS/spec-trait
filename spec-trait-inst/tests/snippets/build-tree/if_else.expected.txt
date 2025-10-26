@@ -195,12 +195,12 @@ Node {
                 Node {
                     label: VarDef(
                         LetExpr,
-                        "Number(x)",
+                        "Value::Number(x)",
                     ),
                     children: [
                         Node {
                             label: FnCall(
-                                "Number",
+                                "Value::Number",
                             ),
                             children: [
                                 Node {

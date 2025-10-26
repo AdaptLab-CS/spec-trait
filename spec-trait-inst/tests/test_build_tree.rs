@@ -1,8 +1,8 @@
 mod utils;
 
 mod test_build_tree {
-    // use pretty_assertions::assert_eq;
     use crate::utils::run_with_cargo_bin_and_snippet;
+    use pretty_assertions::assert_eq;
 
     const FOLDER: &str = "tests/snippets/build-tree";
 
@@ -15,8 +15,7 @@ mod test_build_tree {
         let output = output.split_whitespace().collect::<String>();
         let expected = expected.split_whitespace().collect::<String>();
 
-        println!("Output:\n{}\nExpected:\n{}", output, expected);
-        assert!(output.contains(&expected));
+        assert_eq!(output, expected);
 
         Ok(())
     }
@@ -35,4 +34,5 @@ mod test_build_tree {
     build_test!(fn_def_call);
     build_test!(matches);
     build_test!(collections);
+    build_test!(loops);
 }

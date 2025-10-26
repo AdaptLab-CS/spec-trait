@@ -247,7 +247,7 @@ Node {
                     children: [
                         Node {
                             label: FnCall(
-                                "Number",
+                                "Value::Number",
                             ),
                             children: [
                                 Node {
@@ -270,7 +270,7 @@ Node {
                             children: [
                                 Node {
                                     label: MatchArm(
-                                        "Number(n)",
+                                        "Value::Number(n)",
                                     ),
                                     children: [
                                         Node {
@@ -302,7 +302,7 @@ Node {
                                 },
                                 Node {
                                     label: MatchArm(
-                                        "Number(_)",
+                                        "Value::Number(_)",
                                     ),
                                     children: [
                                         Node {
@@ -328,7 +328,7 @@ Node {
                                 },
                                 Node {
                                     label: MatchArm(
-                                        "Text(_)",
+                                        "Value::Text(_)",
                                     ),
                                     children: [
                                         Node {

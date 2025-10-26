@@ -235,10 +235,22 @@ Node {
             ),
             children: [
                 Node {
-                    label: VarUse(
-                        "w",
-                    ),
-                    children: [],
+                    label: Block,
+                    children: [
+                        Node {
+                            label: Jump(
+                                Return,
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "w",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
                 },
             ],
         },
