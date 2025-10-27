@@ -78,11 +78,8 @@ pub enum NodeType {
     /// Two children (optional target, arguments tuple)
     FnCall(String), // function / method name
 
-    /// No children
-    Enum(
-        String, // enum name
-        usize,  // number of variants
-    ),
+    /// Multiple children (variants)
+    Enum(String), // enum name
 
     /// Multiple children (fields)
     Struct(String), // struct name
@@ -669,8 +666,12 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ItemKind::Enum(ident, _, def) => {
                 let name = ident.to_string();
-                let variants = def.variants.len();
-                self.add_leaf(NodeType::Enum(name, variants));
+
+                for variant in def.variants {
+                    self.add_leaf(NodeType::VarDef(VarKind::Field, variant.ident.to_string()));
+                }
+
+                self.add_leaf(NodeType::Enum(name));
             }
             ItemKind::Struct(ident, _, variant_data) => {
                 let name = ident.to_string();

@@ -180,6 +180,96 @@ Node {
             ],
         },
         Node {
+            label: FnDef(
+                Some(
+                    "plus_one",
+                ),
+                1,
+            ),
+            children: [
+                Node {
+                    label: Block,
+                    children: [
+                        Node {
+                            label: Jump(
+                                Return,
+                            ),
+                            children: [
+                                Node {
+                                    label: FnCall(
+                                        "add",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Collection(
+                                                Tuple,
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: VarUse(
+                                                        "x",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Lit(
+                                                        "1",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "times_two",
+            ),
+            children: [
+                Node {
+                    label: FnDef(
+                        None,
+                        1,
+                    ),
+                    children: [
+                        Node {
+                            label: FnCall(
+                                "multiply",
+                            ),
+                            children: [
+                                Node {
+                                    label: Collection(
+                                        Tuple,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "a",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: Lit(
+                                                "2",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
             label: Jump(
                 Return,
             ),
@@ -196,14 +286,82 @@ Node {
                             children: [
                                 Node {
                                     label: FnCall(
-                                        "a",
+                                        "b",
                                     ),
                                     children: [
                                         Node {
-                                            label: VarUse(
-                                                "result",
+                                            label: FnCall(
+                                                "b",
                                             ),
-                                            children: [],
+                                            children: [
+                                                Node {
+                                                    label: FnCall(
+                                                        "a",
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: VarUse(
+                                                                "result",
+                                                            ),
+                                                            children: [],
+                                                        },
+                                                        Node {
+                                                            label: Collection(
+                                                                Tuple,
+                                                            ),
+                                                            children: [
+                                                                Node {
+                                                                    label: VarUse(
+                                                                        "result",
+                                                                    ),
+                                                                    children: [],
+                                                                },
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                                Node {
+                                                    label: Collection(
+                                                        Tuple,
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: FnDef(
+                                                                None,
+                                                                1,
+                                                            ),
+                                                            children: [
+                                                                Node {
+                                                                    label: FnCall(
+                                                                        "multiply",
+                                                                    ),
+                                                                    children: [
+                                                                        Node {
+                                                                            label: Collection(
+                                                                                Tuple,
+                                                                            ),
+                                                                            children: [
+                                                                                Node {
+                                                                                    label: VarUse(
+                                                                                        "x",
+                                                                                    ),
+                                                                                    children: [],
+                                                                                },
+                                                                                Node {
+                                                                                    label: Lit(
+                                                                                        "3",
+                                                                                    ),
+                                                                                    children: [],
+                                                                                },
+                                                                            ],
+                                                                        },
+                                                                    ],
+                                                                },
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
                                         },
                                         Node {
                                             label: Collection(
@@ -212,7 +370,7 @@ Node {
                                             children: [
                                                 Node {
                                                     label: VarUse(
-                                                        "result",
+                                                        "plus_one",
                                                     ),
                                                     children: [],
                                                 },
@@ -224,7 +382,14 @@ Node {
                                     label: Collection(
                                         Tuple,
                                     ),
-                                    children: [],
+                                    children: [
+                                        Node {
+                                            label: VarUse(
+                                                "times_two",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
                                 },
                             ],
                         },

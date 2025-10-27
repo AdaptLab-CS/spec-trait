@@ -231,11 +231,92 @@ Node {
             ],
         },
         Node {
-            label: Enum(
-                "Value",
-                2,
+            label: VarDef(
+                Field,
+                "Number",
             ),
             children: [],
+        },
+        Node {
+            label: VarDef(
+                Field,
+                "Text",
+            ),
+            children: [],
+        },
+        Node {
+            label: VarDef(
+                Field,
+                "Other",
+            ),
+            children: [],
+        },
+        Node {
+            label: Enum(
+                "Value",
+            ),
+            children: [],
+        },
+        Node {
+            label: Block,
+            children: [
+                Node {
+                    label: VarDef(
+                        Local,
+                        "_",
+                    ),
+                    children: [
+                        Node {
+                            label: VarUse(
+                                "Value::Other",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+                Node {
+                    label: VarDef(
+                        Local,
+                        "_",
+                    ),
+                    children: [
+                        Node {
+                            label: Struct(
+                                "Value::Text",
+                            ),
+                            children: [
+                                Node {
+                                    label: VarDef(
+                                        Field,
+                                        "name",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: FnCall(
+                                                "to_string",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: Lit(
+                                                        "\"hello\"",
+                                                    ),
+                                                    children: [],
+                                                },
+                                                Node {
+                                                    label: Collection(
+                                                        Tuple,
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
         },
         Node {
             label: Jump(
@@ -328,7 +409,7 @@ Node {
                                 },
                                 Node {
                                     label: MatchArm(
-                                        "Value::Text(_)",
+                                        "Value::Text { _ }",
                                     ),
                                     children: [
                                         Node {
@@ -349,6 +430,25 @@ Node {
                                                     children: [],
                                                 },
                                             ],
+                                        },
+                                    ],
+                                },
+                                Node {
+                                    label: MatchArm(
+                                        "Value::Other",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "true",
+                                            ),
+                                            children: [],
+                                        },
+                                        Node {
+                                            label: Lit(
+                                                "0",
+                                            ),
+                                            children: [],
                                         },
                                     ],
                                 },

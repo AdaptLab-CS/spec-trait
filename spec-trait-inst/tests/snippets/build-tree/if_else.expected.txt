@@ -183,24 +183,17 @@ Node {
             ],
         },
         Node {
-            label: Enum(
-                "Value",
-                1,
-            ),
-            children: [],
-        },
-        Node {
             label: If,
             children: [
                 Node {
                     label: VarDef(
                         LetExpr,
-                        "Value::Number(x)",
+                        "Some(x)",
                     ),
                     children: [
                         Node {
                             label: FnCall(
-                                "Value::Number",
+                                "Some",
                             ),
                             children: [
                                 Node {

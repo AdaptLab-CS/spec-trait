@@ -13,11 +13,7 @@ fn main() -> i32 {
         return x;
     }
 
-    enum Value {
-        Number(i32),
-    }
-
-    if let Value::Number(x) = Value::Number(42) {
+    if let Some(x) = Some(42) {
         return x;
     }
 

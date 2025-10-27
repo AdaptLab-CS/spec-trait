@@ -12,12 +12,21 @@ fn main() {
 
     enum Value {
         Number(i32),
-        Text(String),
+        Text { name: String },
+        Other,
+    }
+
+    {
+        let _ = Value::Other;
+        let _ = Value::Text {
+            name: "hello".to_string(),
+        };
     }
 
     match Value::Number(42) {
         Value::Number(n) if n > 0 => n,
         Value::Number(_) => -1,
-        Value::Text(_) => -10,
+        Value::Text { name: _ } => -10,
+        Value::Other => 0,
     }
 }
