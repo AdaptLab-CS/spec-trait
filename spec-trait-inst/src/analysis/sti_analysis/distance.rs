@@ -264,6 +264,39 @@ mod tests {
     }
 
     #[test]
+    fn compute_distance_different() {
+        // Tree 1 structure:
+        //      A
+        //    /   \
+        //   B     C
+        let tree1 = Node {
+            label: Label::A,
+            children: vec![
+                Node {
+                    label: Label::B,
+                    children: vec![],
+                },
+                Node {
+                    label: Label::C,
+                    children: vec![],
+                },
+            ],
+        };
+
+        // Tree 2 structure:
+        //      D
+        let tree2 = Node {
+            label: Label::D,
+            children: vec![],
+        };
+
+        let distance = compute_tree_distance(&tree1, &tree2);
+        let similarity = compute_similarity(&tree1, &tree2);
+        assert_eq!(distance, 3);
+        assert_eq!(similarity, 0.0);
+    }
+
+    #[test]
     fn compute_distance_insertion() {
         // Tree 1 structure:
         //      A
