@@ -32,7 +32,7 @@ pub enum CollectionKind {
 
 /// Different types of nodes in the body of a function.
 #[derive(Eq, PartialEq, Debug)]
-pub enum NodeType {
+pub enum NodeKind {
     /// No children
     Use(String), // use path
 
@@ -95,7 +95,7 @@ pub struct BodyTree<'tcx, 'a> {
     pub analyzer: &'a Analyzer<'tcx>,
 
     /// root node of the tree
-    pub root: Node<NodeType>,
+    pub root: Node<NodeKind>,
 
     /// stack of indices representing path from root to current node
     /// used to navigate the tree during construction
@@ -107,7 +107,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         Self {
             analyzer,
             root: Node {
-                label: NodeType::Block,
+                label: NodeKind::Block,
                 children: Vec::new(),
             },
             path: Vec::new(),
@@ -115,18 +115,18 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     }
 
     /// helper to get mutable reference to current parent node (walks path)
-    fn current_parent_mut(&mut self) -> &mut Node<NodeType> {
-        let mut node: *mut Node<NodeType> = &mut self.root;
+    fn current_parent_mut(&mut self) -> &mut Node<NodeKind> {
+        let mut node: *mut Node<NodeKind> = &mut self.root;
         for &idx in &self.path {
             unsafe {
-                node = &mut (&mut (*node).children)[idx] as *mut Node<NodeType>;
+                node = &mut (&mut (*node).children)[idx] as *mut Node<NodeKind>;
             }
         }
         unsafe { &mut *node }
     }
 
     /// push a new node and descend into it
-    fn push_node(&mut self, label: NodeType) {
+    fn push_node(&mut self, label: NodeKind) {
         let parent = self.current_parent_mut();
         parent.children.push(Node {
             label,
@@ -137,7 +137,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     }
 
     /// add a leaf node (no descent)
-    fn add_leaf(&mut self, label: NodeType) {
+    fn add_leaf(&mut self, label: NodeKind) {
         let parent = self.current_parent_mut();
         parent.children.push(Node {
             label,
@@ -333,14 +333,14 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     /// entry point to (re)build the tree from a Body
     pub fn build_from_body_id(&mut self, id: &BodyId) {
         self.root = Node {
-            label: NodeType::Block,
+            label: NodeKind::Block,
             children: Vec::new(),
         };
         self.path.clear();
 
         self.visit_body_expr(id);
 
-        if self.root.children.len() == 1 && self.root.children[0].label == NodeType::Block {
+        if self.root.children.len() == 1 && self.root.children[0].label == NodeKind::Block {
             self.root = self.root.children.remove(0);
         }
     }
@@ -355,7 +355,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             self.visit_stmt(stmt);
         }
         if let Some(expr) = &block.expr {
-            self.push_node(NodeType::Jump(JumpKind::Return));
+            self.push_node(NodeKind::Jump(JumpKind::Return));
             self.visit_expr(expr);
             self.pop_node();
         }
@@ -365,7 +365,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match &stmt.kind {
             StmtKind::Let(local) => {
                 let name = self.pat_to_string(local.pat);
-                self.push_node(NodeType::VarDef(VarKind::Local, name));
+                self.push_node(NodeKind::VarDef(VarKind::Local, name));
                 if let Some(init) = local.init {
                     self.visit_expr(init);
                 }
@@ -385,16 +385,16 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match &c.kind {
             ConstArgKind::Path(qpath) => {
                 let name = self.qpath_to_string(qpath);
-                self.add_leaf(NodeType::VarUse(name));
+                self.add_leaf(NodeKind::VarUse(name));
             }
             ConstArgKind::Anon(anon_const) => {
-                self.push_node(NodeType::Block);
+                self.push_node(NodeKind::Block);
                 self.visit_body_expr(&anon_const.body);
                 self.pop_node();
             }
             ConstArgKind::Infer(_, _) => {
                 log::debug!("Unhandled const arg: {:?}", c);
-                self.add_leaf(NodeType::Unknown);
+                self.add_leaf(NodeKind::Unknown);
             }
         }
     }
@@ -402,29 +402,29 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
     fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
         match &expr.kind {
             ExprKind::Binary(op, left, right) => {
-                self.push_node(NodeType::Op(self.bin_op_to_string(op)));
+                self.push_node(NodeKind::Op(self.bin_op_to_string(op)));
                 self.visit_expr(left);
                 self.visit_expr(right);
                 self.pop_node();
             }
             ExprKind::Unary(op, sub) => {
-                self.push_node(NodeType::Op(self.un_op_to_string(op)));
+                self.push_node(NodeKind::Op(self.un_op_to_string(op)));
                 self.visit_expr(sub);
                 self.pop_node();
             }
             ExprKind::Lit(lit) => {
                 let s = self.lit_to_string(lit.node);
-                self.add_leaf(NodeType::Lit(s));
+                self.add_leaf(NodeKind::Lit(s));
             }
             ExprKind::Path(qpath) => {
                 let name = self.qpath_to_string(qpath);
-                self.add_leaf(NodeType::VarUse(name));
+                self.add_leaf(NodeKind::VarUse(name));
             }
             ExprKind::Call(callee, args) => {
                 let name = self.expr_to_string(callee);
-                self.push_node(NodeType::FnCall(name));
+                self.push_node(NodeKind::FnCall(name));
 
-                self.push_node(NodeType::Collection(CollectionKind::Tuple));
+                self.push_node(NodeKind::Collection(CollectionKind::Tuple));
                 for arg in *args {
                     self.visit_expr(arg);
                 }
@@ -434,11 +434,11 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::MethodCall(segment, target, args, _) => {
                 let name = segment.ident.to_string();
-                self.push_node(NodeType::FnCall(name));
+                self.push_node(NodeKind::FnCall(name));
 
                 self.visit_expr(target);
 
-                self.push_node(NodeType::Collection(CollectionKind::Tuple));
+                self.push_node(NodeKind::Collection(CollectionKind::Tuple));
                 for arg in *args {
                     self.visit_expr(arg);
                 }
@@ -447,12 +447,12 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.pop_node();
             }
             ExprKind::Block(block, _) => {
-                self.push_node(NodeType::Block);
+                self.push_node(NodeKind::Block);
                 self.visit_block_expr(block);
                 self.pop_node();
             }
             ExprKind::If(cond, then_block, else_opt) => {
-                self.push_node(NodeType::If);
+                self.push_node(NodeKind::If);
                 self.visit_expr(cond);
 
                 self.visit_expr(then_block);
@@ -460,13 +460,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 if let Some(else_expr) = else_opt {
                     self.visit_expr(else_expr);
                 } else {
-                    self.add_leaf(NodeType::Block);
+                    self.add_leaf(NodeKind::Block);
                 }
 
                 self.pop_node();
             }
             ExprKind::Ret(opt) => {
-                self.push_node(NodeType::Jump(JumpKind::Return));
+                self.push_node(NodeKind::Jump(JumpKind::Return));
                 if let Some(ret_expr) = opt {
                     self.visit_expr(ret_expr);
                 }
@@ -474,7 +474,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::Assign(lhs, rhs, _) => {
                 let name = self.expr_to_string(lhs);
-                self.push_node(NodeType::Assign(name));
+                self.push_node(NodeKind::Assign(name));
                 self.visit_expr(rhs);
                 self.pop_node();
             }
@@ -482,26 +482,26 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let name = self.expr_to_string(lhs);
                 let op = self.assign_op_to_binary_op(assign_op);
 
-                self.push_node(NodeType::Assign(name.to_string()));
-                self.push_node(NodeType::Op(self.bin_op_to_string(&op)));
-                self.add_leaf(NodeType::VarUse(name));
+                self.push_node(NodeKind::Assign(name.to_string()));
+                self.push_node(NodeKind::Op(self.bin_op_to_string(&op)));
+                self.add_leaf(NodeKind::VarUse(name));
                 self.visit_expr(rhs);
                 self.pop_node();
                 self.pop_node();
             }
             ExprKind::Match(target, arms, _) => {
-                self.push_node(NodeType::Match);
+                self.push_node(NodeKind::Match);
                 self.visit_expr(target);
 
-                self.push_node(NodeType::Block);
+                self.push_node(NodeKind::Block);
                 for arm in *arms {
                     let pat_text = self.pat_to_string(arm.pat);
-                    self.push_node(NodeType::MatchArm(pat_text));
+                    self.push_node(NodeKind::MatchArm(pat_text));
 
                     if let Some(guard) = arm.guard {
                         self.visit_expr(guard);
                     } else {
-                        self.add_leaf(NodeType::Lit("true".to_string()));
+                        self.add_leaf(NodeKind::Lit("true".to_string()));
                     }
 
                     self.visit_expr(arm.body);
@@ -517,7 +517,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                     Mutability::Not => "&",
                     Mutability::Mut => "&mut",
                 };
-                self.push_node(NodeType::Op(str.to_string()));
+                self.push_node(NodeKind::Op(str.to_string()));
                 self.visit_expr(sub);
                 self.pop_node();
             }
@@ -525,47 +525,47 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.visit_expr(sub);
             }
             ExprKind::Struct(qpath, fields, _) => {
-                self.push_node(NodeType::Struct(self.qpath_to_string(qpath)));
+                self.push_node(NodeKind::Struct(self.qpath_to_string(qpath)));
                 for field in *fields {
-                    self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
+                    self.push_node(NodeKind::VarDef(VarKind::Field, field.ident.to_string()));
                     self.visit_expr(field.expr);
                     self.pop_node();
                 }
                 self.pop_node();
             }
             ExprKind::Loop(body, _, _, _) => {
-                self.push_node(NodeType::Loop);
+                self.push_node(NodeKind::Loop);
 
-                self.push_node(NodeType::Block);
+                self.push_node(NodeKind::Block);
                 self.visit_block_expr(body);
                 self.pop_node();
 
                 self.pop_node();
             }
             ExprKind::Break(_, expr) => {
-                self.push_node(NodeType::Jump(JumpKind::Break));
+                self.push_node(NodeKind::Jump(JumpKind::Break));
                 if let Some(break_expr) = expr {
                     self.visit_expr(break_expr);
                 }
                 self.pop_node();
             }
             ExprKind::Yield(expr, _) => {
-                self.push_node(NodeType::Jump(JumpKind::Yield));
+                self.push_node(NodeKind::Jump(JumpKind::Yield));
                 self.visit_expr(expr);
                 self.pop_node();
             }
             ExprKind::Continue(_) => {
-                self.add_leaf(NodeType::Jump(JumpKind::Continue));
+                self.add_leaf(NodeKind::Jump(JumpKind::Continue));
             }
             ExprKind::Array(elements) => {
-                self.push_node(NodeType::Collection(CollectionKind::Array));
+                self.push_node(NodeKind::Collection(CollectionKind::Array));
                 for elem in *elements {
                     self.visit_expr(elem);
                 }
                 self.pop_node();
             }
             ExprKind::Tup(elements) => {
-                self.push_node(NodeType::Collection(CollectionKind::Tuple));
+                self.push_node(NodeKind::Collection(CollectionKind::Tuple));
                 for elem in *elements {
                     self.visit_expr(elem);
                 }
@@ -573,42 +573,42 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::Use(path, _) => {
                 let name = self.expr_to_string(path);
-                self.add_leaf(NodeType::Use(name));
+                self.add_leaf(NodeKind::Use(name));
             }
             ExprKind::Closure(closure) => {
                 let param_count = closure.fn_decl.inputs.len();
-                self.push_node(NodeType::FnDef(None, param_count));
+                self.push_node(NodeKind::FnDef(None, param_count));
 
                 self.visit_body_expr(&closure.body);
 
                 self.pop_node();
             }
             ExprKind::Field(base, field) => {
-                self.push_node(NodeType::VarUse(field.to_string()));
+                self.push_node(NodeKind::VarUse(field.to_string()));
                 self.visit_expr(base);
                 self.pop_node();
             }
             ExprKind::Index(base, index, _) => {
                 // x[i] ==> x.get(i).unwrap()
-                self.push_node(NodeType::FnCall("unwrap".to_string()));
+                self.push_node(NodeKind::FnCall("unwrap".to_string()));
 
-                self.push_node(NodeType::FnCall("get".to_string()));
+                self.push_node(NodeKind::FnCall("get".to_string()));
 
                 self.visit_expr(base);
 
-                self.push_node(NodeType::Collection(CollectionKind::Tuple));
+                self.push_node(NodeKind::Collection(CollectionKind::Tuple));
                 self.visit_expr(index);
                 self.pop_node();
 
                 self.pop_node();
 
-                self.add_leaf(NodeType::Collection(CollectionKind::Tuple));
+                self.add_leaf(NodeKind::Collection(CollectionKind::Tuple));
 
                 self.pop_node();
             }
             ExprKind::Repeat(element, count) => {
-                self.push_node(NodeType::Collection(CollectionKind::Array));
-                self.push_node(NodeType::Op("repeat".to_string()));
+                self.push_node(NodeKind::Collection(CollectionKind::Array));
+                self.push_node(NodeKind::Op("repeat".to_string()));
                 self.visit_expr(element);
                 self.visit_const_arg(count);
                 self.pop_node();
@@ -616,13 +616,13 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ExprKind::Let(expr) => {
                 let name = self.pat_to_string(expr.pat);
-                self.push_node(NodeType::VarDef(VarKind::LetExpr, name));
+                self.push_node(NodeKind::VarDef(VarKind::LetExpr, name));
                 self.visit_expr(expr.init);
                 self.pop_node();
             }
             other => {
                 log::debug!("Unhandled expr: {:?}", other);
-                self.add_leaf(NodeType::Unknown);
+                self.add_leaf(NodeKind::Unknown);
             }
         }
     }
@@ -631,17 +631,17 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match &item.kind {
             ItemKind::Use(path, _) => {
                 let name = self.path_to_string(*path);
-                self.add_leaf(NodeType::Use(name));
+                self.add_leaf(NodeKind::Use(name));
             }
             ItemKind::Static(_, ident, _, body_id) => {
                 let name = ident.to_string();
-                self.push_node(NodeType::VarDef(VarKind::Static, name));
+                self.push_node(NodeKind::VarDef(VarKind::Static, name));
                 self.visit_body_expr(body_id);
                 self.pop_node();
             }
             ItemKind::Const(ident, _, _, body_id) => {
                 let name = ident.to_string();
-                self.push_node(NodeType::VarDef(VarKind::Const, name));
+                self.push_node(NodeKind::VarDef(VarKind::Const, name));
                 self.visit_body_expr(body_id);
                 self.pop_node();
             }
@@ -654,12 +654,12 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             } => {
                 let name = ident.to_string();
                 let param_count = sig.decl.inputs.len();
-                self.push_node(NodeType::FnDef(Some(name), param_count));
+                self.push_node(NodeKind::FnDef(Some(name), param_count));
 
                 if *has_body {
                     self.visit_body_expr(body_id);
                 } else {
-                    self.add_leaf(NodeType::Block);
+                    self.add_leaf(NodeKind::Block);
                 }
 
                 self.pop_node();
@@ -668,17 +668,17 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let name = ident.to_string();
 
                 for variant in def.variants {
-                    self.add_leaf(NodeType::VarDef(VarKind::Field, variant.ident.to_string()));
+                    self.add_leaf(NodeKind::VarDef(VarKind::Field, variant.ident.to_string()));
                 }
 
-                self.add_leaf(NodeType::Enum(name));
+                self.add_leaf(NodeKind::Enum(name));
             }
             ItemKind::Struct(ident, _, variant_data) => {
                 let name = ident.to_string();
-                self.push_node(NodeType::Struct(name));
+                self.push_node(NodeKind::Struct(name));
 
                 for field in variant_data.fields() {
-                    self.push_node(NodeType::VarDef(VarKind::Field, field.ident.to_string()));
+                    self.push_node(NodeKind::VarDef(VarKind::Field, field.ident.to_string()));
 
                     if let Some(init) = field.default {
                         self.visit_body_expr(&init.body);
@@ -691,7 +691,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             other => {
                 log::debug!("Unhandled item: {:?}", other);
-                self.add_leaf(NodeType::Unknown);
+                self.add_leaf(NodeKind::Unknown);
             }
         }
     }
