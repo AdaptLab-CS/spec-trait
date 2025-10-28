@@ -1,7 +1,12 @@
 use super::tree::BodyTree;
 use super::Analyzer;
-use rustc_hir::intravisit::{walk_item, FnKind, Visitor, VisitorExt};
-use rustc_hir::{BodyId, HirId, Impl, Item, ItemKind, OwnerId};
+use rustc_hir::intravisit::nested_filter::NestedFilter;
+use rustc_hir::intravisit::{walk_impl_item, walk_item, walk_trait_item, Visitor};
+use rustc_hir::{
+    BodyId, FnSig, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn, TraitItem, TraitItemKind,
+};
+use rustc_middle::ty::TyCtxt;
+use rustc_span::Ident;
 use std::fmt::Debug;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
@@ -9,6 +14,7 @@ pub struct VisitedFn {
     pub name: String,
     pub args: usize,
     pub body: BodyId,
+    pub parent_trait: bool,
 }
 
 pub struct STIVisitor<'tcx, 'a> {
@@ -27,6 +33,21 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         }
     }
 
+    fn already_seen(&self, body: BodyId) -> bool {
+        self.visited_fns.iter().any(|f| f.body == body)
+    }
+
+    fn add_fn(&mut self, ident: Ident, sig: FnSig, body: BodyId, parent_trait: bool) {
+        if !self.already_seen(body) {
+            self.visited_fns.push(VisitedFn {
+                name: ident.to_string(),
+                args: sig.decl.inputs.len(),
+                body,
+                parent_trait,
+            });
+        }
+    }
+
     /// The entry point of the visitor.
     pub fn visit_with_hir_id_and_item(&mut self, hir_id: HirId, item: &'tcx Item) {
         log::trace!(
@@ -38,8 +59,21 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
     }
 }
 
+pub struct NestedFilterAll;
+impl<'tcx> NestedFilter<'tcx> for NestedFilterAll {
+    type MaybeTyCtxt = TyCtxt<'tcx>;
+    const INTER: bool = true;
+    const INTRA: bool = true;
+}
+
 // NOTE(bruzzone): `visit_ty_unambig` and `visit_const_arg_unambig` are defined in VisitorExt, so we need to import it.
 impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
+    type NestedFilter = NestedFilterAll;
+
+    fn maybe_tcx(&mut self) -> Self::MaybeTyCtxt {
+        self.analyzer.tcx
+    }
+
     fn visit_nested_body(&mut self, id: BodyId) -> Self::Result {
         if self.analyzer.cli_args.print_nested_bodies {
             log::debug!("Printing body tree for body id: {:?}", id);
@@ -53,52 +87,35 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
             ItemKind::Fn {
                 ident, sig, body, ..
             } => {
-                self.visited_fns.push(VisitedFn {
-                    name: ident.to_string(),
-                    args: sig.decl.inputs.len(),
-                    body,
-                });
+                self.add_fn(ident, sig, body, false);
             }
-            // ItemKind::Impl(Impl {
-            //     generics,
-            //     of_trait,
-            //     self_ty,
-            //     items,
-            // }) => {
-            //     self.visit_generics(generics);
-            //     if let Some(trait_header) = of_trait {
-            //         self.visit_trait_ref(&trait_header.trait_ref);
-            //     }
-            //     self.visit_ty_unambig(self_ty);
-            //     for item in items {
-            //         self.visit_impl_item_ref(item);
-            //     }
-            // }
-            // ItemKind::Trait(
-            //     _constness,
-            //     _is_auto,
-            //     _safety,
-            //     ident,
-            //     generics,
-            //     bounds,
-            //     trait_item_refs,
-            // ) => {
-            //     self.visit_ident(ident);
-            //     self.visit_generics(generics);
-            //     for bound in bounds {
-            //         self.visit_param_bound(bound);
-            //     }
-            //     for trait_item_ref in trait_item_refs {
-            //         self.visited_traits.insert(trait_item_ref.owner_id);
-            //         // let owner_id = self.visited_traits.iter().last().unwrap();
-            //         // let trait_item = self.analyzer.tcx.hir_owner_node(*owner_id).expect_trait_item();
-
-            //         self.visit_trait_item_ref(trait_item_ref);
-            //     }
-            // }
             _ => {}
         }
 
         walk_item(self, item);
+    }
+
+    fn visit_impl_item(&mut self, item: &'tcx ImplItem) {
+        match item.kind {
+            ImplItemKind::Fn(sig, body) => {
+                self.add_fn(item.ident, sig, body, true);
+            }
+            _ => {}
+        }
+
+        walk_impl_item(self, item);
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx TraitItem) {
+        match item.kind {
+            TraitItemKind::Fn(sig, maybe_body) => {
+                if let TraitFn::Provided(body) = maybe_body {
+                    self.add_fn(item.ident, sig, body, true);
+                }
+            }
+            _ => {}
+        }
+
+        walk_trait_item(self, item);
     }
 }

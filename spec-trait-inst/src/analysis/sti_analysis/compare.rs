@@ -54,7 +54,9 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
 
     /// A heuristic to quickly determine if two functions could be specializable.
     fn specializable_heuristic(&self, fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
-        fn_a.args == fn_b.args && self.names_similar(&fn_a.name, &fn_b.name)
+        fn_a.args == fn_b.args
+            && fn_a.parent_trait == fn_b.parent_trait
+            && self.names_similar(&fn_a.name, &fn_b.name)
     }
 
     /// Determine if two body trees are specializable based on their similarity.
