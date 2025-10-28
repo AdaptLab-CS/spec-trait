@@ -2,7 +2,7 @@ use super::distance::compute_similarity;
 use super::sti_visitor::{STIVisitor, VisitedFn};
 use super::tree::BodyTree;
 use super::Analyzer;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Display;
 
 pub struct STIComparison<'tcx, 'a> {
@@ -31,20 +31,14 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         Self { analyzer, visitor }
     }
 
-    /// Get all pairs of specializable functions along with their similarity score.
+    /// Get pairs of specializable functions along with their similarity score.
     pub fn get_specializable_fns(&self) -> Vec<SpecializablePair<'a>> {
         let mut specializable = vec![];
-        let groups = self.group_fns();
-        for (i, group) in groups.iter().enumerate() {
-            for (j, (fn_a, tree_a)) in group.iter().enumerate() {
-                log::debug!(
-                    "processing function {}/{} in group {}/{}",
-                    j + 1,
-                    group.len(),
-                    i + 1,
-                    groups.len(),
-                );
-                for (fn_b, tree_b) in group.iter().skip(j + 1) {
+        let fns = self.get_fns_with_tree();
+        for (i, (fn_a, tree_a)) in fns.iter().enumerate() {
+            log::debug!("processing function {}/{}", i + 1, fns.len());
+            for (fn_b, tree_b) in fns.iter().skip(i + 1) {
+                if self.specializable_heuristic(fn_a, fn_b) {
                     if let Some(similarity) = self.is_specializable(&tree_a, &tree_b) {
                         specializable.push(SpecializablePair {
                             fn_a,
@@ -58,6 +52,11 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         specializable
     }
 
+    /// A heuristic to quickly determine if two functions could be specializable.
+    fn specializable_heuristic(&self, fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
+        fn_a.args == fn_b.args && self.names_similar(&fn_a.name, &fn_b.name)
+    }
+
     /// Determine if two body trees are specializable based on their similarity.
     /// If they are, return the similarity score.
     fn is_specializable(&self, tree_a: &BodyTree, tree_b: &BodyTree) -> Option<f64> {
@@ -69,32 +68,20 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         }
     }
 
-    /// Group functions by the number of arguments and name similarity.
-    fn group_fns(&self) -> Vec<Vec<(&'a VisitedFn, BodyTree<'tcx, 'a>)>> {
-        let mut buckets: HashMap<usize, Vec<Vec<(&'a VisitedFn, BodyTree<'tcx, 'a>)>>> =
-            HashMap::new();
-
-        for visited_fn in &self.visitor.visited_fns {
-            let tree = BodyTree::new(self.analyzer, &visited_fn.body);
-
-            if tree.root.children.is_empty() {
-                continue;
-            }
-
-            let bucket = buckets.entry(visited_fn.args).or_default();
-
-            let target_subgroup = bucket.iter().position(|subgroup| {
-                !subgroup.is_empty() && self.names_similar(&subgroup[0].0.name, &visited_fn.name)
-            });
-
-            if let Some(i) = target_subgroup {
-                bucket[i].push((visited_fn, tree));
-            } else {
-                bucket.push(vec![(visited_fn, tree)]);
-            }
-        }
-
-        buckets.into_iter().flat_map(|(_, v)| v).collect()
+    /// Retrieve all visited functions along with their body trees.
+    fn get_fns_with_tree(&self) -> Vec<(&'a VisitedFn, BodyTree<'tcx, 'a>)> {
+        self.visitor
+            .visited_fns
+            .iter()
+            .filter_map(|visited_fn| {
+                let tree = BodyTree::new(self.analyzer, &visited_fn.body);
+                if tree.root.children.is_empty() {
+                    None
+                } else {
+                    Some((visited_fn, tree))
+                }
+            })
+            .collect()
     }
 
     /// Check if two function names are similar based on shared underscore-separated parts.
