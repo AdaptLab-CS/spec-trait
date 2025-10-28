@@ -2,7 +2,6 @@ use super::tree::BodyTree;
 use super::Analyzer;
 use rustc_hir::intravisit::{walk_item, FnKind, Visitor, VisitorExt};
 use rustc_hir::{BodyId, HirId, Impl, Item, ItemKind, OwnerId};
-use std::collections::HashSet;
 use std::fmt::Debug;
 
 #[derive(Debug, Hash, PartialEq, Eq)]
@@ -16,7 +15,7 @@ pub struct STIVisitor<'tcx, 'a> {
     // The analyzer contains the `TyCtxt`
     analyzer: &'a Analyzer<'tcx>,
 
-    pub visited_fns: HashSet<VisitedFn>,
+    pub visited_fns: Vec<VisitedFn>,
 }
 
 // Guardare le tre diverse tipologie di linear: copy move e borrow
@@ -24,7 +23,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
     pub fn new(analyzer: &'a Analyzer<'tcx>) -> Self {
         Self {
             analyzer,
-            visited_fns: HashSet::new(),
+            visited_fns: vec![],
         }
     }
 
@@ -44,8 +43,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     fn visit_nested_body(&mut self, id: BodyId) -> Self::Result {
         if self.analyzer.cli_args.print_nested_bodies {
             log::debug!("Printing body tree for body id: {:?}", id);
-            let mut body_tree = BodyTree::new(self.analyzer);
-            body_tree.build_from_body_id(&id);
+            let body_tree = BodyTree::new(self.analyzer, &id);
             println!("{:#?}", body_tree.root);
         }
     }
@@ -55,7 +53,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
             ItemKind::Fn {
                 ident, sig, body, ..
             } => {
-                self.visited_fns.insert(VisitedFn {
+                self.visited_fns.push(VisitedFn {
                     name: ident.to_string(),
                     args: sig.decl.inputs.len(),
                     body,

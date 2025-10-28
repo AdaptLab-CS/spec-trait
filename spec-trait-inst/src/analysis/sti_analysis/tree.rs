@@ -103,15 +103,23 @@ pub struct BodyTree<'tcx, 'a> {
 }
 
 impl<'tcx, 'a> BodyTree<'tcx, 'a> {
-    pub fn new(analyzer: &'a Analyzer<'tcx>) -> Self {
-        Self {
+    pub fn new(analyzer: &'a Analyzer<'tcx>, id: &BodyId) -> Self {
+        let mut tree = Self {
             analyzer,
             root: Node {
                 label: NodeKind::Block,
                 children: Vec::new(),
             },
             path: Vec::new(),
+        };
+
+        tree.visit_body_expr(id);
+
+        if tree.root.children.len() == 1 && tree.root.children[0].label == NodeKind::Block {
+            tree.root = tree.root.children.remove(0);
         }
+
+        tree
     }
 
     /// helper to get mutable reference to current parent node (walks path)
@@ -328,21 +336,6 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             .map(|s| s.ident.to_string())
             .collect::<Vec<_>>()
             .join("::")
-    }
-
-    /// entry point to (re)build the tree from a Body
-    pub fn build_from_body_id(&mut self, id: &BodyId) {
-        self.root = Node {
-            label: NodeKind::Block,
-            children: Vec::new(),
-        };
-        self.path.clear();
-
-        self.visit_body_expr(id);
-
-        if self.root.children.len() == 1 && self.root.children[0].label == NodeKind::Block {
-            self.root = self.root.children.remove(0);
-        }
     }
 
     fn visit_body_expr(&mut self, id: &BodyId) {

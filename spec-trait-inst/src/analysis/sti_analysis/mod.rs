@@ -1,10 +1,12 @@
+mod compare;
 mod distance;
 mod sti_visitor;
 mod tree;
 
 use super::Analyzer;
+use compare::STIComparison;
 use rustc_hir::def_id::LOCAL_CRATE;
-use std::{cell::Cell, collections::HashMap, time::Duration};
+use std::{cell::Cell, time::Duration};
 use sti_visitor::STIVisitor;
 
 pub struct STIAnalysis<'tcx, 'a> {
@@ -50,51 +52,17 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
             self.visit_item(visitor, &item_id);
         }
 
-        log::info!(
-            "Found {} functions:\n{:#?}",
-            visitor.visited_fns.len(),
-            visitor
-                .visited_fns
-                .iter()
-                .map(|f| &f.name)
-                .collect::<Vec<_>>()
-        );
+        log::info!("Found {} functions", visitor.visited_fns.len());
 
         // Analyze visited functions for specialization targets
-        let mut groups: HashMap<usize, Vec<(&sti_visitor::VisitedFn, tree::BodyTree)>> =
-            HashMap::new();
-        for visited_fn in &visitor.visited_fns {
-            let mut bt = tree::BodyTree::new(self.analyzer);
-            bt.build_from_body_id(&visited_fn.body);
-
-            if !bt.root.children.is_empty() {
-                groups
-                    .entry(visited_fn.args)
-                    .or_default()
-                    .push((visited_fn, bt));
-            }
-        }
-
-        let mut specializable = vec![];
-        for (args, group) in groups {
-            log::debug!("processing functions with {} args", args);
-            for (i, (fn_a, tree_a)) in group.iter().enumerate() {
-                log::debug!("processing function {}/{}", i + 1, group.len());
-                for (fn_b, tree_b) in group.iter().skip(i + 1) {
-                    let similarity = distance::compute_similarity(&tree_a.root, &tree_b.root);
-                    if similarity > 0.95 {
-                        specializable.push((*fn_a, *fn_b, similarity));
-                    }
-                }
-            }
-        }
-
+        let comparison = STIComparison::new(self.analyzer, visitor);
+        let specializable = comparison.get_specializable_fns();
         log::info!(
-            "Found {} specializable functions:\n{:#?}",
+            "Found {} specializable functions pairs:\n{:#?}",
             specializable.len(),
             specializable
                 .iter()
-                .map(|(a, b, sim)| format!("{} <-> {} (sim: {:.2})", a.name, b.name, sim))
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
         );
     }
