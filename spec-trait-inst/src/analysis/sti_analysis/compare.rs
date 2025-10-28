@@ -36,7 +36,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         let mut specializable = vec![];
         let groups = self.group_fns();
         for (i, group) in groups.iter().enumerate() {
-            for (j, (idx_a, tree_a)) in group.iter().enumerate() {
+            for (j, (fn_a, tree_a)) in group.iter().enumerate() {
                 log::debug!(
                     "processing function {}/{} in group {}/{}",
                     j + 1,
@@ -44,10 +44,8 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
                     i + 1,
                     groups.len(),
                 );
-                for (idx_b, tree_b) in group.iter().skip(j + 1) {
+                for (fn_b, tree_b) in group.iter().skip(j + 1) {
                     if let Some(similarity) = self.is_specializable(&tree_a, &tree_b) {
-                        let fn_a = &self.visitor.visited_fns[*idx_a];
-                        let fn_b = &self.visitor.visited_fns[*idx_b];
                         specializable.push(SpecializablePair {
                             fn_a,
                             fn_b,
@@ -72,33 +70,27 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
     }
 
     /// Group functions by the number of arguments and name similarity.
-    fn group_fns(&self) -> Vec<Vec<(usize, BodyTree<'tcx, 'a>)>> {
-        let mut buckets: HashMap<usize, Vec<Vec<(usize, BodyTree<'tcx, 'a>)>>> = HashMap::new();
+    fn group_fns(&self) -> Vec<Vec<(&'a VisitedFn, BodyTree<'tcx, 'a>)>> {
+        let mut buckets: HashMap<usize, Vec<Vec<(&'a VisitedFn, BodyTree<'tcx, 'a>)>>> =
+            HashMap::new();
 
-        for (idx, visited_fn) in self.visitor.visited_fns.iter().enumerate() {
-            let bt = BodyTree::new(self.analyzer, &visited_fn.body);
-            if bt.root.children.is_empty() {
+        for visited_fn in &self.visitor.visited_fns {
+            let tree = BodyTree::new(self.analyzer, &visited_fn.body);
+
+            if tree.root.children.is_empty() {
                 continue;
             }
+
             let bucket = buckets.entry(visited_fn.args).or_default();
 
-            let mut target_subgroup = None;
-            for (sub_idx, subgroup) in bucket.iter().enumerate() {
-                if subgroup.is_empty() {
-                    continue;
-                }
-                let rep_idx = subgroup[0].0;
-                let rep_name = &self.visitor.visited_fns[rep_idx].name;
-                if self.names_similar(rep_name, &visited_fn.name) {
-                    target_subgroup = Some(sub_idx);
-                    break;
-                }
-            }
+            let target_subgroup = bucket.iter().position(|subgroup| {
+                !subgroup.is_empty() && self.names_similar(&subgroup[0].0.name, &visited_fn.name)
+            });
 
             if let Some(i) = target_subgroup {
-                bucket[i].push((idx, bt));
+                bucket[i].push((visited_fn, tree));
             } else {
-                bucket.push(vec![(idx, bt)]);
+                bucket.push(vec![(visited_fn, tree)]);
             }
         }
 
