@@ -6,15 +6,24 @@ use rustc_hir::{
     BodyId, FnSig, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn, TraitItem, TraitItemKind,
 };
 use rustc_middle::ty::TyCtxt;
+use rustc_span::def_id::DefId;
 use rustc_span::Ident;
 use std::fmt::Debug;
 
 #[derive(Debug)]
+pub struct VisitedTrait {
+    pub name: String,
+    pub id: DefId,
+    pub items: usize,
+}
+
+#[derive(Debug)]
 pub struct VisitedFn {
     pub name: String,
+    // pub id: DefId,
     pub args: usize,
     pub body: BodyId,
-    pub parent_trait: bool,
+    pub parent_trait: Option<VisitedTrait>,
 }
 
 pub struct STIVisitor<'tcx, 'a> {
@@ -37,14 +46,24 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         self.visited_fns.iter().any(|f| f.body == body)
     }
 
-    fn add_fn(&mut self, ident: Ident, sig: FnSig, body: BodyId, parent_trait: bool) {
+    fn add_fn(&mut self, ident: Ident, sig: FnSig, body: BodyId, trait_id: Option<DefId>) {
         if !self.already_seen(body) {
             self.visited_fns.push(VisitedFn {
                 name: ident.to_string(),
                 args: sig.decl.inputs.len(),
                 body,
-                parent_trait,
+                parent_trait: trait_id.map(|id| self.get_trait(id)),
             });
+        }
+    }
+
+    fn get_trait(&self, def_id: DefId) -> VisitedTrait {
+        let name = self.analyzer.tcx.def_path_str(def_id).to_string();
+        let items = self.analyzer.tcx.associated_items(def_id);
+        VisitedTrait {
+            name,
+            id: def_id,
+            items: items.len(),
         }
     }
 
@@ -87,7 +106,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
             ident, sig, body, ..
         } = item.kind
         {
-            self.add_fn(ident, sig, body, false);
+            self.add_fn(ident, sig, body, None);
         }
 
         walk_item(self, item);
@@ -95,7 +114,13 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
 
     fn visit_impl_item(&mut self, item: &'tcx ImplItem) {
         if let ImplItemKind::Fn(sig, body) = item.kind {
-            self.add_fn(item.ident, sig, body, true);
+            let impl_id = self
+                .analyzer
+                .tcx
+                .hir_get_parent_item(item.hir_id())
+                .to_def_id();
+            let trait_id = self.analyzer.tcx.trait_id_of_impl(impl_id);
+            self.add_fn(item.ident, sig, body, trait_id);
         }
 
         walk_impl_item(self, item);
@@ -103,7 +128,12 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
 
     fn visit_trait_item(&mut self, item: &'tcx TraitItem) {
         if let TraitItemKind::Fn(sig, TraitFn::Provided(body)) = item.kind {
-            self.add_fn(item.ident, sig, body, true);
+            let trait_id = self
+                .analyzer
+                .tcx
+                .hir_get_parent_item(item.hir_id())
+                .to_def_id();
+            self.add_fn(item.ident, sig, body, Some(trait_id));
         }
 
         walk_trait_item(self, item);

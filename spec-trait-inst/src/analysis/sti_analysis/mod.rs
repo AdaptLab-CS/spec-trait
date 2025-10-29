@@ -5,6 +5,7 @@ mod tree;
 
 use super::Analyzer;
 use compare::STIComparison;
+use itertools::Itertools;
 use rustc_hir::def_id::LOCAL_CRATE;
 use std::{cell::Cell, time::Duration};
 use sti_visitor::STIVisitor;
@@ -57,12 +58,35 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         // Analyze visited functions for specialization targets
         let comparison = STIComparison::new(self.analyzer, visitor);
         let specializable = comparison.get_specializable_fns();
+        let specializable_fns = specializable
+            .iter()
+            .filter(|pair| pair.fn_a.parent_trait.is_none() && pair.fn_b.parent_trait.is_none())
+            .collect::<Vec<_>>();
+        let specializable_traits = specializable
+            .iter()
+            .filter(|pair| pair.fn_a.parent_trait.is_some() && pair.fn_b.parent_trait.is_some())
+            .flat_map(|pair| {
+                [
+                    pair.fn_a.parent_trait.as_ref().unwrap(),
+                    pair.fn_b.parent_trait.as_ref().unwrap(),
+                ]
+            })
+            .unique_by(|t| t.id)
+            .collect::<Vec<_>>();
         log::info!(
             "Found {} specializable functions pairs:\n{:#?}",
-            specializable.len(),
-            specializable
+            specializable_fns.len(),
+            specializable_fns
                 .iter()
                 .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        );
+        log::info!(
+            "Found {} specializable traits:\n{:#?}",
+            specializable_traits.len(),
+            specializable_traits
+                .iter()
+                .map(|t| &t.name)
                 .collect::<Vec<_>>()
         );
     }

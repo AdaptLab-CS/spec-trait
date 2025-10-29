@@ -2,7 +2,6 @@
 // It is not intended for manual editing.
 
 use proc_macro2;
-use quote;
 use syn;
 
 use syn::punctuated::Punctuated;

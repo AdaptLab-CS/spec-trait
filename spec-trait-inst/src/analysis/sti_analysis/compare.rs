@@ -55,7 +55,8 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
     /// A heuristic to quickly determine if two functions could be specializable.
     fn specializable_heuristic(&self, fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
         fn_a.args == fn_b.args
-            && fn_a.parent_trait == fn_b.parent_trait
+            && fn_a.parent_trait.as_ref().map(|t| t.items)
+                == fn_b.parent_trait.as_ref().map(|t| t.items)
             && self.names_similar(&fn_a.name, &fn_b.name)
     }
 
