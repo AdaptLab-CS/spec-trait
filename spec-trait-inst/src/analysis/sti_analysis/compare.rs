@@ -39,7 +39,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
             log::debug!("processing function {}/{}", i + 1, fns.len());
             for (fn_b, tree_b) in fns.iter().skip(i + 1) {
                 if self.specializable_heuristic(fn_a, fn_b) {
-                    if let Some(similarity) = self.is_specializable(&tree_a, &tree_b) {
+                    if let Some(similarity) = self.is_specializable(tree_a, tree_b) {
                         specializable.push(SpecializablePair {
                             fn_a,
                             fn_b,

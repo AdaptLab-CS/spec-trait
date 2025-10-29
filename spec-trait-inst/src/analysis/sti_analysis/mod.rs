@@ -36,7 +36,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
 
         if let rustc_hir::ItemKind::Mod(_, module) = &item.kind {
             for sub in module.item_ids {
-                self.visit_item(visitor, &sub);
+                self.visit_item(visitor, sub);
             }
         }
     }
@@ -49,7 +49,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         // Visit all items in the crate
         let root_item_ids = self.analyzer.tcx.hir_root_module().item_ids;
         for item_id in root_item_ids {
-            self.visit_item(visitor, &item_id);
+            self.visit_item(visitor, item_id);
         }
 
         log::info!("Found {} functions", visitor.visited_fns.len());

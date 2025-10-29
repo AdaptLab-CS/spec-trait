@@ -9,7 +9,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::Ident;
 use std::fmt::Debug;
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct VisitedFn {
     pub name: String,
     pub args: usize,
@@ -83,37 +83,27 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     }
 
     fn visit_item(&mut self, item: &'tcx Item) {
-        match item.kind {
-            ItemKind::Fn {
-                ident, sig, body, ..
-            } => {
-                self.add_fn(ident, sig, body, false);
-            }
-            _ => {}
+        if let ItemKind::Fn {
+            ident, sig, body, ..
+        } = item.kind
+        {
+            self.add_fn(ident, sig, body, false);
         }
 
         walk_item(self, item);
     }
 
     fn visit_impl_item(&mut self, item: &'tcx ImplItem) {
-        match item.kind {
-            ImplItemKind::Fn(sig, body) => {
-                self.add_fn(item.ident, sig, body, true);
-            }
-            _ => {}
+        if let ImplItemKind::Fn(sig, body) = item.kind {
+            self.add_fn(item.ident, sig, body, true);
         }
 
         walk_impl_item(self, item);
     }
 
     fn visit_trait_item(&mut self, item: &'tcx TraitItem) {
-        match item.kind {
-            TraitItemKind::Fn(sig, maybe_body) => {
-                if let TraitFn::Provided(body) = maybe_body {
-                    self.add_fn(item.ident, sig, body, true);
-                }
-            }
-            _ => {}
+        if let TraitItemKind::Fn(sig, TraitFn::Provided(body)) = item.kind {
+            self.add_fn(item.ident, sig, body, true);
         }
 
         walk_trait_item(self, item);
