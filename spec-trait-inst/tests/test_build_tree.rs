@@ -11,8 +11,13 @@ mod test_build_tree {
         let (output, _) = run_with_cargo_bin_and_snippet(&snippet, &["--print-nested-bodies"])?;
         let expected = std::fs::read_to_string(format!("{FOLDER}/{name}.expected.txt")).unwrap();
 
-        let output = output.split_whitespace().collect::<String>();
+        let mut output = output.split_whitespace().collect::<String>();
         let expected = expected.split_whitespace().collect::<String>();
+
+        // keep only the last println output
+        if let Some(pos) = output.rfind("}Node{") {
+            output = output[pos + 1..].to_string()
+        }
 
         assert_eq!(output, expected);
 
