@@ -2,6 +2,7 @@ use super::distance::compute_similarity;
 use super::sti_visitor::{STIVisitor, VisitedFn, VisitedTrait};
 use super::tree::BodyTree;
 use super::Analyzer;
+use rustc_hir::def_id::DefId;
 use std::collections::HashSet;
 use std::fmt::Display;
 
@@ -74,19 +75,31 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         specializable_fns: &Vec<SpecializablePair<'a>>,
     ) -> Vec<SpecializableTraitPair<'a>> {
         let mut specializable = vec![];
+        let mut seen = HashSet::new();
+
+        fn key(trait_a: &VisitedTrait, trait_b: &VisitedTrait) -> (DefId, DefId) {
+            if trait_a.id.index <= trait_b.id.index {
+                (trait_a.id, trait_b.id)
+            } else {
+                (trait_b.id, trait_a.id)
+            }
+        }
+
         for pair in specializable_fns {
             if let (Some(trait_a), Some(trait_b)) = (
                 pair.fn_a.parent_trait.as_ref(),
                 pair.fn_b.parent_trait.as_ref(),
             ) {
-                specializable.push(SpecializableTraitPair {
-                    trait_a,
-                    trait_b,
-                    similarity: pair.similarity, // TODO: compute trait similarity
-                });
+                if seen.insert(key(trait_a, trait_b)) {
+                    specializable.push(SpecializableTraitPair {
+                        trait_a,
+                        trait_b,
+                        similarity: 0.0, // TODO: compute trait similarity
+                    });
+                }
             }
         }
-        specializable // TODO: deduplicate
+        specializable
     }
 
     /// A heuristic to quickly determine if two functions could be specializable.
