@@ -1,5 +1,5 @@
 use super::distance::compute_similarity;
-use super::sti_visitor::{STIVisitor, VisitedFn};
+use super::sti_visitor::{STIVisitor, VisitedFn, VisitedTrait};
 use super::tree::BodyTree;
 use super::Analyzer;
 use std::collections::HashSet;
@@ -16,12 +16,28 @@ pub struct SpecializablePair<'a> {
     pub similarity: f64,
 }
 
+pub struct SpecializableTraitPair<'a> {
+    pub trait_a: &'a VisitedTrait,
+    pub trait_b: &'a VisitedTrait,
+    pub similarity: f64,
+}
+
 impl Display for SpecializablePair<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{:^30.30} <---{:^6.2}---> {:^30.30}",
             self.fn_a.name, self.similarity, self.fn_b.name,
+        )
+    }
+}
+
+impl Display for SpecializableTraitPair<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:^30.30} <---{:^6.2}---> {:^30.30}",
+            self.trait_a.name, self.similarity, self.trait_b.name,
         )
     }
 }
@@ -50,6 +66,27 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
             }
         }
         specializable
+    }
+
+    /// Get pairs of specializable functions along with their similarity score.
+    pub fn get_specializable_traits(
+        &self,
+        specializable_fns: &Vec<SpecializablePair<'a>>,
+    ) -> Vec<SpecializableTraitPair<'a>> {
+        let mut specializable = vec![];
+        for pair in specializable_fns {
+            if let (Some(trait_a), Some(trait_b)) = (
+                pair.fn_a.parent_trait.as_ref(),
+                pair.fn_b.parent_trait.as_ref(),
+            ) {
+                specializable.push(SpecializableTraitPair {
+                    trait_a,
+                    trait_b,
+                    similarity: pair.similarity, // TODO: compute trait similarity
+                });
+            }
+        }
+        specializable // TODO: deduplicate
     }
 
     /// A heuristic to quickly determine if two functions could be specializable.

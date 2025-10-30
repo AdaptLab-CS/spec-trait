@@ -26,7 +26,6 @@ cargo_metadata = "0.23.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.145"
 rustc_tools_util = "0.4.2"
-itertools = "0.11.0"
 # rustworkx-core = "0.15.1"
 # petgraph = { version = "0.8.3", features = ["serde-1"] }
 # rustc_plugin = "0.10.0-nightly-2024-05-20"
@@ -34,6 +33,7 @@ itertools = "0.11.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+regex = "1"
 
 [build-dependencies]
 toml = "0.9.7"

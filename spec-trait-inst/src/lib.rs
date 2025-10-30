@@ -43,6 +43,10 @@ pub struct CliArgs {
     #[clap(long)]
     print_nested_bodies: bool,
 
+    // Print possible specialization targets
+    #[clap(long)]
+    print_spec_targets: bool,
+
     // Provide a file to filter the analysis
     #[clap(long)]
     filter_with_file: Option<String>,
