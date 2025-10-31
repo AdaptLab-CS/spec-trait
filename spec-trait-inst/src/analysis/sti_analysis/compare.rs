@@ -105,8 +105,21 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
     /// Determine if two body trees are specializable based on their similarity.
     /// If they are, return the similarity score.
     fn is_specializable(&self, tree_a: &BodyTree, tree_b: &BodyTree) -> Option<f64> {
+        const THRESHOLD: f64 = 0.9;
+
+        let a_size = tree_a.root.size();
+        let b_size = tree_b.root.size();
+
+        let max_size = a_size.max(b_size) as f64;
+        let min_size = a_size.min(b_size) as f64;
+
+        // we would at least need to remove (max_size - min_size) nodes
+        if min_size / max_size < THRESHOLD {
+            return None;
+        }
+
         let similarity = compute_similarity(&tree_a.root, &tree_b.root);
-        if similarity > 0.9 {
+        if similarity >= THRESHOLD {
             Some(similarity)
         } else {
             None
