@@ -165,7 +165,7 @@ fn names_similar(a: &str, b: &str) -> bool {
 }
 
 /// Split a name into its snake_case parts.
-fn get_name_parts<'a>(name: &'a str) -> Vec<String> {
+fn get_name_parts(name: &str) -> Vec<String> {
     to_snake_case(name)
         .split('_')
         .filter(|s| !s.is_empty())
@@ -188,10 +188,10 @@ fn to_snake_case(name: &str) -> String {
                 let prev = chars[i - 1];
                 let next_is_lower = chars.get(i + 1).map(|c| c.is_lowercase()).unwrap_or(false);
 
-                if prev.is_lowercase() || (prev.is_uppercase() && next_is_lower) {
-                    if !snake_case.ends_with('_') {
-                        snake_case.push('_');
-                    }
+                if (prev.is_lowercase() || (prev.is_uppercase() && next_is_lower))
+                    && !snake_case.ends_with('_')
+                {
+                    snake_case.push('_');
                 }
             }
 
