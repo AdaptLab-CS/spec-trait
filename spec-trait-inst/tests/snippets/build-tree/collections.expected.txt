@@ -80,7 +80,7 @@ Node {
                                             children: [
                                                 Node {
                                                     label: Struct(
-                                                        "std::ops::Range",
+                                                        "Range",
                                                     ),
                                                     children: [
                                                         Node {
@@ -361,7 +361,7 @@ Node {
                                                                             children: [
                                                                                 Node {
                                                                                     label: Struct(
-                                                                                        "std::ops::Range",
+                                                                                        "Range",
                                                                                     ),
                                                                                     children: [
                                                                                         Node {

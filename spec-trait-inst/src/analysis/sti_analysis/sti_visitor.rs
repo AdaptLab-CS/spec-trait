@@ -119,7 +119,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 .tcx
                 .hir_get_parent_item(item.hir_id())
                 .to_def_id();
-            let trait_id = self.analyzer.tcx.trait_id_of_impl(impl_id);
+            let trait_id = self.analyzer.tcx.impl_opt_trait_id(impl_id);
             self.add_fn(item.ident, sig, body, trait_id);
         }
 

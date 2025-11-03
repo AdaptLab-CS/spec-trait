@@ -282,13 +282,6 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             QPath::TypeRelative(ty, segment) => {
                 format!("{}::{}", self.type_to_string(ty), segment.ident)
             }
-            QPath::LangItem(i, _) => {
-                if let Some(def_id) = self.analyzer.tcx.lang_items().get(*i) {
-                    self.analyzer.tcx.def_path_str(def_id)
-                } else {
-                    i.name().to_string()
-                }
-            }
         }
     }
 
