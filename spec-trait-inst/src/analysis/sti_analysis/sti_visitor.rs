@@ -77,7 +77,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
                 args: sig.decl.inputs.len(),
                 body,
                 parent_trait: trait_id.map(|id| self.get_trait(id)),
-                self_type: self_type.map(|ty| self.get_ty(ty)).flatten(),
+                self_type: self_type.and_then(|ty| self.get_ty(ty)),
             });
         }
     }

@@ -92,7 +92,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
             ) {
                 if trait_a.items == trait_b.items {
                     if let Some(similarity) = seen.get_mut(&key(trait_a, trait_b)) {
-                        *similarity = *similarity * pair.similarity;
+                        *similarity *= pair.similarity;
                     } else {
                         seen.insert(key(trait_a, trait_b), pair.similarity);
                     }
