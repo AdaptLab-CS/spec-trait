@@ -59,6 +59,12 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         let specializable_fns = comparison.get_specializable_fns();
         let specializable_traits = comparison.get_specializable_traits(&specializable_fns);
 
+        log::info!(
+            "Specializable pairs: {} fns and {} traits",
+            specializable_fns.len(),
+            specializable_traits.len()
+        );
+
         if self.analyzer.cli_args.print_spec_targets {
             println!("Specializable fn pairs: {}", specializable_fns.len());
             for pair in &specializable_fns {
