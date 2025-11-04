@@ -47,14 +47,19 @@ mod test_possible_spec {
 
     build_test!(
         manual_dispatch,
-        &[("foo_i32", "foo_str")],
+        &[("Foo::foo_i32 for S", "Foo::foo_str for S")],
         &[("Foo", "Foo")]
     );
     build_test!(
         monomorphized_traits,
-        &[("foo", "foo")],
+        &[("FooI32::foo for S", "FooStr::foo for S")],
         &[("FooI32", "FooStr")]
     );
     build_test!(standalone_fns, &[("foo_i32", "foo_str")], &[]);
-    build_test!(type_level_dispatch, &[("foo", "foo")], &[("Foo", "Foo")]);
+    build_test!(inherent_impls, &[("foo_i32 for S", "foo_str for S")], &[]);
+    build_test!(
+        type_level_dispatch,
+        &[("Foo::foo for SWithV<i32>", "Foo::foo for SWithV<&str>")],
+        &[("Foo", "Foo")]
+    );
 }

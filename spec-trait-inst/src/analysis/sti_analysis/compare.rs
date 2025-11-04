@@ -3,7 +3,7 @@ use super::sti_visitor::{STIVisitor, VisitedFn, VisitedTrait};
 use super::tree::BodyTree;
 use super::Analyzer;
 use rustc_hir::def_id::DefId;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 pub struct STIComparison<'tcx, 'a> {
@@ -28,7 +28,7 @@ impl Display for SpecializablePair<'_> {
         write!(
             f,
             "{:^30.30} <---{:^6.2}---> {:^30.30}",
-            self.fn_a.name, self.similarity, self.fn_b.name,
+            self.fn_a, self.similarity, self.fn_b,
         )
     }
 }
@@ -75,7 +75,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         specializable_fns: &Vec<SpecializablePair<'a>>,
     ) -> Vec<SpecializableTraitPair<'a>> {
         let mut specializable = vec![];
-        let mut seen = HashSet::new();
+        let mut seen = HashMap::new();
 
         fn key(trait_a: &VisitedTrait, trait_b: &VisitedTrait) -> (DefId, DefId) {
             if trait_a.id.index <= trait_b.id.index {
@@ -90,15 +90,35 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
                 pair.fn_a.parent_trait.as_ref(),
                 pair.fn_b.parent_trait.as_ref(),
             ) {
-                if seen.insert(key(trait_a, trait_b)) {
-                    specializable.push(SpecializableTraitPair {
-                        trait_a,
-                        trait_b,
-                        similarity: 0.0, // TODO: compute trait similarity
-                    });
+                if trait_a.items == trait_b.items {
+                    if let Some(similarity) = seen.get_mut(&key(trait_a, trait_b)) {
+                        *similarity = *similarity * pair.similarity;
+                    } else {
+                        seen.insert(key(trait_a, trait_b), pair.similarity);
+                    }
                 }
             }
         }
+
+        let mut trait_map = HashMap::new();
+        for f in &self.visitor.visited_fns {
+            if let Some(tr) = f.parent_trait.as_ref() {
+                trait_map.entry(tr.id).or_insert(tr);
+            }
+        }
+
+        for ((id_a, id_b), similarity) in seen {
+            const THRESHOLD: f64 = 0.9;
+
+            if similarity >= THRESHOLD {
+                specializable.push(SpecializableTraitPair {
+                    trait_a: trait_map.get(&id_a).unwrap(),
+                    trait_b: trait_map.get(&id_b).unwrap(),
+                    similarity,
+                });
+            }
+        }
+
         specializable
     }
 
@@ -150,6 +170,11 @@ fn specializable_fn_heuristic(fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
         && match (fn_a.parent_trait.as_ref(), fn_b.parent_trait.as_ref()) {
             (None, None) => true,
             (Some(tr_a), Some(tr_b)) => specializable_trait_heuristic(tr_a, tr_b),
+            _ => false,
+        }
+        && match (fn_a.self_type.as_ref(), fn_b.self_type.as_ref()) {
+            (None, None) => true,
+            (Some(ty_a), Some(ty_b)) => names_similar(ty_a, ty_b),
             _ => false,
         }
 }
@@ -247,6 +272,7 @@ mod tests {
                 },
             },
             parent_trait,
+            self_type: None,
         }
     }
 
@@ -281,6 +307,33 @@ mod tests {
         assert!(names_similar("parseHTTPRes", "parse_http_res"));
         assert!(!names_similar("fooBar", "baz"));
         assert!(!names_similar("foo1", "foo2"));
+    }
+
+    #[test]
+    fn test_specializable_self_type_heuristic() {
+        // no self type
+        let mut f1 = get_visited_fn("foo", 1, None);
+        let mut f2 = get_visited_fn("foo", 1, None);
+        assert!(specializable_fn_heuristic(&f1, &f2));
+
+        // same self type
+        f1.self_type = Some("MyType".to_string());
+        f2.self_type = Some("MyType".to_string());
+        assert!(specializable_fn_heuristic(&f1, &f2));
+
+        // similar self types
+        let mut f3 = get_visited_fn("foo", 1, None);
+        f3.self_type = Some("MyTypeStr".to_string());
+        assert!(specializable_fn_heuristic(&f2, &f3));
+
+        // different self types
+        let mut f4 = get_visited_fn("foo", 1, None);
+        f4.self_type = Some("Other".to_string());
+        assert!(!specializable_fn_heuristic(&f2, &f4));
+
+        // one has self type, other doesn't
+        let f5 = get_visited_fn("foo", 1, None);
+        assert!(!specializable_fn_heuristic(&f2, &f5));
     }
 
     #[test]
