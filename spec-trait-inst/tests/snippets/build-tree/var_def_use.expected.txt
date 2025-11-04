@@ -32,6 +32,20 @@ Node {
         Node {
             label: VarDef(
                 Local,
+                "_",
+            ),
+            children: [
+                Node {
+                    label: Lit(
+                        "2.0",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
                 "x",
             ),
             children: [

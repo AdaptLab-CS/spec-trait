@@ -606,6 +606,9 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.visit_expr(expr.init);
                 self.pop_node();
             }
+            ExprKind::Cast(expr, _) => {
+                self.visit_expr(expr);
+            }
             other => {
                 log::debug!("Unhandled expr: {:?}", other);
                 self.add_leaf(NodeKind::Unknown);
