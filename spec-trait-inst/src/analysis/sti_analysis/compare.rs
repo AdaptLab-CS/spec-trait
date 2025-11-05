@@ -75,7 +75,15 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         specializable_fns: &Vec<SpecializablePair<'a>>,
     ) -> Vec<SpecializableTraitPair<'a>> {
         let mut specializable = vec![];
-        let mut seen = HashMap::new();
+        let mut traits = HashMap::new();
+
+        let mut trait_info = HashMap::new();
+        for f in &self.visitor.visited_fns {
+            if let Some(tr) = f.parent_trait.as_ref() {
+                let entry = trait_info.entry(tr.id).or_insert((tr, 0usize));
+                entry.1 += 1;
+            }
+        }
 
         fn key(trait_a: &VisitedTrait, trait_b: &VisitedTrait) -> (DefId, DefId) {
             if trait_a.id.index <= trait_b.id.index {
@@ -90,30 +98,28 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
                 pair.fn_a.parent_trait.as_ref(),
                 pair.fn_b.parent_trait.as_ref(),
             ) {
-                if trait_a.items == trait_b.items {
-                    if let Some(similarity) = seen.get_mut(&key(trait_a, trait_b)) {
+                let trait_a_items = trait_info.get(&trait_a.id).map(|(_, c)| *c).unwrap_or(0);
+                let trait_b_items = trait_info.get(&trait_b.id).map(|(_, c)| *c).unwrap_or(0);
+                if trait_a.items == trait_b.items
+                    && trait_a_items == trait_b_items
+                    && trait_a.items == trait_a_items
+                {
+                    if let Some(similarity) = traits.get_mut(&key(trait_a, trait_b)) {
                         *similarity *= pair.similarity;
                     } else {
-                        seen.insert(key(trait_a, trait_b), pair.similarity);
+                        traits.insert(key(trait_a, trait_b), pair.similarity);
                     }
                 }
             }
         }
 
-        let mut trait_map = HashMap::new();
-        for f in &self.visitor.visited_fns {
-            if let Some(tr) = f.parent_trait.as_ref() {
-                trait_map.entry(tr.id).or_insert(tr);
-            }
-        }
-
-        for ((id_a, id_b), similarity) in seen {
+        for ((id_a, id_b), similarity) in traits {
             const THRESHOLD: f64 = 0.9;
 
             if similarity >= THRESHOLD {
                 specializable.push(SpecializableTraitPair {
-                    trait_a: trait_map.get(&id_a).unwrap(),
-                    trait_b: trait_map.get(&id_b).unwrap(),
+                    trait_a: trait_info.get(&id_a).unwrap().0,
+                    trait_b: trait_info.get(&id_b).unwrap().0,
                     similarity,
                 });
             }

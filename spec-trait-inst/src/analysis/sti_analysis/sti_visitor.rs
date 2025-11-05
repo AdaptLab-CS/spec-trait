@@ -21,6 +21,7 @@ pub struct VisitedTrait {
 #[derive(Debug)]
 pub struct VisitedFn {
     pub name: String,
+    pub id: DefId,
     pub args: usize,
     pub body: BodyId,
     pub parent_trait: Option<VisitedTrait>,
@@ -65,6 +66,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
 
     fn add_fn(
         &mut self,
+        id: DefId,
         ident: Ident,
         sig: FnSig,
         body: BodyId,
@@ -74,6 +76,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         if !self.already_seen(body) {
             self.visited_fns.push(VisitedFn {
                 name: ident.to_string(),
+                id,
                 args: sig.decl.inputs.len(),
                 body,
                 parent_trait: trait_id.map(|id| self.get_trait(id)),
@@ -141,7 +144,8 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
         } = item.kind
         {
             log::trace!("Visiting fn: {}", ident);
-            self.add_fn(ident, sig, body, None, None);
+            let fn_id = item.owner_id.def_id.to_def_id();
+            self.add_fn(fn_id, ident, sig, body, None, None);
         }
 
         walk_item(self, item);
@@ -170,7 +174,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                     }
                 });
 
-                self.add_fn(item.ident, sig, body, trait_id, self_type);
+                self.add_fn(impl_id, item.ident, sig, body, trait_id, self_type);
             }
         }
 
@@ -185,7 +189,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 .tcx
                 .hir_get_parent_item(item.hir_id())
                 .to_def_id();
-            self.add_fn(item.ident, sig, body, Some(trait_id), None);
+            self.add_fn(trait_id, item.ident, sig, body, Some(trait_id), None);
         }
 
         walk_trait_item(self, item);
