@@ -162,6 +162,6 @@ impl rustc_driver::Callbacks for PluginCallbacks {
         Analyzer::<'tcx>::new(tcx, self.args.clone()).run();
         compiler.sess.dcx().abort_if_errors();
 
-        rustc_driver::Compilation::Stop
+        rustc_driver::Compilation::Continue
     }
 }

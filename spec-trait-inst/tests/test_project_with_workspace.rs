@@ -10,8 +10,7 @@ mod test_workspaces_simple_project_with_workspace {
     #[test]
     fn test_workspaces_simple_project_with_workspace_dot_file() -> Result<(), String> {
         const FOLDER: &str = "tests/workspaces/simple_project_with_workspace";
-        let (output, _) = run_with_cargo_bin(FOLDER, None, &["-V"])?;
-
+        run_with_cargo_bin(FOLDER, None, &["-V"])?;
         Ok(())
     }
 }
