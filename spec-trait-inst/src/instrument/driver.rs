@@ -155,12 +155,8 @@ pub fn driver_main<T: RustcPlugin>(plugin: T) {
         });
         let is_build_script = is_build_script_by_name || is_build_script_by_path;
 
-        let is_test_crate =
-            arg_value(&args, "--crate-name", |name| name.contains("test")).is_some();
-
         let run_plugin = !normal_rustc
-            && !is_build_script
-            && !is_test_crate
+            && !is_build_script // for build.rs
             && is_target_crate // FIXME
             && (run_on_all_crates || primary_package);
 
