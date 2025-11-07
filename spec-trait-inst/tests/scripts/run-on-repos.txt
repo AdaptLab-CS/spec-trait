@@ -34,7 +34,7 @@ https://github.com/rapidfuzz/strsim-rs
 https://github.com/rust-lang-nursery/lazy-static.rs
 https://github.com/rust-num/num-traits
 https://github.com/rust-lang/socket2
-https://github.com/microsoft/windows-rs
+#https://github.com/microsoft/windows-rs # FIXME
 https://github.com/dtolnay/semver
 https://github.com/rayon-rs/either
 https://github.com/SergioBenitez/version_check
@@ -44,7 +44,7 @@ https://github.com/tokio-rs/bytes
 https://github.com/time-rs/time
 https://github.com/RustCrypto/traits
 https://github.com/sharkdp/bat
-https://github.com/GitoxideLabs/gitoxide
+#https://github.com/GitoxideLabs/gitoxide # FIXME
 https://github.com/FuelLabs/fuels-rs
 https://github.com/tauri-apps/tauri
 https://github.com/alacritty/alacritty
