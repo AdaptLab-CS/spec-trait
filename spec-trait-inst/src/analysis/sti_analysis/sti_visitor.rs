@@ -21,8 +21,8 @@ pub struct VisitedTrait {
 #[derive(Debug)]
 pub struct VisitedFn {
     pub name: String,
-    // pub id: DefId,
-    pub args: usize,
+    pub id: DefId,
+    pub args: Vec<String>,
     pub body: BodyId,
     pub parent_trait: Option<VisitedTrait>,
     pub self_type: Option<String>,
@@ -66,7 +66,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
 
     fn add_fn(
         &mut self,
-        _id: DefId,
+        id: DefId,
         ident: Ident,
         sig: FnSig,
         body: BodyId,
@@ -76,7 +76,13 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         if !self.already_seen(body) {
             self.visited_fns.push(VisitedFn {
                 name: ident.to_string(),
-                args: sig.decl.inputs.len(),
+                id,
+                args: sig
+                    .decl
+                    .inputs
+                    .iter()
+                    .map(|ty| self.get_ty(ty).unwrap())
+                    .collect(),
                 body,
                 parent_trait: trait_id.map(|id| self.get_trait(id)),
                 self_type: self_type.and_then(|ty| self.get_ty(ty)),

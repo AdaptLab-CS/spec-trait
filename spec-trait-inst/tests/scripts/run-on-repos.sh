@@ -148,8 +148,6 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
 
   # append parsed results to summary (one final line per repo)
   echo "\"$url\",\"$repo_name\",$functions,$spec_fns,$spec_traits" >> "$summary"
-  echo "Done!"
-
   
 done < "$file"
 

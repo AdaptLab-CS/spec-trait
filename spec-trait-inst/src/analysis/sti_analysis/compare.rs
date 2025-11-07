@@ -72,7 +72,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
     /// Get pairs of specializable functions along with their similarity score.
     pub fn get_specializable_traits(
         &self,
-        specializable_fns: &Vec<SpecializablePair<'a>>,
+        specializable_fns: &Vec<&SpecializablePair<'a>>,
     ) -> Vec<SpecializableTraitPair<'a>> {
         let mut specializable = vec![];
         let mut traits = HashMap::new();
@@ -169,7 +169,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
 
 /// A heuristic to quickly determine if two functions could be specializable.
 fn specializable_fn_heuristic(fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
-    fn_a.args == fn_b.args
+    fn_a.args.len() == fn_b.args.len()
         && names_similar(&fn_a.name, &fn_b.name)
         && match (fn_a.parent_trait.as_ref(), fn_b.parent_trait.as_ref()) {
             (None, None) => true,
@@ -186,6 +186,17 @@ fn specializable_fn_heuristic(fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
 /// A heuristic to quickly determine if two traits could be specializable.
 fn specializable_trait_heuristic(tr_a: &VisitedTrait, tr_b: &VisitedTrait) -> bool {
     tr_a.items == tr_b.items && names_similar(&tr_a.name, &tr_b.name)
+}
+
+/// A heuristic to quickly determine if two functions could be already specializable.
+pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
+    pair.fn_a.self_type == pair.fn_b.self_type
+        && pair.fn_a.args.iter().any(|arg_a| {
+            pair.fn_b.args.iter().any(|arg_b| {
+                arg_a != arg_b
+                // && !contains_generics(arg_a) && !contains_generics(arg_b)
+            })
+        })
 }
 
 /// Check if two function names are similar based on shared underscore-separated parts.
@@ -266,7 +277,8 @@ mod tests {
     fn get_visited_fn(name: &str, args: usize, parent_trait: Option<VisitedTrait>) -> VisitedFn {
         VisitedFn {
             name: name.to_string(),
-            args,
+            id: DefId::local(DefIndex::from_usize(0)),
+            args: (0..args).map(|i| format!("arg{}", i)).collect(),
             body: BodyId {
                 hir_id: HirId {
                     owner: OwnerId {
@@ -406,5 +418,10 @@ mod tests {
         let t3 = get_visited_trait("Other", 3);
         let f8 = get_visited_fn("do_thing", 0, Some(t3));
         assert!(!specializable_fn_heuristic(&f5, &f8));
+    }
+
+    #[test]
+    fn test_already_specializable_heuristic() {
+        todo!()
     }
 }
