@@ -1,31 +1,18 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-# Usage:
-#   ./scripts/run-on-repos.sh -f repos.txt -c "cargo test --all" \
-#       -w ./workspaces -r ./results [-k]
-#
-# repos.txt can contain one URL per line. Blank lines and lines starting with #
-# are ignored.
-#
-# -f file with URLs (required)
-# -c cargo command to run inside each repo (defaults to "cargo test")
-# -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
-# -r results dir for logs and summary (default: ./results, relative to tests/)
-# -k keep clones (do not remove repo dirs)
-
 usage() {
   sed -n '1,200p' <<'USAGE'
-Usage: run-on-repos.sh -f <file> [-c <cargo-cmd>] [-w <workdir>] [-r <results>] [-k]
-  -f file with newline-separated repo URLs (required)
+Usage: run-on-repos.sh [-f <file>] [-c <cargo-cmd>] [-w <workdir>] [-r <results>] [-k]
+  -f file with newline-separated repo URLs (default: ./scripts/run-on-repos.txt, relative to tests/)
   -c cargo command to run inside each repo (default: "cargo build")
   -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
   -r results directory for logs and summary (default: ./results, relative to tests/)
-  -k keep clones (do not remove them)
+  -k keep clones (default: false)
 
 This script expects to be run from the tests/ directory:
   cd ./spec-trait-inst/tests
-  ./scripts/run-on-repos.sh -f repos.txt
+  ./scripts/run-on-repos.sh
 USAGE
   exit 1
 }
@@ -37,9 +24,9 @@ if [[ "$(basename "$PWD")" != "tests" ]]; then
   exit 2
 fi
 
-file=""
-cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-targets"
 base_dir="$PWD"
+file="$base_dir/scripts/run-on-repos.txt"
+cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-targets -- --all-features"
 workdir="$base_dir/workspaces"
 results="$base_dir/results"
 keep=false
@@ -56,11 +43,6 @@ while getopts "f:c:w:r:kh" opt; do
   esac
 done
 
-if [[ -z "$file" ]]; then
-  echo "Missing -f file" >&2
-  usage
-fi
-
 if [[ ! -f "$file" ]]; then
   echo "File not found: $file" >&2
   exit 3
@@ -75,6 +57,7 @@ for f in "$results"/*.log; do
 done
 shopt -u nullglob
 
+# prepare summary file
 summary="$results/summary.csv"
 echo "url,crate_name,functions,specializable_fns,specializable_traits" > "$summary"
 
@@ -107,11 +90,17 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     target_dir="${target_dir}-${suffix}"
   fi
 
-  echo -e "[$i] ---\nCloning $url -> $target_dir"
+  echo "[$i] $repo_name"
+  echo "Cloning from $url"
   if ! git clone --depth 1 "$url" "$target_dir" >/dev/null 2>&1; then
-    echo "Clone failed for $url, skipping."
-    echo "\"$url\",\"$repo_name\",0,0,0" >> "$summary"
-    continue
+    echo "Error: clone failed for $repo_name (exit 4)"
+    echo "Aborting due to error."
+    exit 4
+  fi
+
+  # remove existing rust-toolchain.toml to avoid toolchain conflicts
+  if [[ -f "$target_dir/rust-toolchain.toml" ]]; then
+    rm "$target_dir/rust-toolchain.toml"
   fi
 
   # run the cargo command
@@ -134,9 +123,9 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
 
   # return if error 
   if [[ $rc -ne 0 ]]; then
-    echo "Error: command failed for $repo_name (exit $rc). Log: $log_file"
-    # echo "Aborting due to error."
-    # exit $rc
+    echo "Error: command failed for $repo_name (exit $rc)"
+    echo "Aborting due to error."
+    exit $rc
   fi
 
   # functions: line like "Found x functions"
@@ -159,7 +148,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
 
   # append parsed results to summary (one final line per repo)
   echo "\"$url\",\"$repo_name\",$functions,$spec_fns,$spec_traits" >> "$summary"
-  echo "Finished $url"
+  echo "Done!"
 
   
 done < "$file"

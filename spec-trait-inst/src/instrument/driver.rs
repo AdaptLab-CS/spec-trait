@@ -144,9 +144,7 @@ pub fn driver_main<T: RustcPlugin>(plugin: T) {
             _ => true,
         };
 
-        let run_plugin = !normal_rustc
-            && is_target_crate // FIXME
-            && (run_on_all_crates || primary_package);
+        let run_plugin = !normal_rustc && (run_on_all_crates || primary_package); // FIXME: && is_target_crate;
 
         if run_plugin {
             // FIX: is args[2] always the crate name?
