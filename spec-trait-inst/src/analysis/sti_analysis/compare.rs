@@ -100,10 +100,8 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
             ) {
                 let trait_a_items = trait_info.get(&trait_a.id).map(|(_, c)| *c).unwrap_or(0);
                 let trait_b_items = trait_info.get(&trait_b.id).map(|(_, c)| *c).unwrap_or(0);
-                if trait_a.items == trait_b.items
-                    && trait_a_items == trait_b_items
-                    && trait_a.items == trait_a_items
-                {
+
+                if trait_a.items == trait_b.items && trait_a_items == trait_b_items {
                     if let Some(similarity) = traits.get_mut(&key(trait_a, trait_b)) {
                         *similarity *= pair.similarity;
                     } else {

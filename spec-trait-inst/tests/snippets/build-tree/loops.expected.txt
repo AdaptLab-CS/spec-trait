@@ -79,6 +79,11 @@ Node {
                                         Break,
                                     ),
                                     children: [],
+                                }, Node {
+                                    label: Jump(
+                                        Continue,
+                                    ),
+                                    children: [],
                                 },
                             ],
                         },

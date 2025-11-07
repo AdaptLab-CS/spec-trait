@@ -1,6 +1,6 @@
 trait Test {
     fn a(&self, x: i32) -> Self;
-    fn b(&self, x: fn(i32) -> i32) -> Self;
+    fn b<F: Fn(i32) -> i32>(&self, x: F) -> Self;
     fn c(&self) -> Self;
 }
 
@@ -8,7 +8,7 @@ impl Test for i32 {
     fn a(&self, _: i32) -> Self {
         *self
     }
-    fn b(&self, x: fn(i32) -> i32) -> Self {
+    fn b<F: Fn(i32) -> i32>(&self, x: F) -> Self {
         x(*self)
     }
     fn c(&self) -> Self {

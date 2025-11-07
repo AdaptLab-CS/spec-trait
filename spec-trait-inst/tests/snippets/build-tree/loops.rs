@@ -12,5 +12,6 @@ fn main() {
 
     loop {
         break;
+        continue;
     }
 }

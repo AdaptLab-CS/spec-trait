@@ -115,9 +115,16 @@ Node {
                             children: [
                                 Node {
                                     label: Jump(
-                                        Break,
+                                        Return,
                                     ),
-                                    children: [],
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "11",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
                                 },
                             ],
                         },
@@ -126,9 +133,16 @@ Node {
                             children: [
                                 Node {
                                     label: Jump(
-                                        Continue,
+                                        Return,
                                     ),
-                                    children: [],
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "12",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
                                 },
                             ],
                         },

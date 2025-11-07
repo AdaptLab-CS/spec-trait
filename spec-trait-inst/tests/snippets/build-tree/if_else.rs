@@ -4,9 +4,9 @@ fn main() -> i32 {
     if x > 5 || x <= -20 {
         return 10;
     } else if x == 0 {
-        break;
+        return 11;
     } else {
-        continue;
+        return 12;
     }
 
     if x < 0 {

@@ -9,7 +9,7 @@ fn main() -> usize {
         [first, _, third, ..] if first + third > 3 => return first + z[0..2].len(),
         _ => {}
     };
-    let sum = x[0] + y[1] + z.len();
+    let mut sum = x[0] + y[1] + z.len();
     sum += u + v + w.1;
     sum
 }
