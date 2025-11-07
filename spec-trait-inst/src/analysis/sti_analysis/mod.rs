@@ -1,6 +1,10 @@
+mod compare;
+mod distance;
 mod sti_visitor;
+mod tree;
 
 use super::Analyzer;
+use compare::STIComparison;
 use rustc_hir::def_id::LOCAL_CRATE;
 use std::{cell::Cell, time::Duration};
 use sti_visitor::STIVisitor;
@@ -22,30 +26,55 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         }
     }
 
+    fn visit_item(&self, visitor: &mut STIVisitor<'tcx, 'a>, item_id: &rustc_hir::ItemId) {
+        let hir_id = self
+            .analyzer
+            .tcx
+            .local_def_id_to_hir_id(item_id.owner_id.def_id);
+        let item = self.analyzer.tcx.hir_item(*item_id);
+        visitor.visit_with_hir_id_and_item(hir_id, item);
+
+        if let rustc_hir::ItemKind::Mod(_, module) = &item.kind {
+            for sub in module.item_ids {
+                self.visit_item(visitor, sub);
+            }
+        }
+    }
+
     fn visitor(&self) {
         log::info!("Starting the STI visitor for crate {}", self.krate_name);
 
         let visitor: &mut STIVisitor<'tcx, 'a> = &mut STIVisitor::new(self.analyzer);
 
-        /*
-            Useless:
-            let krate = self.analyzer.tcx.resolver_for_lowering().borrow().1.clone();
+        // Visit all items in the crate
+        let root_item_ids = self.analyzer.tcx.hir_root_module().item_ids;
+        for item_id in root_item_ids {
+            self.visit_item(visitor, item_id);
+        }
 
-            let body_owners = self.analyzer.tcx.hir_body_owners();
+        log::info!("Found {} functions", visitor.visited_fns.len());
 
-            let krate = self.analyzer.tcx.hir_root_module();
-            let local_def_ids = krate.item_ids.iter().map(|item_id| item_id.owner_id.def_id).collect::<Vec<_>>();
-        */
+        // Analyze visited functions for specialization targets
+        let comparison = STIComparison::new(self.analyzer, visitor);
+        let specializable_fns = comparison.get_specializable_fns();
+        let specializable_traits = comparison.get_specializable_traits(&specializable_fns);
 
-        let item_ids = self.analyzer.tcx.hir_root_module().item_ids;
+        log::info!(
+            "Specializable pairs: {} fns and {} traits",
+            specializable_fns.len(),
+            specializable_traits.len()
+        );
 
-        for item_id in item_ids {
-            let hir_id = self
-                .analyzer
-                .tcx
-                .local_def_id_to_hir_id(item_id.owner_id.def_id);
-            let item = self.analyzer.tcx.hir_item(*item_id);
-            visitor.visit_with_hir_id_and_item(hir_id, item);
+        if self.analyzer.cli_args.print_spec_targets {
+            println!("Specializable fn pairs: {}", specializable_fns.len());
+            for pair in &specializable_fns {
+                println!("{}", pair);
+            }
+
+            println!("Specializable trait pairs: {}", specializable_traits.len());
+            for pair in &specializable_traits {
+                println!("{}", pair);
+            }
         }
     }
 
@@ -54,5 +83,10 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         self.visitor();
         let elapsed = start_time.elapsed();
         self.elapsed.set(Some(elapsed));
+        log::info!(
+            "STIAnalysis for crate {} completed in {:.2?}",
+            self.krate_name,
+            elapsed
+        );
     }
 }

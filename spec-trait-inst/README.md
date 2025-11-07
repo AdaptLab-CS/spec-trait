@@ -11,8 +11,8 @@ Note that for macOS, the `LD_LIBRARY_PATH` should be replaced with `DYLD_LIBRARY
 Setup the nightly toolchain:
 
 ```bash
-rustup toolchain install nightly-2025-10-06
-rustup component add --toolchain nightly-2025-10-06 rust-src rustc-dev llvm-tools-preview miri rust-analyzer clippy
+rustup toolchain install nightly-2025-11-07
+rustup component add --toolchain nightly-2025-11-07 rust-src rustc-dev llvm-tools-preview miri rust-analyzer clippy
 ```
 
 ### Test
@@ -38,7 +38,7 @@ clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_
 
 ```bash
 cd tests/workspaces/first
-cargo run --manifest-path ../../../Cargo.toml --bin cargo-spec-trait-insts [--CARGO_ARG] -- [--PLUGIN_ARG]
+cargo run --manifest-path ../../../Cargo.toml --bin cargo-spec-trait-inst [--CARGO_ARG] -- [--PLUGIN_ARG]
 ```
 
 or

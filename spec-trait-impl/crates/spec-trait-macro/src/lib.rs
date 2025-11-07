@@ -13,7 +13,7 @@ use spec_trait_utils::conditions::{self, WhenCondition};
 use spec_trait_utils::impls::ImplBody;
 
 // TODO: check support to other cases
-// TODO: allow blanket impls specialization
+// TODO: handle specializations on different traits
 /**
 `attr` is a condition in one of these forms:
 - `T: TraitName`

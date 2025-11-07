@@ -39,6 +39,14 @@ pub struct CliArgs {
     #[clap(long)]
     print_mir: bool,
 
+    // Print nested bodies
+    #[clap(long)]
+    print_nested_bodies: bool,
+
+    // Print possible specialization targets
+    #[clap(long)]
+    print_spec_targets: bool,
+
     // Provide a file to filter the analysis
     #[clap(long)]
     filter_with_file: Option<String>,
@@ -154,6 +162,6 @@ impl rustc_driver::Callbacks for PluginCallbacks {
         Analyzer::<'tcx>::new(tcx, self.args.clone()).run();
         compiler.sess.dcx().abort_if_errors();
 
-        rustc_driver::Compilation::Stop
+        rustc_driver::Compilation::Continue // for workspace-based projects we need to continue to generate .rlib files
     }
 }

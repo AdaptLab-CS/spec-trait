@@ -1,0 +1,95 @@
+Node {
+    label: Block,
+    children: [
+        Node {
+            label: Use(
+                "std::collections::HashMap",
+            ),
+            children: [],
+        },
+        Node {
+            label: Use(
+                "std::collections",
+            ),
+            children: [],
+        },
+        Node {
+            label: Struct(
+                "S",
+            ),
+            children: [
+                Node {
+                    label: VarDef(
+                        Field,
+                        "map",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "x",
+            ),
+            children: [
+                Node {
+                    label: Struct(
+                        "S",
+                    ),
+                    children: [
+                        Node {
+                            label: VarDef(
+                                Field,
+                                "map",
+                            ),
+                            children: [
+                                Node {
+                                    label: FnCall(
+                                        "std::collections::HashMap::new",
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Collection(
+                                                Tuple,
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Jump(
+                Return,
+            ),
+            children: [
+                Node {
+                    label: Loop,
+                    children: [
+                        Node {
+                            label: Block,
+                            children: [
+                                Node {
+                                    label: Jump(
+                                        Break,
+                                    ),
+                                    children: [],
+                                }, Node {
+                                    label: Jump(
+                                        Continue,
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}

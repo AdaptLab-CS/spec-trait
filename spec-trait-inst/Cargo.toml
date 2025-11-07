@@ -1,6 +1,6 @@
 [package]
 name = "spec-trait-inst"
-version = "0.1.0-nightly-2025-10-06"
+version = "0.1.0-nightly-2025-11-07"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -33,6 +33,7 @@ rustc_tools_util = "0.4.2"
 
 [dev-dependencies]
 pretty_assertions = "1.4.1"
+regex = "1"
 
 [build-dependencies]
 toml = "0.9.7"
