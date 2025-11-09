@@ -344,6 +344,25 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   base="$(basename "${url%%\?*}")"
   repo_name="${base%.git}"
   repo_name="$(sanitize "$repo_name")"
+ 
+  echo "[$i] $repo_name"
+
+  # if requested, skip repos already present in the summary file
+  if ! $delete_summary && [[ -f "$summary" ]]; then
+    if awk -v url="$url" -F, '
+      {
+        f=$1;
+        sub(/^"/, "", f);
+        sub(/"$/, "", f);
+        if (f == url) { found=1; exit }
+      }
+      END { exit !found }
+    ' "$summary"; then
+      echo "Skipping $url (already in summary)"
+      continue
+    fi
+  fi
+
   # ensure unique
   target_dir="$workdir/$repo_name"
   if [[ -e "$target_dir" ]]; then
@@ -354,7 +373,6 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     target_dir="${target_dir}-${suffix}"
   fi
 
-  echo "[$i] $repo_name"
   echo "Cloning from $url"
   if ! git clone --depth 1 "$url" "$target_dir" >/dev/null 2>&1; then
     echo "Error: clone failed for $repo_name (exit 4)"
