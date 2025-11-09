@@ -196,6 +196,8 @@ pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
         && pair.fn_a.args.iter().any(|arg_a| {
             pair.fn_b.args.iter().any(|arg_b| {
                 arg_a != arg_b
+                    && !arg_a.starts_with("$")
+                    && !arg_b.starts_with("$")
                     && !contains_generics(arg_a, &pair.fn_a.generics)
                     && !contains_generics(arg_b, &pair.fn_b.generics)
             })
