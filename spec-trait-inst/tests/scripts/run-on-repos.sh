@@ -65,7 +65,7 @@ shopt -u nullglob
 # prepare summary file
 summary="$results/summary.csv"
 if $delete_summary && [[ -f "$summary" ]]; then
-  echo "url,crate_name,members_count,crates_io_downloads,github_stars,analysis_total_time,analysis_peak_rss,total_fns,total_traits,specializable_fn_pairs,specializable_trait_pairs,specializable_fns,specializable_traits,already_specialized_fn_pairs,already_specialized_trait_pairs,already_specialized_fns,already_specialized_traits,already_specializable_fn_pairs,already_specializable_trait_pairs,already_specializable_fns,already_specializable_traits,newly_specializable_fn_pairs,newly_specializable_trait_pairs,newly_specializable_fns,newly_specializable_traits,already_specializable_unspecialized_fn_pairs,already_specializable_unspecialized_trait_pairs,already_specializable_unspecialized_fns,already_specializable_unspecialized_traits,specializable_fns_from_macros,specializable_traits_from_macros,specializable_fns_from_traits,specializable_fns_without_traits" > "$summary"
+  echo "url,crate_name,members_count,crates_io_downloads,github_stars,analysis_total_time_seconds,analysis_peak_rss_MB,total_fns,total_traits,specializable_fn_pairs,specializable_trait_pairs,specializable_fns,specializable_traits,already_specialized_fn_pairs,already_specialized_trait_pairs,already_specialized_fns,already_specialized_traits,already_specializable_fn_pairs,already_specializable_trait_pairs,already_specializable_fns,already_specializable_traits,newly_specializable_fn_pairs,newly_specializable_trait_pairs,newly_specializable_fns,newly_specializable_traits,already_specializable_unspecialized_fn_pairs,already_specializable_unspecialized_trait_pairs,already_specializable_unspecialized_fns,already_specializable_unspecialized_traits,specializable_fns_from_macros,specializable_traits_from_macros,specializable_fns_from_traits,specializable_fns_without_traits" > "$summary"
 fi
 
 # sanitize name helper
@@ -395,7 +395,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   # query crates.io downloads (sum for workspace or single crate)
   crates_downloads=$(get_crates_io_downloads "$target_dir" "$repo_name")
 
-  # get time and memory usage from log ("STIAnalysis for crate $repo_name completed in $elapsed_time s with peak rss $peak_rss KB")
+  # get time and memory usage from log ("STIAnalysis for crate $repo_name completed in $elapsed_time s with peak rss $peak_rss MB")
   # collect all occurrences (one per member)
   mapfile -t _time_lines < <(grep -oP 'STIAnalysis for crate .* completed in \K[0-9.]+' "$log_file" || true)
   mapfile -t _rss_lines < <(grep -oP 'STIAnalysis for crate .* with peak rss \K[0-9]+' "$log_file" || true)

@@ -238,10 +238,10 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         let elapsed = start_time.elapsed();
         self.elapsed.set(Some(elapsed));
         log::info!(
-            "STIAnalysis for crate {} completed in {:.3?} s with peak rss {} KB",
+            "STIAnalysis for crate {} completed in {:.3?} s with peak rss {} MB",
             self.krate_name,
             elapsed.as_secs_f64(),
-            self.peak_rss_kb().unwrap_or(0)
+            self.peak_rss_kb().unwrap_or(0) / 1024
         );
     }
 }
