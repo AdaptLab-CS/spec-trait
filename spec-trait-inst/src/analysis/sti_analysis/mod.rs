@@ -143,11 +143,11 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         // specializable fns from macros, specializable traits from macros
         let specializable_fns_from_macros = specializable_fns
             .iter()
-            .filter(|f| f.self_type.as_ref().is_some_and(|t| t.starts_with("$")))
+            .filter(|f| f.self_type.as_ref().is_some_and(|t| t.contains("$")))
             .count();
         let specializable_traits_from_macros = specializable_traits
             .iter()
-            .filter(|t| t.name.starts_with("$"))
+            .filter(|t| t.name.contains("$"))
             .count();
 
         // specializable fns from traits, specializable fns without traits

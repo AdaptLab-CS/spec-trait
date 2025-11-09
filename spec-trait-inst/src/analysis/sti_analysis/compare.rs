@@ -196,8 +196,8 @@ pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
         && pair.fn_a.args.iter().any(|arg_a| {
             pair.fn_b.args.iter().any(|arg_b| {
                 arg_a != arg_b
-                    && !arg_a.starts_with("$")
-                    && !arg_b.starts_with("$")
+                    && !arg_a.contains("$")
+                    && !arg_b.contains("$")
                     && !contains_generics(arg_a, &pair.fn_a.generics)
                     && !contains_generics(arg_b, &pair.fn_b.generics)
             })
@@ -205,7 +205,7 @@ pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
 }
 
 fn contains_generics(ty: &str, generics: &Vec<String>) -> bool {
-    generics.iter().any(|gen| {
+    generics.iter().filter(|gen| !gen.contains("$")).any(|gen| {
         if gen.starts_with("'") {
             type_contains_lifetime(&str_to_type_name(ty), gen)
         } else {

@@ -57,9 +57,11 @@ mkdir -p "$workdir" "$results"
 # remove any existing .log files in results before running
 shopt -s nullglob
 # remove old logs
-for f in "$results"/*.log; do
-  rm -f -- "$f"
-done
+if $delete_summary; then
+  for f in "$results"/*.log; do
+    rm -f -- "$f"
+  done
+fi
 shopt -u nullglob
 
 # prepare summary file
