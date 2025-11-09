@@ -3,8 +3,8 @@ use super::Analyzer;
 use rustc_hir::intravisit::nested_filter::NestedFilter;
 use rustc_hir::intravisit::{walk_impl_item, walk_item, walk_trait_item, Visitor};
 use rustc_hir::{
-    BodyId, FnSig, GenericParam, Generics, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn,
-    TraitItem, TraitItemKind, Ty,
+    BodyId, FnSig, Generics, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn,
+    TraitItem, TraitItemKind, Ty, ParamName
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
@@ -117,13 +117,9 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         generics
             .params
             .iter()
-            .filter_map(|param: &GenericParam<'_>| {
-                self.analyzer
-                    .tcx
-                    .sess
-                    .source_map()
-                    .span_to_snippet(param.span)
-                    .ok()
+            .filter_map(|param| match param.name {
+                ParamName::Plain(ident) => Some(ident.to_string()),
+                _ => None,
             })
             .collect()
     }
