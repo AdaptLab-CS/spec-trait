@@ -3,8 +3,8 @@ use super::Analyzer;
 use rustc_hir::intravisit::nested_filter::NestedFilter;
 use rustc_hir::intravisit::{walk_impl_item, walk_item, walk_trait_item, Visitor};
 use rustc_hir::{
-    BodyId, FnSig, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn, TraitItem,
-    TraitItemKind, Ty,
+    BodyId, FnSig, GenericParam, Generics, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn,
+    TraitItem, TraitItemKind, Ty,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
@@ -24,6 +24,8 @@ pub struct VisitedFn {
     pub id: DefId,
     pub args: Vec<String>,
     pub body: BodyId,
+    /// all the generics that might be used in the fn (both fn generics and impl / trait generics)
+    pub generics: Vec<String>,
     pub parent_trait: Option<VisitedTrait>,
     pub self_type: Option<String>,
 }
@@ -70,6 +72,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         ident: Ident,
         sig: FnSig,
         body: BodyId,
+        generics: &Generics,
         trait_id: Option<DefId>,
         self_type: Option<&Ty>,
     ) {
@@ -84,6 +87,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
                     .map(|ty| self.get_ty(ty).unwrap())
                     .collect(),
                 body,
+                generics: self.get_generics(generics),
                 parent_trait: trait_id.map(|id| self.get_trait(id)),
                 self_type: self_type.and_then(|ty| self.get_ty(ty)),
             });
@@ -107,6 +111,27 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
             .source_map()
             .span_to_snippet(ty.span)
             .ok()
+    }
+
+    fn get_generics(&self, generics: &Generics) -> Vec<String> {
+        generics
+            .params
+            .iter()
+            .filter_map(|param: &GenericParam<'_>| {
+                self.analyzer
+                    .tcx
+                    .sess
+                    .source_map()
+                    .span_to_snippet(param.span)
+                    .ok()
+            })
+            .collect()
+    }
+
+    fn get_item(&self, def_id: &DefId) -> &'tcx Item<'tcx> {
+        self.analyzer
+            .tcx
+            .hir_expect_item(def_id.as_local().unwrap())
     }
 
     /// The entry point of the visitor.
@@ -145,12 +170,16 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
 
     fn visit_item(&mut self, item: &'tcx Item) {
         if let ItemKind::Fn {
-            ident, sig, body, ..
+            ident,
+            sig,
+            body,
+            generics,
+            ..
         } = item.kind
         {
             log::trace!("Visiting fn: {}", ident);
             let fn_id = item.owner_id.def_id.to_def_id();
-            self.add_fn(fn_id, ident, sig, body, None, None);
+            self.add_fn(fn_id, ident, sig, body, generics, None, None);
         }
 
         walk_item(self, item);
@@ -170,16 +199,23 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 log::trace!("Visiting impl fn: {}", item.ident);
 
                 let trait_id = self.analyzer.tcx.impl_opt_trait_id(impl_id);
-                let self_type = impl_id.as_local().and_then(|id| {
-                    let hir_item = self.analyzer.tcx.hir_expect_item(id);
-                    if let ItemKind::Impl(impl_obj) = &hir_item.kind {
-                        Some(impl_obj.self_ty)
+                let (self_type, impl_generics) = {
+                    if let ItemKind::Impl(impl_obj) = &self.get_item(&impl_id).kind {
+                        (impl_obj.self_ty, &impl_obj.generics)
                     } else {
-                        None
+                        panic!("Expected impl item");
                     }
-                });
+                };
 
-                self.add_fn(impl_id, item.ident, sig, body, trait_id, self_type);
+                self.add_fn(
+                    impl_id,
+                    item.ident,
+                    sig,
+                    body,
+                    impl_generics,
+                    trait_id,
+                    Some(self_type),
+                );
             }
         }
 
@@ -194,7 +230,23 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 .tcx
                 .hir_get_parent_item(item.hir_id())
                 .to_def_id();
-            self.add_fn(trait_id, item.ident, sig, body, Some(trait_id), None);
+            let trait_generics = {
+                if let ItemKind::Trait(_, _, _, _, generics, _, _) = &self.get_item(&trait_id).kind
+                {
+                    generics
+                } else {
+                    panic!("Expected trait item");
+                }
+            };
+            self.add_fn(
+                trait_id,
+                item.ident,
+                sig,
+                body,
+                trait_generics,
+                Some(trait_id),
+                None,
+            );
         }
 
         walk_trait_item(self, item);

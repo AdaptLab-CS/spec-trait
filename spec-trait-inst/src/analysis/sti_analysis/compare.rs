@@ -3,6 +3,8 @@ use super::sti_visitor::{STIVisitor, VisitedFn, VisitedTrait};
 use super::tree::BodyTree;
 use super::Analyzer;
 use rustc_hir::def_id::DefId;
+use spec_trait_utils::conversions::str_to_type_name;
+use spec_trait_utils::types::{type_contains, type_contains_lifetime};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
@@ -194,9 +196,20 @@ pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
         && pair.fn_a.args.iter().any(|arg_a| {
             pair.fn_b.args.iter().any(|arg_b| {
                 arg_a != arg_b
-                // && !contains_generics(arg_a) && !contains_generics(arg_b)
+                    && !contains_generics(arg_a, &pair.fn_a.generics)
+                    && !contains_generics(arg_b, &pair.fn_b.generics)
             })
         })
+}
+
+fn contains_generics(ty: &str, generics: &Vec<String>) -> bool {
+    generics.iter().any(|gen| {
+        if gen.starts_with("'") {
+            type_contains_lifetime(&str_to_type_name(ty), gen)
+        } else {
+            type_contains(&str_to_type_name(ty), gen)
+        }
+    })
 }
 
 /// Check if two function names are similar based on shared underscore-separated parts.
@@ -287,6 +300,7 @@ mod tests {
                     local_id: ItemLocalId::ZERO,
                 },
             },
+            generics: vec!["'a".to_string(), "T".to_string()],
             parent_trait,
             self_type: None,
         }
@@ -422,6 +436,37 @@ mod tests {
 
     #[test]
     fn test_already_specializable_heuristic() {
-        todo!()
+        fn test_from_fns(f1: &VisitedFn, f2: &VisitedFn, expected: bool) {
+            let pair = SpecializablePair {
+                fn_a: f1,
+                fn_b: f2,
+                similarity: 0.95,
+            };
+            assert_eq!(already_specializable_heuristic(&pair), expected);
+        }
+
+        // same type, different args
+        let f1 = get_visited_fn("foo", 2, None);
+        let f2 = get_visited_fn("foo", 2, None);
+        test_from_fns(&f1, &f2, true);
+
+        // different type, different args
+        let f3 = get_visited_fn("bar", 2, None);
+        test_from_fns(&f1, &f3, true);
+
+        // same type, same args
+        let f4 = get_visited_fn("foo", 1, None);
+        test_from_fns(&f4, &f4, false);
+
+        // with one generic
+        let mut f5 = get_visited_fn("foo", 2, None);
+        f5.args[0] = "T".to_string();
+        test_from_fns(&f1, &f5, true);
+
+        // with all generics
+        let mut f6 = get_visited_fn("foo", 2, None);
+        f6.args[0] = "T".to_string();
+        f6.args[1] = "T".to_string();
+        test_from_fns(&f1, &f6, false);
     }
 }

@@ -8,7 +8,9 @@ Usage: run-on-repos.sh [-f <file>] [-c <cargo-cmd>] [-w <workdir>] [-r <results>
   -c cargo command to run inside each repo (default: "cargo build")
   -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
   -r results directory for logs and summary (default: ./results, relative to tests/)
+  -d delete previous entries in the summary file (default: true)
   -k keep clones (default: false)
+  -h show this help message and exit
 
 This script expects to be run from the tests/ directory:
   cd ./spec-trait-inst/tests
@@ -29,14 +31,16 @@ file="$base_dir/scripts/run-on-repos.txt"
 cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-targets -- --all-features"
 workdir="$base_dir/workspaces"
 results="$base_dir/results"
+delete_summary=true
 keep=false
 
-while getopts "f:c:w:r:kh" opt; do
+while getopts "f:c:w:r:dkh" opt; do
   case "$opt" in
     f) file="$OPTARG" ;;
     c) cmd="$OPTARG" ;;
     w) workdir="$OPTARG" ;;
     r) results="$OPTARG" ;;
+    d) delete_summary=false ;;
     k) keep=true ;;
     h) usage ;;
     *) usage ;;
@@ -60,7 +64,9 @@ shopt -u nullglob
 
 # prepare summary file
 summary="$results/summary.csv"
-echo "url,crate_name,functions,specializable_fns,specializable_traits,members_count,crates_io_downloads,github_stars" > "$summary"
+if $delete_summary && [[ -f "$summary" ]]; then
+  echo "url,crate_name,members_count,crates_io_downloads,github_stars,analysis_total_time,analysis_peak_rss,total_fns,total_traits,specializable_fn_pairs,specializable_trait_pairs,specializable_fns,specializable_traits,already_specialized_fn_pairs,already_specialized_trait_pairs,already_specialized_fns,already_specialized_traits,already_specializable_fn_pairs,already_specializable_trait_pairs,already_specializable_fns,already_specializable_traits,newly_specializable_fn_pairs,newly_specializable_trait_pairs,newly_specializable_fns,newly_specializable_traits,already_specializable_unspecialized_fn_pairs,already_specializable_unspecialized_trait_pairs,already_specializable_unspecialized_fns,already_specializable_unspecialized_traits,specializable_fns_from_macros,specializable_traits_from_macros,specializable_fns_from_traits,specializable_fns_without_traits" > "$summary"
+fi
 
 # sanitize name helper
 sanitize() {
@@ -381,24 +387,6 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
     exit $rc
   fi
 
-  # functions: line like "Found x functions"
-  if grep -qE 'Found [0-9]+ functions' "$log_file" 2>/dev/null; then
-    functions=$(grep -Eo 'Found [0-9]+ functions' "$log_file" 2>/dev/null | grep -Eo '[0-9]+' | awk '{s+=$1} END{print s+0}')
-  else
-    functions=0
-  fi
-
-  # specializable pairs: line like "Specializable pairs: x fns and y traits"
-  if grep -qE 'Specializable pairs: [0-9]+ fns and [0-9]+ traits' "$log_file" 2>/dev/null; then
-    read -r spec_fns spec_traits < <(
-      grep -Eo 'Specializable pairs: [0-9]+ fns and [0-9]+ traits' "$log_file" 2>/dev/null \
-        | awk '{f+=$3; t+=$6} END{print f+0, t+0}'
-    )
-  else
-    spec_fns=0
-    spec_traits=0
-  fi
-
   # count workspace members in the repo's top-level Cargo.toml (0 if none)
   manifest="$target_dir/Cargo.toml"
   members_count=$(count_workspace_members "$manifest")
@@ -407,8 +395,52 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   # query crates.io downloads (sum for workspace or single crate)
   crates_downloads=$(get_crates_io_downloads "$target_dir" "$repo_name")
 
+  # get time and memory usage from log ("STIAnalysis for crate $repo_name completed in $elapsed_time s with peak rss $peak_rss KB")
+  # collect all occurrences (one per member)
+  mapfile -t _time_lines < <(grep -oP 'STIAnalysis for crate .* completed in \K[0-9.]+' "$log_file" || true)
+  mapfile -t _rss_lines < <(grep -oP 'STIAnalysis for crate .* with peak rss \K[0-9]+' "$log_file" || true)
+  total_time=0
+  peak_rss=0
+  for t in "${_time_lines[@]}"; do
+    total_time=$(echo "$total_time + $t" | bc)
+  done
+  for r in "${_rss_lines[@]}"; do
+    # skip empty entries
+    [[ -z "$r" ]] && continue
+    if (( r > peak_rss )); then
+      peak_rss=$r
+    fi
+  done
+
+  # get specialization analysis results from log ("Specialization analysis data: $specialization_data")
+  # collect all occurrences (one per member) and sum each comma-separated column
+  mapfile -t _spec_lines < <(grep -oP 'Specialization analysis data: \K.*' "$log_file" || true)
+  if [[ ${#_spec_lines[@]} -eq 0 ]]; then
+    specialization_data=""
+  else
+    declare -a _sums=()
+    for _line in "${_spec_lines[@]}"; do
+      # split on commas
+      IFS=',' read -ra _parts <<< "$_line"
+      for idx in "${!_parts[@]}"; do
+        p="${_parts[idx]}"
+        # trim whitespace
+        p="${p#"${p%%[![:space:]]*}"}"
+        p="${p%"${p##*[![:space:]]}"}"
+        # default empty->0 and ensure numeric (non-numeric treated as 0)
+        if [[ -z "$p" || ! "$p" =~ ^-?[0-9]+$ ]]; then
+          p=0
+        fi
+        _sums[idx]=$(( ${_sums[idx]:-0} + p ))
+      done
+    done
+    # rebuild comma-separated list (preserve order)
+    specialization_data="$(IFS=,; echo "${_sums[*]}")"
+  fi
+
   # append parsed results to summary (one final line per repo)
-  echo "\"$url\",\"$repo_name\",$functions,$spec_fns,$spec_traits,$members_count,$crates_downloads,$github_stars" >> "$summary"
+  echo "\"$url\",\"$repo_name\",$members_count,$crates_downloads,$github_stars,$total_time,$peak_rss,$specialization_data" >> "$summary"
+
   # remove repo if needed
   if ! $keep; then
     rm -rf "$target_dir"

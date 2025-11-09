@@ -99,6 +99,47 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         let newly_specializable_fns = specializable_fns.len() - already_specializable_fns;
         let newly_specializable_traits = specializable_traits.len() - already_specializable_traits;
 
+        // already specialized fn pairs, already specialized trait pairs
+        let already_specialized_fn_pairs = specializable_fn_pairs
+            .iter()
+            .filter(|pair| {
+                compare::already_specializable_heuristic(pair)
+                    && pair.fn_a.name == pair.fn_b.name
+                    && pair.fn_a.parent_trait.as_ref().is_some_and(|ta| {
+                        pair.fn_b
+                            .parent_trait
+                            .as_ref()
+                            .is_some_and(|tb| ta.id == tb.id)
+                    })
+            })
+            .collect::<Vec<_>>();
+        let already_specialized_trait_pairs =
+            comparison.get_specializable_traits(&already_specialized_fn_pairs);
+
+        // already specialized fns, already specialized traits
+        let already_specialized_fns = already_specialized_fn_pairs
+            .iter()
+            .flat_map(|pair| vec![pair.fn_a, pair.fn_b])
+            .unique_by(|f| f.id)
+            .count();
+        let already_specialized_traits = already_specialized_trait_pairs
+            .iter()
+            .flat_map(|pair| vec![pair.trait_a, pair.trait_b])
+            .unique_by(|t| t.id)
+            .count();
+
+        // already specializable but not specialized fn pairs, already specializable but not specialized trait pairs
+        let already_specializable_unspecialized_fn_pairs =
+            already_specializable_fn_pairs.len() - already_specialized_fn_pairs.len();
+        let already_specializable_unspecialized_trait_pairs =
+            already_specializable_trait_pairs.len() - already_specialized_trait_pairs.len();
+
+        // already specializable but not specialized fns, already specializable but not specialized traits
+        let already_specializable_unspecialized_fns =
+            already_specializable_fns - already_specialized_fns;
+        let already_specializable_unspecialized_traits =
+            already_specializable_traits - already_specialized_traits;
+
         // specializable fns from macros, specializable traits from macros
         let specializable_fns_from_macros = specializable_fns
             .iter()
@@ -118,16 +159,33 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
             specializable_fns.len() - specializable_fns_from_traits;
 
         log::info!(
-            "specializable {} already specializable {} newly specializable {}",
+            "Specialization analysis data: {},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            total_fns,
+            total_traits,
             specializable_fn_pairs.len(),
+            specializable_trait_pairs.len(),
+            specializable_fns.len(),
+            specializable_traits.len(),
+            already_specialized_fn_pairs.len(),
+            already_specialized_trait_pairs.len(),
+            already_specialized_fns,
+            already_specialized_traits,
             already_specializable_fn_pairs.len(),
-            newly_specializable_fn_pairs
-        );
-
-        log::info!(
-            "Specializable pairs: {} fns and {} traits",
-            specializable_fn_pairs.len(),
-            specializable_trait_pairs.len()
+            already_specializable_trait_pairs.len(),
+            already_specializable_fns,
+            already_specializable_traits,
+            newly_specializable_fn_pairs,
+            newly_specializable_trait_pairs,
+            newly_specializable_fns,
+            newly_specializable_traits,
+            already_specializable_unspecialized_fn_pairs,
+            already_specializable_unspecialized_trait_pairs,
+            already_specializable_unspecialized_fns,
+            already_specializable_unspecialized_traits,
+            specializable_fns_from_macros,
+            specializable_traits_from_macros,
+            specializable_fns_from_traits,
+            specializable_fns_without_traits
         );
 
         if self.analyzer.cli_args.print_spec_targets {
@@ -180,9 +238,9 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         let elapsed = start_time.elapsed();
         self.elapsed.set(Some(elapsed));
         log::info!(
-            "STIAnalysis for crate {} completed in {:.2?} with peak rss {} KB",
+            "STIAnalysis for crate {} completed in {:.3?} s with peak rss {} KB",
             self.krate_name,
-            elapsed,
+            elapsed.as_secs_f64(),
             self.peak_rss_kb().unwrap_or(0)
         );
     }
