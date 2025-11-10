@@ -3,8 +3,9 @@ use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
     AssignOp, AssignOpKind, BinOp, BinOpKind, Block, BodyId, ConstArg, ConstArgKind, Expr,
-    ExprKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind, PatKind, Path, QPath,
-    RangeEnd, Stmt, StmtKind, Ty, TyKind, UnOp,
+    ExprKind, ImplItem, ImplItemKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind,
+    PatKind, Path, QPath, RangeEnd, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind, Ty, TyKind,
+    UnOp,
 };
 
 #[derive(Eq, PartialEq, Debug)]
@@ -54,6 +55,9 @@ pub enum NodeKind {
     /// Multiple children (expressions)
     Block,
 
+    /// Multiple children (items)
+    Mod(String), // module name
+
     /// Single child (body)
     Loop,
 
@@ -86,6 +90,15 @@ pub enum NodeKind {
 
     /// Multiple children (elements)
     Collection(CollectionKind),
+
+    // Multiple children (items)
+    Impl(
+        String,         // type name
+        Option<String>, // trait name
+    ),
+
+    // Multiple children (items)
+    Trait(String), // trait name
 
     /// Unhandled node
     Unknown,
@@ -662,7 +675,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
                 self.add_leaf(NodeKind::Enum(name));
             }
-            ItemKind::Struct(ident, _, variant_data) => {
+            ItemKind::Struct(ident, _, variant_data) | ItemKind::Union(ident, _, variant_data) => {
                 let name = ident.to_string();
                 self.push_node(NodeKind::Struct(name));
 
@@ -678,10 +691,91 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
                 self.pop_node();
             }
+            ItemKind::Mod(ident, body) => {
+                let name = ident.to_string();
+                self.push_node(NodeKind::Mod(name));
+                for item_id in body.item_ids {
+                    let item = self.analyzer.tcx.hir_item(*item_id);
+                    self.visit_item(item);
+                }
+                self.pop_node();
+            }
+            ItemKind::Trait(_, _, _, ident, _, _, items) => {
+                let name = ident.to_string();
+                self.push_node(NodeKind::Trait(name));
+
+                for item_id in *items {
+                    let trait_item = self.analyzer.tcx.hir_trait_item(*item_id);
+                    self.visit_trait_item(trait_item);
+                }
+
+                self.pop_node();
+            }
+            ItemKind::Impl(def) => {
+                let self_ty = self.type_to_string(def.self_ty);
+                let trait_name = def
+                    .of_trait
+                    .as_ref()
+                    .map(|trait_impl| self.path_to_string(trait_impl.trait_ref.path));
+
+                self.push_node(NodeKind::Impl(self_ty, trait_name));
+
+                for item_id in def.items {
+                    let impl_item = self.analyzer.tcx.hir_impl_item(*item_id);
+                    self.visit_impl_item(impl_item);
+                }
+
+                self.pop_node();
+            }
             other => {
                 log::debug!("Unhandled item: {:?}", other);
                 self.add_leaf(NodeKind::Unknown);
             }
+        }
+    }
+
+    fn visit_impl_item(&mut self, item: &'tcx ImplItem<'tcx>) {
+        let name = item.ident.to_string();
+        match &item.kind {
+            ImplItemKind::Const(_, body) => {
+                self.push_node(NodeKind::VarDef(VarKind::Const, name));
+                self.visit_body_expr(body);
+                self.pop_node();
+            }
+            ImplItemKind::Fn(sig, body_id) => {
+                let param_count = sig.decl.inputs.len();
+                self.push_node(NodeKind::FnDef(Some(name), param_count));
+                self.visit_body_expr(body_id);
+                self.pop_node();
+            }
+            ImplItemKind::Type(_) => {}
+        }
+    }
+
+    fn visit_trait_item(&mut self, item: &'tcx TraitItem<'tcx>) {
+        let name = item.ident.to_string();
+        match &item.kind {
+            TraitItemKind::Const(_, body) => {
+                self.push_node(NodeKind::VarDef(VarKind::Const, name));
+                if let Some(body) = body {
+                    self.visit_body_expr(body);
+                }
+                self.pop_node();
+            }
+            TraitItemKind::Fn(sig, trait_fn) => {
+                let param_count = sig.decl.inputs.len();
+
+                self.push_node(NodeKind::FnDef(Some(name), param_count));
+
+                if let TraitFn::Provided(body_id) = trait_fn {
+                    self.visit_body_expr(body_id);
+                } else {
+                    self.add_leaf(NodeKind::Block);
+                }
+
+                self.pop_node();
+            }
+            TraitItemKind::Type(_, _) => {}
         }
     }
 }

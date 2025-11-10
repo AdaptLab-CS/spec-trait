@@ -3,18 +3,18 @@ set -uo pipefail
 
 usage() {
   sed -n '1,200p' <<'USAGE'
-Usage: run-on-repos.sh [-f <file>] [-c <cargo-cmd>] [-w <workdir>] [-r <results>] [-k]
+Usage: analysis.sh [-f <file>] [-c <cargo-cmd>] [-w <workdir>] [-l <logs>] [-k] [-d] [-h]
   -f file with newline-separated repo URLs (default: ./scripts/run-on-repos.txt, relative to tests/)
   -c cargo command to run inside each repo (default: "cargo build")
   -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
-  -r results directory for logs and summary (default: ./results, relative to tests/)
-  -d delete previous entries in the summary file (default: true)
+  -l logs directory (default: ./logs, relative to tests/)
+  -d delete all entries from summary file before running (default: true)
   -k keep clones (default: false)
   -h show this help message and exit
 
 This script expects to be run from the tests/ directory:
   cd ./spec-trait-inst/tests
-  ./scripts/run-on-repos.sh
+  ./scripts/analysis.sh
 USAGE
   exit 1
 }
@@ -22,24 +22,24 @@ USAGE
 # ensure we're running from the tests/ directory
 if [[ "$(basename "$PWD")" != "tests" ]]; then
   echo "Error: this script must be run from the tests/ directory (pwd: $PWD)" >&2
-  echo "cd into the tests/ directory and run ./scripts/run-on-repos.sh" >&2
+  echo "cd into the tests/ directory and run ./scripts/analysis.sh" >&2
   exit 2
 fi
 
 base_dir="$PWD"
-file="$base_dir/scripts/run-on-repos.txt"
-cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-targets -- --all-features"
+file="$base_dir/scripts/repos.txt"
+cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst"
 workdir="$base_dir/workspaces"
-results="$base_dir/results"
+logs="$base_dir/logs"
 delete_summary=true
 keep=false
 
-while getopts "f:c:w:r:dkh" opt; do
+while getopts "f:c:w:l:dkh" opt; do
   case "$opt" in
     f) file="$OPTARG" ;;
     c) cmd="$OPTARG" ;;
     w) workdir="$OPTARG" ;;
-    r) results="$OPTARG" ;;
+    l) logs="$OPTARG" ;;
     d) delete_summary=false ;;
     k) keep=true ;;
     h) usage ;;
@@ -52,20 +52,20 @@ if [[ ! -f "$file" ]]; then
   exit 3
 fi
 
-mkdir -p "$workdir" "$results"
+mkdir -p "$workdir" "$logs"
 
-# remove any existing .log files in results before running
+# remove any existing .log files in logs before running
 shopt -s nullglob
 # remove old logs
 if $delete_summary; then
-  for f in "$results"/*.log; do
+  for f in "$logs"/*.log; do
     rm -f -- "$f"
   done
 fi
 shopt -u nullglob
 
 # prepare summary file
-summary="$results/summary.csv"
+summary="$base_dir/scripts/summary.csv"
 if $delete_summary && [[ -f "$summary" ]]; then
   echo "url,crate_name,members_count,crates_io_downloads,github_stars,analysis_total_time_seconds,analysis_peak_rss_MB,total_fns,total_traits,specializable_fn_pairs,specializable_trait_pairs,specializable_fns,specializable_traits,already_specialized_fn_pairs,already_specialized_trait_pairs,already_specialized_fns,already_specialized_traits,already_specializable_fn_pairs,already_specializable_trait_pairs,already_specializable_fns,already_specializable_traits,newly_specializable_fn_pairs,newly_specializable_trait_pairs,newly_specializable_fns,newly_specializable_traits,already_specializable_unspecialized_fn_pairs,already_specializable_unspecialized_trait_pairs,already_specializable_unspecialized_fns,already_specializable_unspecialized_traits,specializable_fns_from_macros,specializable_traits_from_macros,specializable_fns_from_traits,specializable_fns_without_traits" > "$summary"
 fi
@@ -388,7 +388,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   fi
 
   # run the cargo command
-  log_file="$results/${repo_name}.log"
+  log_file="$logs/${repo_name}.log"
   echo "Running in $target_dir"
   pushd "$target_dir" >/dev/null
   # run command, capture exit code
