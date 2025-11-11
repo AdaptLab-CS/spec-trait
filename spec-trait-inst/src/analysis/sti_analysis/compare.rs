@@ -13,12 +13,14 @@ pub struct STIComparison<'tcx, 'a> {
     analyzer: &'a Analyzer<'tcx>,
 }
 
+#[derive(Debug)]
 pub struct SpecializablePair<'a> {
     pub fn_a: &'a VisitedFn,
     pub fn_b: &'a VisitedFn,
     pub similarity: f64,
 }
 
+#[derive(Debug)]
 pub struct SpecializableTraitPair<'a> {
     pub trait_a: &'a VisitedTrait,
     pub trait_b: &'a VisitedTrait,

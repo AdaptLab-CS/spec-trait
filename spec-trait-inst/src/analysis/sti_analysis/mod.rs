@@ -149,103 +149,6 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         let comparison = STIComparison::new(self.analyzer, visitor);
         let specializable_pairs = comparison.get_specializable_fns();
 
-        // groups
-        let is_bare_fn = |f: &VisitedFn| f.parent_trait.is_none() && f.self_type.is_none();
-        let specializable_pairs_from_bare_fns = specializable_pairs
-            .iter()
-            .filter(|p| is_bare_fn(p.fn_a) && is_bare_fn(p.fn_b))
-            .collect::<Vec<_>>();
-
-        let is_trait_fn = |f: &VisitedFn| f.parent_trait.is_some() && f.self_type.is_none();
-        let specializable_pairs_from_traits = specializable_pairs
-            .iter()
-            .filter(|p| is_trait_fn(p.fn_a) && is_trait_fn(p.fn_b))
-            .collect::<Vec<_>>();
-
-        let is_trait_impl_fn = |f: &VisitedFn| f.parent_trait.is_some() && f.self_type.is_some();
-        let specializable_pairs_from_trait_impls = specializable_pairs
-            .iter()
-            .filter(|p| is_trait_impl_fn(p.fn_a) && is_trait_impl_fn(p.fn_b))
-            .collect::<Vec<_>>();
-
-        let is_inherent_impl_fn = |f: &VisitedFn| f.parent_trait.is_none() && f.self_type.is_some();
-        let specializable_pairs_from_inherent_impls = specializable_pairs
-            .iter()
-            .filter(|p| is_inherent_impl_fn(p.fn_a) && is_inherent_impl_fn(p.fn_b))
-            .collect::<Vec<_>>();
-
-        let is_macro_fn = |f: &VisitedFn| {
-            f.name.contains("$")
-                || f.generics.iter().any(|g| g.contains("$"))
-                || f.parent_trait
-                    .as_ref()
-                    .is_some_and(|t| t.name.contains("$"))
-        };
-        let specializable_pairs_from_macros = specializable_pairs
-            .iter()
-            .filter(|p| is_macro_fn(p.fn_a) && is_macro_fn(p.fn_b))
-            .collect::<Vec<_>>();
-
-        let total_fns = visitor.visited_fns.len();
-        let total_traits = visitor
-            .visited_fns
-            .iter()
-            .filter_map(|f| f.parent_trait.as_ref().map(|t| t.id))
-            .unique()
-            .count();
-        let total_bare_fns = visitor.visited_fns.iter().filter(|f| is_bare_fn(f)).count();
-        let total_trait_fns = visitor
-            .visited_fns
-            .iter()
-            .filter(|f| is_trait_fn(f))
-            .count();
-        let total_trait_impl_fns = visitor
-            .visited_fns
-            .iter()
-            .filter(|f| is_trait_impl_fn(f))
-            .count();
-        let total_inherent_impl_fns = visitor
-            .visited_fns
-            .iter()
-            .filter(|f| is_inherent_impl_fn(f))
-            .count();
-        let total_macro_fns = visitor
-            .visited_fns
-            .iter()
-            .filter(|f| is_macro_fn(f))
-            .count();
-
-        // groups values
-        let base_group = self.get_groups(&comparison, &specializable_pairs.iter().collect());
-        let bare_fn_group = self.get_groups(&comparison, &specializable_pairs_from_bare_fns);
-        let trait_group = self.get_groups(&comparison, &specializable_pairs_from_traits);
-        let trait_impl_group = self.get_groups(&comparison, &specializable_pairs_from_trait_impls);
-        let inherent_impl_group =
-            self.get_groups(&comparison, &specializable_pairs_from_inherent_impls);
-        let macro_group = self.get_groups(&comparison, &specializable_pairs_from_macros);
-        let totals = vec![
-            total_fns,
-            total_traits,
-            total_bare_fns,
-            total_trait_fns,
-            total_trait_impl_fns,
-            total_inherent_impl_fns,
-            total_macro_fns,
-        ];
-
-        let all_data = [
-            totals,
-            base_group,
-            bare_fn_group,
-            trait_group,
-            trait_impl_group,
-            inherent_impl_group,
-            macro_group,
-        ]
-        .concat();
-
-        log::info!("Specialization analysis data: {:?}", all_data);
-
         if self.analyzer.cli_args.print_spec_targets {
             let specializable_trait_pairs =
                 comparison.get_specializable_traits(&specializable_pairs.iter().collect());
@@ -262,6 +165,111 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
             for pair in &specializable_trait_pairs {
                 println!("{}", pair);
             }
+        }
+
+        if self.analyzer.cli_args.print_spec_data {
+            // groups
+            let is_bare_fn = |f: &VisitedFn| f.parent_trait.is_none() && f.self_type.is_none();
+            let specializable_pairs_from_bare_fns = specializable_pairs
+                .iter()
+                .filter(|p| is_bare_fn(p.fn_a) && is_bare_fn(p.fn_b))
+                .collect::<Vec<_>>();
+
+            let is_trait_fn = |f: &VisitedFn| f.parent_trait.is_some() && f.self_type.is_none();
+            let specializable_pairs_from_traits = specializable_pairs
+                .iter()
+                .filter(|p| is_trait_fn(p.fn_a) && is_trait_fn(p.fn_b))
+                .collect::<Vec<_>>();
+
+            let is_trait_impl_fn =
+                |f: &VisitedFn| f.parent_trait.is_some() && f.self_type.is_some();
+            let specializable_pairs_from_trait_impls = specializable_pairs
+                .iter()
+                .filter(|p| is_trait_impl_fn(p.fn_a) && is_trait_impl_fn(p.fn_b))
+                .collect::<Vec<_>>();
+
+            let is_inherent_impl_fn =
+                |f: &VisitedFn| f.parent_trait.is_none() && f.self_type.is_some();
+            let specializable_pairs_from_inherent_impls = specializable_pairs
+                .iter()
+                .filter(|p| is_inherent_impl_fn(p.fn_a) && is_inherent_impl_fn(p.fn_b))
+                .collect::<Vec<_>>();
+
+            let is_macro_fn = |f: &VisitedFn| {
+                f.name.contains("$")
+                    || f.generics.iter().any(|g| g.contains("$"))
+                    || f.parent_trait
+                        .as_ref()
+                        .is_some_and(|t| t.name.contains("$"))
+            };
+            let specializable_pairs_from_macros = specializable_pairs
+                .iter()
+                .filter(|p| is_macro_fn(p.fn_a) && is_macro_fn(p.fn_b))
+                .collect::<Vec<_>>();
+
+            let total_fns = visitor.visited_fns.len();
+            let total_traits = visitor
+                .visited_fns
+                .iter()
+                .filter_map(|f| f.parent_trait.as_ref().map(|t| t.id))
+                .unique()
+                .count();
+            let total_bare_fns = visitor.visited_fns.iter().filter(|f| is_bare_fn(f)).count();
+            let total_trait_fns = visitor
+                .visited_fns
+                .iter()
+                .filter(|f| is_trait_fn(f))
+                .count();
+            let total_trait_impl_fns = visitor
+                .visited_fns
+                .iter()
+                .filter(|f| is_trait_impl_fn(f))
+                .count();
+            let total_inherent_impl_fns = visitor
+                .visited_fns
+                .iter()
+                .filter(|f| is_inherent_impl_fn(f))
+                .count();
+            let total_macro_fns = visitor
+                .visited_fns
+                .iter()
+                .filter(|f| is_macro_fn(f))
+                .count();
+
+            // groups values
+            let base_group = self.get_groups(&comparison, &specializable_pairs.iter().collect());
+            let bare_fn_group = self.get_groups(&comparison, &specializable_pairs_from_bare_fns);
+            let trait_group = self.get_groups(&comparison, &specializable_pairs_from_traits);
+            let trait_impl_group =
+                self.get_groups(&comparison, &specializable_pairs_from_trait_impls);
+            let inherent_impl_group =
+                self.get_groups(&comparison, &specializable_pairs_from_inherent_impls);
+            let macro_group = self.get_groups(&comparison, &specializable_pairs_from_macros);
+            let totals = vec![
+                total_fns,
+                total_traits,
+                total_bare_fns,
+                total_trait_fns,
+                total_trait_impl_fns,
+                total_inherent_impl_fns,
+                total_macro_fns,
+            ];
+
+            let all_data = [
+                totals,
+                base_group,
+                bare_fn_group,
+                trait_group,
+                trait_impl_group,
+                inherent_impl_group,
+                macro_group,
+            ]
+            .concat();
+
+            println!(
+                "Specialization analysis data: {}",
+                all_data.iter().join(",")
+            );
         }
     }
 

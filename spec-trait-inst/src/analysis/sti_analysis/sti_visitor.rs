@@ -214,6 +214,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
             } else {
                 log::trace!("Visiting impl fn: {}", item.ident);
 
+                let fn_id = item.owner_id.def_id.to_def_id();
                 let trait_id = self.analyzer.tcx.impl_opt_trait_id(impl_id);
                 let (self_type, impl_generics) = {
                     if let ItemKind::Impl(impl_obj) = &self.get_item(&impl_id).kind {
@@ -224,7 +225,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 };
 
                 self.add_fn(
-                    impl_id,
+                    fn_id,
                     item.ident,
                     sig,
                     body,
@@ -241,6 +242,8 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     fn visit_trait_item(&mut self, item: &'tcx TraitItem) {
         if let TraitItemKind::Fn(sig, TraitFn::Provided(body)) = item.kind {
             log::trace!("Visiting trait fn: {}", item.ident);
+
+            let fn_id = item.owner_id.def_id.to_def_id();
             let trait_id = self
                 .analyzer
                 .tcx
@@ -255,7 +258,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 }
             };
             self.add_fn(
-                trait_id,
+                fn_id,
                 item.ident,
                 sig,
                 body,
