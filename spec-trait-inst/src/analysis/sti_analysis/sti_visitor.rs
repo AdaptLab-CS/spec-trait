@@ -3,19 +3,21 @@ use super::Analyzer;
 use rustc_hir::intravisit::nested_filter::NestedFilter;
 use rustc_hir::intravisit::{walk_impl_item, walk_item, walk_trait_item, Visitor};
 use rustc_hir::{
-    BodyId, FnSig, Generics, HirId, ImplItem, ImplItemKind, Item, ItemKind, TraitFn,
-    TraitItem, TraitItemKind, Ty, ParamName
+    BodyId, FnSig, Generics, HirId, ImplItem, ImplItemKind, Item, ItemKind, ParamName, TraitFn,
+    TraitItem, TraitItemKind, Ty,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::DefId;
 use rustc_span::Ident;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter, Result};
+use std::hash::{Hash, Hasher};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VisitedTrait {
     pub name: String,
     pub id: DefId,
     pub items: usize,
+    pub self_type: Option<String>,
 }
 
 #[derive(Debug)]
@@ -31,7 +33,7 @@ pub struct VisitedFn {
 }
 
 impl Display for VisitedFn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(tr) = &self.parent_trait {
             if let Some(self_type) = &self.self_type {
                 write!(f, "{}::{} for {}", tr.name, self.name, self_type)
@@ -43,6 +45,23 @@ impl Display for VisitedFn {
         } else {
             write!(f, "{}", self.name)
         }
+    }
+}
+
+impl Display for VisitedTrait {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if let Some(self_type) = &self.self_type {
+            write!(f, "{} for {}", self.name, self_type)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
+}
+
+impl Hash for VisitedTrait {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.self_type.hash(state);
     }
 }
 
@@ -88,19 +107,20 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
                     .collect(),
                 body,
                 generics: self.get_generics(generics),
-                parent_trait: trait_id.map(|id| self.get_trait(id)),
+                parent_trait: trait_id.map(|id| self.get_trait(id, self_type)),
                 self_type: self_type.and_then(|ty| self.get_ty(ty)),
             });
         }
     }
 
-    fn get_trait(&self, def_id: DefId) -> VisitedTrait {
+    fn get_trait(&self, def_id: DefId, self_type: Option<&Ty>) -> VisitedTrait {
         let name = self.analyzer.tcx.def_path_str(def_id).to_string();
         let items = self.analyzer.tcx.associated_items(def_id);
         VisitedTrait {
             name,
             id: def_id,
             items: items.len(),
+            self_type: self_type.and_then(|ty| self.get_ty(ty)),
         }
     }
 

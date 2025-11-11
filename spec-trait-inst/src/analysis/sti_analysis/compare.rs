@@ -2,11 +2,11 @@ use super::distance::compute_similarity;
 use super::sti_visitor::{STIVisitor, VisitedFn, VisitedTrait};
 use super::tree::BodyTree;
 use super::Analyzer;
-use rustc_hir::def_id::DefId;
+use itertools::Itertools;
 use spec_trait_utils::conversions::str_to_type_name;
 use spec_trait_utils::types::{type_contains, type_contains_lifetime};
 use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Formatter, Result};
 
 pub struct STIComparison<'tcx, 'a> {
     visitor: &'a STIVisitor<'tcx, 'a>,
@@ -26,7 +26,7 @@ pub struct SpecializableTraitPair<'a> {
 }
 
 impl Display for SpecializablePair<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "{:^30.30} <---{:^6.2}---> {:^30.30}",
@@ -36,14 +36,33 @@ impl Display for SpecializablePair<'_> {
 }
 
 impl Display for SpecializableTraitPair<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "{:^30.30} <---{:^6.2}---> {:^30.30}",
-            self.trait_a.name, self.similarity, self.trait_b.name,
+            self.trait_a, self.similarity, self.trait_b,
         )
     }
 }
+
+#[derive(Debug)]
+struct TraitInfo<'a> {
+    tr: &'a VisitedTrait,
+    fn_items: usize,
+    specializable_fn_items: usize,
+}
+
+impl<'a> TraitInfo<'a> {
+    fn new(tr: &'a VisitedTrait) -> Self {
+        Self {
+            tr,
+            fn_items: 0,
+            specializable_fn_items: 0,
+        }
+    }
+}
+
+const THRESHOLD: f64 = 0.9;
 
 impl<'tcx, 'a> STIComparison<'tcx, 'a> {
     pub fn new(analyzer: &'a Analyzer<'tcx>, visitor: &'a STIVisitor<'tcx, 'a>) -> Self {
@@ -74,38 +93,53 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
     /// Get pairs of specializable functions along with their similarity score.
     pub fn get_specializable_traits(
         &self,
-        specializable_fns: &Vec<&SpecializablePair<'a>>,
+        specializable_fn_pairs: &Vec<&SpecializablePair<'a>>,
     ) -> Vec<SpecializableTraitPair<'a>> {
-        let mut specializable = vec![];
-        let mut traits = HashMap::new();
-
         let mut trait_info = HashMap::new();
+
         for f in &self.visitor.visited_fns {
             if let Some(tr) = f.parent_trait.as_ref() {
-                let entry = trait_info.entry(tr.id).or_insert((tr, 0usize));
-                entry.1 += 1;
+                let entry = trait_info.entry(tr).or_insert(TraitInfo::new(tr));
+                entry.fn_items += 1;
             }
         }
 
-        fn key(trait_a: &VisitedTrait, trait_b: &VisitedTrait) -> (DefId, DefId) {
-            if trait_a.id.index <= trait_b.id.index {
-                (trait_a.id, trait_b.id)
+        let specializable_fns = specializable_fn_pairs
+            .iter()
+            .flat_map(|pair| vec![pair.fn_a, pair.fn_b])
+            .unique_by(|f| f.id)
+            .collect::<Vec<_>>();
+
+        for f in specializable_fns {
+            if let Some(tr) = f.parent_trait.as_ref() {
+                let entry = trait_info.entry(tr).or_insert(TraitInfo::new(tr));
+                entry.specializable_fn_items += 1;
+            }
+        }
+
+        let key = |trait_a: &TraitInfo<'a>, trait_b: &TraitInfo<'a>| {
+            if trait_a.tr.id.index <= trait_b.tr.id.index {
+                (trait_a.tr, trait_b.tr)
             } else {
-                (trait_b.id, trait_a.id)
+                (trait_b.tr, trait_a.tr)
             }
-        }
+        };
 
-        for pair in specializable_fns {
+        let mut traits: HashMap<_, f64> = HashMap::new();
+        for pair in specializable_fn_pairs {
             if let (Some(trait_a), Some(trait_b)) = (
-                pair.fn_a.parent_trait.as_ref(),
-                pair.fn_b.parent_trait.as_ref(),
+                pair.fn_a
+                    .parent_trait
+                    .as_ref()
+                    .and_then(|tr| trait_info.get(&tr)),
+                pair.fn_b
+                    .parent_trait
+                    .as_ref()
+                    .and_then(|tr| trait_info.get(&tr)),
             ) {
-                let trait_a_items = trait_info.get(&trait_a.id).map(|(_, c)| *c).unwrap_or(0);
-                let trait_b_items = trait_info.get(&trait_b.id).map(|(_, c)| *c).unwrap_or(0);
-
-                if trait_a.items == trait_b.items && trait_a_items == trait_b_items {
+                if specializable_trait_pair_heuristic(trait_a, trait_b) {
                     if let Some(similarity) = traits.get_mut(&key(trait_a, trait_b)) {
-                        *similarity *= pair.similarity;
+                        *similarity = (*similarity).min(pair.similarity);
                     } else {
                         traits.insert(key(trait_a, trait_b), pair.similarity);
                     }
@@ -113,26 +147,19 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
             }
         }
 
-        for ((id_a, id_b), similarity) in traits {
-            const THRESHOLD: f64 = 0.9;
-
-            if similarity >= THRESHOLD {
-                specializable.push(SpecializableTraitPair {
-                    trait_a: trait_info.get(&id_a).unwrap().0,
-                    trait_b: trait_info.get(&id_b).unwrap().0,
-                    similarity,
-                });
-            }
-        }
-
-        specializable
+        traits
+            .iter()
+            .map(|((tr_a, tr_b), sim)| SpecializableTraitPair {
+                trait_a: trait_info.get(tr_a).unwrap().tr,
+                trait_b: trait_info.get(tr_b).unwrap().tr,
+                similarity: *sim,
+            })
+            .collect()
     }
 
     /// Determine if two body trees are specializable based on their similarity.
     /// If they are, return the similarity score.
     fn is_specializable(&self, tree_a: &BodyTree, tree_b: &BodyTree) -> Option<f64> {
-        const THRESHOLD: f64 = 0.9;
-
         let a_size = tree_a.root.size();
         let b_size = tree_b.root.size();
 
@@ -190,9 +217,22 @@ fn specializable_trait_heuristic(tr_a: &VisitedTrait, tr_b: &VisitedTrait) -> bo
     tr_a.items == tr_b.items && names_similar(&tr_a.name, &tr_b.name)
 }
 
+/// A heuristic to quickly determine if two traits could be specializable.
+fn specializable_trait_pair_heuristic<'a>(tr_a: &TraitInfo<'a>, tr_b: &TraitInfo<'a>) -> bool {
+    let max_diff = |a: usize, b: usize| a.abs_diff(b) <= 1;
+    specializable_trait_heuristic(tr_a.tr, tr_b.tr)
+        && tr_a.specializable_fn_items > 0
+        && tr_b.specializable_fn_items > 0
+        && max_diff(tr_a.fn_items, tr_b.fn_items)
+        && max_diff(tr_a.specializable_fn_items, tr_b.specializable_fn_items)
+        && max_diff(tr_a.fn_items, tr_a.specializable_fn_items)
+        && max_diff(tr_b.fn_items, tr_b.specializable_fn_items)
+}
+
 /// A heuristic to quickly determine if two functions could be already specializable.
 pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
-    pair.fn_a.self_type == pair.fn_b.self_type
+    specializable_fn_heuristic(pair.fn_a, pair.fn_b)
+        && pair.fn_a.self_type == pair.fn_b.self_type
         && pair.fn_a.args.iter().any(|arg_a| {
             pair.fn_b.args.iter().any(|arg_b| {
                 arg_a != arg_b
@@ -204,7 +244,19 @@ pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
         })
 }
 
-fn contains_generics(ty: &str, generics: &Vec<String>) -> bool {
+/// A heuristic to quickly determine if two functions are already specialized.
+pub fn already_specialized_heuristic(pair: &SpecializablePair) -> bool {
+    already_specializable_heuristic(pair)
+        && pair.fn_a.id == pair.fn_b.id
+        && pair.fn_a.parent_trait.as_ref().is_some_and(|ta| {
+            pair.fn_b
+                .parent_trait
+                .as_ref()
+                .is_some_and(|tb| ta.id == tb.id)
+        })
+}
+
+fn contains_generics(ty: &str, generics: &[String]) -> bool {
     generics.iter().filter(|gen| !gen.contains("$")).any(|gen| {
         if gen.starts_with("'") {
             type_contains_lifetime(&str_to_type_name(ty), gen)
@@ -277,7 +329,7 @@ fn to_snake_case(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustc_hir::def_id::{DefIndex, LocalDefId};
+    use rustc_hir::def_id::{DefId, DefIndex, LocalDefId};
     use rustc_hir::{BodyId, HirId, ItemLocalId, OwnerId};
     use rustc_index::Idx;
 
@@ -286,6 +338,7 @@ mod tests {
             name: name.to_string(),
             id: DefId::local(DefIndex::from_usize(0)),
             items,
+            self_type: None,
         }
     }
 
@@ -366,6 +419,46 @@ mod tests {
         // one has self type, other doesn't
         let f5 = get_visited_fn("foo", 1, None);
         assert!(!specializable_fn_heuristic(&f2, &f5));
+    }
+
+    #[test]
+    fn test_specializable_trait_pair_heuristic_comprehensive() {
+        fn get_trait_info<'a>(tr: &'a VisitedTrait, fns: usize, spec_fns: usize) -> TraitInfo<'a> {
+            TraitInfo {
+                tr,
+                fn_items: fns,
+                specializable_fn_items: spec_fns,
+            }
+        }
+
+        let tr_a = get_visited_trait("MyTrait", 3);
+        let tr_b = get_visited_trait("MyOtherTrait", 3);
+        let tr_c = get_visited_trait("Other", 3);
+
+        // similar trait names, same items, counts within allowed diffs
+        let t1 = get_trait_info(&tr_a, 3, 2);
+        let t2 = get_trait_info(&tr_b, 2, 1);
+        assert!(specializable_trait_pair_heuristic(&t1, &t2));
+
+        // fn_items differ by more than 1
+        let t3 = get_trait_info(&tr_a, 1, 2);
+        assert!(!specializable_trait_pair_heuristic(&t1, &t3));
+
+        // specializable_fn_items differ by more than 1
+        let t4 = get_trait_info(&tr_a, 4, 4);
+        assert!(!specializable_trait_pair_heuristic(&t1, &t4));
+
+        // one has zero specializable fn items
+        let t5 = get_trait_info(&tr_b, 1, 0);
+        assert!(!specializable_trait_pair_heuristic(&t2, &t5));
+
+        // trait names not similar
+        let t6 = get_trait_info(&tr_c, 3, 2);
+        assert!(!specializable_trait_pair_heuristic(&t1, &t6));
+
+        // difference between fn_items and specializable_fn_items > 1
+        let t7 = get_trait_info(&tr_a, 3, 1);
+        assert!(!specializable_trait_pair_heuristic(&t1, &t7));
     }
 
     #[test]
@@ -453,7 +546,7 @@ mod tests {
         test_from_fns(&f1, &f2, true);
 
         // different type, different args
-        let f3 = get_visited_fn("bar", 2, None);
+        let f3 = get_visited_fn("foo_bar", 2, None);
         test_from_fns(&f1, &f3, true);
 
         // same type, same args
@@ -470,5 +563,36 @@ mod tests {
         f6.args[0] = "T".to_string();
         f6.args[1] = "T".to_string();
         test_from_fns(&f1, &f6, false);
+    }
+
+    #[test]
+    fn test_already_specialized_heuristic() {
+        fn test_from_fns(f1: &VisitedFn, f2: &VisitedFn, expected: bool) {
+            let pair = SpecializablePair {
+                fn_a: f1,
+                fn_b: f2,
+                similarity: 0.95,
+            };
+            assert_eq!(already_specialized_heuristic(&pair), expected);
+        }
+
+        // same fn, same trait
+        let f1 = get_visited_fn("foo", 2, Some(get_visited_trait("MyTrait", 2)));
+        let f2 = get_visited_fn("foo", 2, Some(get_visited_trait("MyTrait", 2)));
+        test_from_fns(&f1, &f2, true);
+
+        // same fn, different trait
+        let f1 = get_visited_fn("foo", 2, Some(get_visited_trait("MyTrait", 2)));
+        let f2 = get_visited_fn("foo", 2, Some(get_visited_trait("MyOtherTrait", 2)));
+        test_from_fns(&f1, &f2, true);
+
+        // same fn, no trait
+        let f4 = get_visited_fn("foo", 2, None);
+        test_from_fns(&f1, &f4, false);
+
+        // different fn
+        let mut f5 = get_visited_fn("foo", 2, Some(get_visited_trait("MyTrait", 2)));
+        f5.id = DefId::local(DefIndex::from_usize(1));
+        test_from_fns(&f1, &f5, false);
     }
 }
