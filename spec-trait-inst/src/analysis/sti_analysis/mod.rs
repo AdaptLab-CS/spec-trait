@@ -198,6 +198,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
             let is_macro_fn = |f: &VisitedFn| {
                 f.name.contains("$")
                     || f.generics.iter().any(|g| g.contains("$"))
+                    || f.self_type.as_ref().is_some_and(|ty| ty.contains("$"))
                     || f.parent_trait
                         .as_ref()
                         .is_some_and(|t| t.name.contains("$"))
