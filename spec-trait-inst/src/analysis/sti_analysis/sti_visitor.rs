@@ -81,8 +81,8 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         }
     }
 
-    fn already_seen(&self, body: BodyId) -> bool {
-        self.visited_fns.iter().any(|f| f.body == body)
+    fn already_seen(&self, id: DefId) -> bool {
+        self.visited_fns.iter().any(|f| f.id == id)
     }
 
     fn add_fn(
@@ -95,7 +95,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         trait_id: Option<DefId>,
         self_type: Option<&Ty>,
     ) {
-        if !self.already_seen(body) {
+        if !self.already_seen(id) {
             self.visited_fns.push(VisitedFn {
                 name: ident.to_string(),
                 id,

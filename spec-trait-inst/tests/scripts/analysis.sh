@@ -3,9 +3,8 @@ set -uo pipefail
 
 usage() {
   sed -n '1,200p' <<'USAGE'
-Usage: analysis.sh [-f <file>] [-c <cargo-cmd>] [-w <workdir>] [-l <logs>] [-k] [-d] [-h]
+Usage: analysis.sh [-f <file>] [-w <workdir>] [-l <logs>] [-k] [-d] [-h]
   -f file with newline-separated repo URLs (default: ./scripts/run-on-repos.txt, relative to tests/)
-  -c cargo command to run inside each repo (default: "cargo build")
   -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
   -l logs directory (default: ./logs, relative to tests/)
   -d delete all entries from summary file before running (default: true)
@@ -28,16 +27,14 @@ fi
 
 base_dir="$PWD"
 file="$base_dir/scripts/repos.txt"
-cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-data"
 workdir="$base_dir/workspaces"
 logs="$base_dir/logs"
 delete_summary=true
 keep=false
 
-while getopts "f:c:w:l:dkh" opt; do
+while getopts "f:w:l:dkh" opt; do
   case "$opt" in
     f) file="$OPTARG" ;;
-    c) cmd="$OPTARG" ;;
     w) workdir="$OPTARG" ;;
     l) logs="$OPTARG" ;;
     d) delete_summary=false ;;
@@ -332,6 +329,19 @@ get_crates_io_downloads() {
   echo "$sum"
 }
 
+# https://doc.rust-lang.org/cargo/reference/features.html#mutually-exclusive-features
+get_cmd() {
+  local repo_name="$1"
+  local excluded_repos=("libc" "log" "parking_lot" "gitoxide") 
+  local base_cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-data"
+
+  if [[ " ${excluded_repos[*]} " == *" $repo_name "* ]]; then
+    echo "$base_cmd"
+  else
+    echo "$base_cmd -- --all-features"
+  fi
+}
+
 i=0
 while IFS= read -r raw || [[ -n "$raw" ]]; do
   line="${raw%%#*}"            # strip trailing comment
@@ -376,7 +386,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   fi
 
   echo "Cloning from $url"
-  if ! git clone --depth 1 "$url" "$target_dir" >/dev/null 2>&1; then
+  if ! git clone --recurse-submodules --depth 1 "$url" "$target_dir" >/dev/null 2>&1; then
     echo "Error: clone failed for $repo_name (exit 4)"
     echo "Aborting due to error."
     exit 4
@@ -393,7 +403,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   pushd "$target_dir" >/dev/null
   # run command, capture exit code
   # Use bash -lc to allow shell features in cmd
-  if bash -lc "$cmd" > "$log_file" 2>&1; then
+  if bash -lc "$(get_cmd "$repo_name")" > "$log_file" 2>&1; then
     rc=0
   else
     rc=$?

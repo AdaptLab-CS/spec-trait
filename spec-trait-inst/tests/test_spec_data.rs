@@ -1,6 +1,6 @@
 mod utils;
 
-mod test_possible_spec {
+mod test_spec_data {
     use crate::utils::run_with_cargo_bin_and_snippet;
     use itertools::Itertools;
 
