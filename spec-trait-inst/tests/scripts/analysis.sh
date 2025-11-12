@@ -362,7 +362,7 @@ get_crates_io_downloads() {
 # https://doc.rust-lang.org/cargo/reference/features.html#mutually-exclusive-features
 get_cmd() {
   local repo_name="$1"
-  local excluded_repos=("libc" "log" "parking_lot" "gitoxide" "nushell" "polars" "tabby") 
+  local excluded_repos=("libc" "log" "parking_lot" "gitoxide" "nushell" "polars" "quiche") 
   local base_cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=debug LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-data"
 
   if [[ " ${excluded_repos[*]} " == *" $repo_name "* ]]; then
