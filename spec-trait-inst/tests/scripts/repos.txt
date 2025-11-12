@@ -53,11 +53,11 @@ https://github.com/typst/typst
 https://github.com/helix-editor/helix
 https://github.com/charliermarsh/ruff
 https://github.com/lapce/lapce
-#https://github.com/nushell/nushell
-#https://github.com/pola-rs/polars
+https://github.com/nushell/nushell
+https://github.com/pola-rs/polars
 #https://github.com/swc-project/swc
 https://github.com/influxdata/influxdb
-#https://github.com/TabbyML/tabby
+https://github.com/TabbyML/tabby
 #https://github.com/servo/servo
 #https://github.com/wasmerio/wasmer
 #https://github.com/diem/diem
@@ -80,3 +80,7 @@ https://github.com/Nukesor/pueue
 https://github.com/denoland/deno
 https://github.com/FuelLabs/sway
 https://github.com/FuelLabs/fuel-core
+https://github.com/toml-rs/toml
+https://github.com/rust-lang/glob
+https://github.com/rust-lang/futures-rs
+https://github.com/rust-lang/cargo

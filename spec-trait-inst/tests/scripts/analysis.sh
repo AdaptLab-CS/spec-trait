@@ -3,11 +3,11 @@ set -uo pipefail
 
 usage() {
   sed -n '1,200p' <<'USAGE'
-Usage: analysis.sh [-f <file>] [-w <workdir>] [-l <logs>] [-k] [-d] [-h]
+Usage: analysis.sh [-f <file>] [-w <workdir>] [-l <logs>] [-k] [-c] [-h]
   -f file with newline-separated repo URLs (default: ./scripts/run-on-repos.txt, relative to tests/)
   -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
   -l logs directory (default: ./logs, relative to tests/)
-  -d delete all entries from summary file before running (default: true)
+  -c continue: don't delete old entries from summary file before running (default: false)
   -k keep clones (default: false)
   -h show this help message and exit
 
@@ -29,15 +29,15 @@ base_dir="$PWD"
 file="$base_dir/scripts/repos.txt"
 workdir="$base_dir/workspaces"
 logs="$base_dir/logs"
-delete_summary=true
+continue=false
 keep=false
 
-while getopts "f:w:l:dkh" opt; do
+while getopts "f:w:l:ckh" opt; do
   case "$opt" in
     f) file="$OPTARG" ;;
     w) workdir="$OPTARG" ;;
     l) logs="$OPTARG" ;;
-    d) delete_summary=false ;;
+    c) continue=true ;;
     k) keep=true ;;
     h) usage ;;
     *) usage ;;
@@ -54,7 +54,7 @@ mkdir -p "$workdir" "$logs"
 # remove any existing .log files in logs before running
 shopt -s nullglob
 # remove old logs
-if $delete_summary; then
+if ! $continue; then
   for f in "$logs"/*.log; do
     rm -f -- "$f"
   done
@@ -63,8 +63,8 @@ shopt -u nullglob
 
 # prepare summary file
 summary="$base_dir/scripts/summary.csv"
-if $delete_summary && [[ -f "$summary" ]]; then
-  echo "url,crate_name,members_count,crates_io_downloads,github_stars,analysis_total_time_seconds,analysis_peak_rss_MB,total_fns,total_traits,total_bare_fns,total_trait_fns,total_trait_impl_fns,total_inherent_impl_fns,total_macro_fns,all_fn_spec_fn_pairs,all_fn_spec_trait_pairs,all_fn_spec_fns,all_fn_spec_traits,all_fn_already_spec_fn_pairs,all_fn_already_spec_trait_pairs,all_fn_already_spec_fns,all_fn_already_spec_traits,all_fn_already_specialized_fn_pairs,all_fn_already_specialized_trait_pairs,all_fn_already_specialized_fns,all_fn_already_specialized_traits,all_fn_newly_spec_fn_pairs,all_fn_newly_spec_trait_pairs,all_fn_newly_spec_fns,all_fn_newly_spec_traits,all_fn_already_spec_unspecialized_fn_pairs,all_fn_already_spec_unspecialized_trait_pairs,all_fn_already_spec_unspecialized_fns,all_fn_already_spec_unspecialized_traits,bare_fn_spec_fn_pairs,bare_fn_spec_trait_pairs,bare_fn_spec_fns,bare_fn_spec_traits,bare_fn_already_spec_fn_pairs,bare_fn_already_spec_trait_pairs,bare_fn_already_spec_fns,bare_fn_already_spec_traits,bare_fn_already_specialized_fn_pairs,bare_fn_already_specialized_trait_pairs,bare_fn_already_specialized_fns,bare_fn_already_specialized_traits,bare_fn_newly_spec_fn_pairs,bare_fn_newly_spec_trait_pairs,bare_fn_newly_spec_fns,bare_fn_newly_spec_traits,bare_fn_already_spec_unspecialized_fn_pairs,bare_fn_already_spec_unspecialized_trait_pairs,bare_fn_already_spec_unspecialized_fns,bare_fn_already_spec_unspecialized_traits,trait_fn_spec_fn_pairs,trait_fn_spec_trait_pairs,trait_fn_spec_fns,trait_fn_spec_traits,trait_fn_already_spec_fn_pairs,trait_fn_already_spec_trait_pairs,trait_fn_already_spec_fns,trait_fn_already_spec_traits,trait_fn_already_specialized_fn_pairs,trait_fn_already_specialized_trait_pairs,trait_fn_already_specialized_fns,trait_fn_already_specialized_traits,trait_fn_newly_spec_fn_pairs,trait_fn_newly_spec_trait_pairs,trait_fn_newly_spec_fns,trait_fn_newly_spec_traits,trait_fn_already_spec_unspecialized_fn_pairs,trait_fn_already_spec_unspecialized_trait_pairs,trait_fn_already_spec_unspecialized_fns,trait_fn_already_spec_unspecialized_traits,trait_impl_fn_spec_fn_pairs,trait_impl_fn_spec_trait_pairs,trait_impl_fn_spec_fns,trait_impl_fn_spec_traits,trait_impl_fn_already_spec_fn_pairs,trait_impl_fn_already_spec_trait_pairs,trait_impl_fn_already_spec_fns,trait_impl_fn_already_spec_traits,trait_impl_fn_already_specialized_fn_pairs,trait_impl_fn_already_specialized_trait_pairs,trait_impl_fn_already_specialized_fns,trait_impl_fn_already_specialized_traits,trait_impl_fn_newly_spec_fn_pairs,trait_impl_fn_newly_spec_trait_pairs,trait_impl_fn_newly_spec_fns,trait_impl_fn_newly_spec_traits,trait_impl_fn_already_spec_unspecialized_fn_pairs,trait_impl_fn_already_spec_unspecialized_trait_pairs,trait_impl_fn_already_spec_unspecialized_fns,trait_impl_fn_already_spec_unspecialized_traits,inherent_impl_fn_spec_fn_pairs,inherent_impl_fn_spec_trait_pairs,inherent_impl_fn_spec_fns,inherent_impl_fn_spec_traits,inherent_impl_fn_already_spec_fn_pairs,inherent_impl_fn_already_spec_trait_pairs,inherent_impl_fn_already_spec_fns,inherent_impl_fn_already_spec_traits,inherent_impl_fn_already_specialized_fn_pairs,inherent_impl_fn_already_specialized_trait_pairs,inherent_impl_fn_already_specialized_fns,inherent_impl_fn_already_specialized_traits,inherent_impl_fn_newly_spec_fn_pairs,inherent_impl_fn_newly_spec_trait_pairs,inherent_impl_fn_newly_spec_fns,inherent_impl_fn_newly_spec_traits,inherent_impl_fn_already_spec_unspecialized_fn_pairs,inherent_impl_fn_already_spec_unspecialized_trait_pairs,inherent_impl_fn_already_spec_unspecialized_fns,inherent_impl_fn_already_spec_unspecialized_traits,macro_fn_spec_fn_pairs,macro_fn_spec_trait_pairs,macro_fn_spec_fns,macro_fn_spec_traits,macro_fn_already_spec_fn_pairs,macro_fn_already_spec_trait_pairs,macro_fn_already_spec_fns,macro_fn_already_spec_traits,macro_fn_already_specialized_fn_pairs,macro_fn_already_specialized_trait_pairs,macro_fn_already_specialized_fns,macro_fn_already_specialized_traits,macro_fn_newly_spec_fn_pairs,macro_fn_newly_spec_trait_pairs,macro_fn_newly_spec_fns,macro_fn_newly_spec_traits,macro_fn_already_spec_unspecialized_fn_pairs,macro_fn_already_spec_unspecialized_trait_pairs,macro_fn_already_spec_unspecialized_fns,macro_fn_already_spec_unspecialized_traits" > "$summary"
+if ! $continue && [[ -f "$summary" ]]; then
+  echo "url,crate_name,members_count,dependencies_count,crates_io_downloads,github_stars,analysis_total_time_seconds,analysis_peak_rss_MB,total_fns,total_traits,total_bare_fns,total_trait_fns,total_trait_impl_fns,total_inherent_impl_fns,total_macro_fns,all_fn_spec_fn_pairs,all_fn_spec_trait_pairs,all_fn_spec_fns,all_fn_spec_traits,all_fn_already_spec_fn_pairs,all_fn_already_spec_trait_pairs,all_fn_already_spec_fns,all_fn_already_spec_traits,all_fn_already_specialized_fn_pairs,all_fn_already_specialized_trait_pairs,all_fn_already_specialized_fns,all_fn_already_specialized_traits,all_fn_newly_spec_fn_pairs,all_fn_newly_spec_trait_pairs,all_fn_newly_spec_fns,all_fn_newly_spec_traits,all_fn_already_spec_unspecialized_fn_pairs,all_fn_already_spec_unspecialized_trait_pairs,all_fn_already_spec_unspecialized_fns,all_fn_already_spec_unspecialized_traits,bare_fn_spec_fn_pairs,bare_fn_spec_trait_pairs,bare_fn_spec_fns,bare_fn_spec_traits,bare_fn_already_spec_fn_pairs,bare_fn_already_spec_trait_pairs,bare_fn_already_spec_fns,bare_fn_already_spec_traits,bare_fn_already_specialized_fn_pairs,bare_fn_already_specialized_trait_pairs,bare_fn_already_specialized_fns,bare_fn_already_specialized_traits,bare_fn_newly_spec_fn_pairs,bare_fn_newly_spec_trait_pairs,bare_fn_newly_spec_fns,bare_fn_newly_spec_traits,bare_fn_already_spec_unspecialized_fn_pairs,bare_fn_already_spec_unspecialized_trait_pairs,bare_fn_already_spec_unspecialized_fns,bare_fn_already_spec_unspecialized_traits,trait_fn_spec_fn_pairs,trait_fn_spec_trait_pairs,trait_fn_spec_fns,trait_fn_spec_traits,trait_fn_already_spec_fn_pairs,trait_fn_already_spec_trait_pairs,trait_fn_already_spec_fns,trait_fn_already_spec_traits,trait_fn_already_specialized_fn_pairs,trait_fn_already_specialized_trait_pairs,trait_fn_already_specialized_fns,trait_fn_already_specialized_traits,trait_fn_newly_spec_fn_pairs,trait_fn_newly_spec_trait_pairs,trait_fn_newly_spec_fns,trait_fn_newly_spec_traits,trait_fn_already_spec_unspecialized_fn_pairs,trait_fn_already_spec_unspecialized_trait_pairs,trait_fn_already_spec_unspecialized_fns,trait_fn_already_spec_unspecialized_traits,trait_impl_fn_spec_fn_pairs,trait_impl_fn_spec_trait_pairs,trait_impl_fn_spec_fns,trait_impl_fn_spec_traits,trait_impl_fn_already_spec_fn_pairs,trait_impl_fn_already_spec_trait_pairs,trait_impl_fn_already_spec_fns,trait_impl_fn_already_spec_traits,trait_impl_fn_already_specialized_fn_pairs,trait_impl_fn_already_specialized_trait_pairs,trait_impl_fn_already_specialized_fns,trait_impl_fn_already_specialized_traits,trait_impl_fn_newly_spec_fn_pairs,trait_impl_fn_newly_spec_trait_pairs,trait_impl_fn_newly_spec_fns,trait_impl_fn_newly_spec_traits,trait_impl_fn_already_spec_unspecialized_fn_pairs,trait_impl_fn_already_spec_unspecialized_trait_pairs,trait_impl_fn_already_spec_unspecialized_fns,trait_impl_fn_already_spec_unspecialized_traits,inherent_impl_fn_spec_fn_pairs,inherent_impl_fn_spec_trait_pairs,inherent_impl_fn_spec_fns,inherent_impl_fn_spec_traits,inherent_impl_fn_already_spec_fn_pairs,inherent_impl_fn_already_spec_trait_pairs,inherent_impl_fn_already_spec_fns,inherent_impl_fn_already_spec_traits,inherent_impl_fn_already_specialized_fn_pairs,inherent_impl_fn_already_specialized_trait_pairs,inherent_impl_fn_already_specialized_fns,inherent_impl_fn_already_specialized_traits,inherent_impl_fn_newly_spec_fn_pairs,inherent_impl_fn_newly_spec_trait_pairs,inherent_impl_fn_newly_spec_fns,inherent_impl_fn_newly_spec_traits,inherent_impl_fn_already_spec_unspecialized_fn_pairs,inherent_impl_fn_already_spec_unspecialized_trait_pairs,inherent_impl_fn_already_spec_unspecialized_fns,inherent_impl_fn_already_spec_unspecialized_traits,macro_fn_spec_fn_pairs,macro_fn_spec_trait_pairs,macro_fn_spec_fns,macro_fn_spec_traits,macro_fn_already_spec_fn_pairs,macro_fn_already_spec_trait_pairs,macro_fn_already_spec_fns,macro_fn_already_spec_traits,macro_fn_already_specialized_fn_pairs,macro_fn_already_specialized_trait_pairs,macro_fn_already_specialized_fns,macro_fn_already_specialized_traits,macro_fn_newly_spec_fn_pairs,macro_fn_newly_spec_trait_pairs,macro_fn_newly_spec_fns,macro_fn_newly_spec_traits,macro_fn_already_spec_unspecialized_fn_pairs,macro_fn_already_spec_unspecialized_trait_pairs,macro_fn_already_spec_unspecialized_fns,macro_fn_already_spec_unspecialized_traits" > "$summary"
 fi
 
 # sanitize name helper
@@ -124,6 +124,36 @@ count_workspace_members() {
     echo 0
     return
   fi
+}
+
+
+# Count workspace dependencies declared in a Cargo.toml file at the repository root.
+# Returns 0 when no dependencies are found or file missing.
+count_workspace_dependencies() {
+  local toml_file="$1"
+  if [[ ! -f "$toml_file" ]]; then
+    echo 0
+    return
+  fi
+
+  # Count dependency entries in
+  # [workspace.dependencies], [dependencies], [dev-dependencies], [build-dependencies].
+  sum=0
+  for sec in "workspace.dependencies" "dependencies" "dev-dependencies" "build-dependencies"; do
+    # find the section header line number; start from the next line (content)
+    start_line=$(awk -v sec="$sec" 'BEGIN{target="[" sec "]"} $0==target{print NR+1; exit}' "$toml_file" || true)
+    if [[ -n "$start_line" ]]; then
+      # read from the first content line and stop at the next table/header
+      deps_block=$(tail -n +"$start_line" "$toml_file" | awk '/^\[/{exit} {print}')
+      cnt=$(echo "$deps_block" \
+        | sed -nE 's/^[[:space:]]*([^[:space:]=\[]+)[[:space:]]*=.*/\1/p' \
+        | sed '/^[[:space:]]*#/d' \
+        | wc -l || true)
+      sum=$((sum + cnt))
+    fi
+  done
+  echo "$sum"
+  return
 }
 
 # Extract owner/repo path from common GitHub URL formats.
@@ -332,8 +362,8 @@ get_crates_io_downloads() {
 # https://doc.rust-lang.org/cargo/reference/features.html#mutually-exclusive-features
 get_cmd() {
   local repo_name="$1"
-  local excluded_repos=("libc" "log" "parking_lot" "gitoxide") 
-  local base_cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=trace LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-data"
+  local excluded_repos=("libc" "log" "parking_lot" "gitoxide" "nushell" "polars" "tabby") 
+  local base_cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=debug LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-data"
 
   if [[ " ${excluded_repos[*]} " == *" $repo_name "* ]]; then
     echo "$base_cmd"
@@ -360,7 +390,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   echo "[$i] $repo_name"
 
   # if requested, skip repos already present in the summary file
-  if ! $delete_summary && [[ -f "$summary" ]]; then
+  if $continue && [[ -f "$summary" ]]; then
     if awk -v url="$url" -F, '
       {
         f=$1;
@@ -420,6 +450,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   # count workspace members in the repo's top-level Cargo.toml (0 if none)
   manifest="$target_dir/Cargo.toml"
   members_count=$(count_workspace_members "$manifest")
+  dependencies_count=$(count_workspace_dependencies "$manifest")
   # query GitHub stars (0 if unavailable)
   github_stars=$(get_github_stars "$url")
   # query crates.io downloads (sum for workspace or single crate)
@@ -469,7 +500,7 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   fi
 
   # append parsed results to summary (one final line per repo)
-  echo "\"$url\",\"$repo_name\",$members_count,$crates_downloads,$github_stars,$total_time,$peak_rss,$specialization_data" >> "$summary"
+  echo "\"$url\",\"$repo_name\",$members_count,$dependencies_count,$crates_downloads,$github_stars,$total_time,$peak_rss,$specialization_data" >> "$summary"
 
   # remove repo if needed
   if ! $keep; then
