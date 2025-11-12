@@ -42,7 +42,7 @@ https://github.com/time-rs/time
 https://github.com/RustCrypto/traits
 https://github.com/sharkdp/bat
 https://github.com/GitoxideLabs/gitoxide
-https://github.com/FuelLabs/fuels-rs
+#https://github.com/FuelLabs/fuels-rs
 https://github.com/tauri-apps/tauri
 https://github.com/alacritty/alacritty
 https://github.com/zed-industries/zed
