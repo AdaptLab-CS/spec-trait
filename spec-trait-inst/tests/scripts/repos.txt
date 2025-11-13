@@ -75,11 +75,11 @@ https://github.com/cloudflare/quiche
 #https://github.com/succinctlabs/sp1
 https://github.com/unionlabs/union
 https://github.com/juspay/hyperswitch
-https://github.com/emilk/egui
+#https://github.com/emilk/egui
 https://github.com/Nukesor/pueue
-https://github.com/denoland/deno
-https://github.com/FuelLabs/sway
-https://github.com/FuelLabs/fuel-core
+#https://github.com/denoland/deno
+#https://github.com/FuelLabs/sway
+#https://github.com/FuelLabs/fuel-core
 https://github.com/toml-rs/toml
 https://github.com/rust-lang/glob
 https://github.com/rust-lang/futures-rs
