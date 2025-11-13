@@ -101,7 +101,7 @@ pub enum NodeKind {
     Trait(String), // trait name
 
     /// Unhandled node
-    Unknown,
+    Unknown(String), // debug info
 }
 
 pub struct BodyTree<'tcx, 'a> {
@@ -393,7 +393,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             ConstArgKind::Infer(_, _) => {
                 log::debug!("Unhandled const arg: {:?}", c);
-                self.add_leaf(NodeKind::Unknown);
+                self.add_leaf(NodeKind::Unknown(format!("{:?}", c)));
             }
         }
     }
@@ -624,7 +624,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             other => {
                 log::debug!("Unhandled expr: {:?}", other);
-                self.add_leaf(NodeKind::Unknown);
+                self.add_leaf(NodeKind::Unknown(format!("{:?}", other)));
             }
         }
     }
@@ -729,7 +729,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
             }
             other => {
                 log::debug!("Unhandled item: {:?}", other);
-                self.add_leaf(NodeKind::Unknown);
+                self.add_leaf(NodeKind::Unknown(format!("{:?}", other)));
             }
         }
     }
