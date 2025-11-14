@@ -92,8 +92,7 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
         sig: FnSig,
         body: BodyId,
         generics: &Generics,
-        trait_id: Option<DefId>,
-        self_type: Option<&Ty>,
+        parent: Option<(Option<DefId>, Option<&Ty>)>,
     ) {
         if !self.already_seen(id) {
             self.visited_fns.push(VisitedFn {
@@ -107,8 +106,9 @@ impl<'tcx, 'a> STIVisitor<'tcx, 'a> {
                     .collect(),
                 body,
                 generics: self.get_generics(generics),
-                parent_trait: trait_id.map(|id| self.get_trait(id, self_type)),
-                self_type: self_type.and_then(|ty| self.get_ty(ty)),
+                parent_trait: parent
+                    .and_then(|(trait_id, ty)| trait_id.map(|id| self.get_trait(id, ty))),
+                self_type: parent.and_then(|(_, ty)| ty.and_then(|ty| self.get_ty(ty))),
             });
         }
     }
@@ -195,7 +195,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
         {
             log::trace!("Visiting fn: {}", ident);
             let fn_id = item.owner_id.def_id.to_def_id();
-            self.add_fn(fn_id, ident, sig, body, generics, None, None);
+            self.add_fn(fn_id, ident, sig, body, generics, None);
         }
 
         walk_item(self, item);
@@ -230,8 +230,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                     sig,
                     body,
                     impl_generics,
-                    trait_id,
-                    Some(self_type),
+                    Some((trait_id, Some(self_type))),
                 );
             }
         }
@@ -263,8 +262,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
                 sig,
                 body,
                 trait_generics,
-                Some(trait_id),
-                None,
+                Some((Some(trait_id), None)),
             );
         }
 
