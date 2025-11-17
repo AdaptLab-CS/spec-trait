@@ -1,19 +1,19 @@
 name: PULL REQUEST CI
 
 on:
-  pull_request:
+  pull_request: # same repo pr
+    branches:
+      - main
     paths:
-      - "spec-trait-inst/src/**"
-      - "spec-trait-inst/Cargo.lock"
-      - "spec-trait-inst/Cargo.toml"
-      - "spec-trait-inst/rustfmt.toml"
-      - "spec-trait-inst/config/**"
-      - "spec-trait-inst/tests/**"
-      - "spec-trait-impl/src/**"
-      - "spec-trait-impl/crates/**"
-      - "spec-trait-impl/Cargo.lock"
-      - "spec-trait-impl/Cargo.toml"
-      - "spec-trait-impl/tests/**"
+      - "spec-trait-inst/**"
+      - "spec-trait-impl/**"
+      - ".github/workflows/**"
+  pull_request_target: # forked repo pr
+    branches:
+      - main
+    paths:
+      - "spec-trait-inst/**"
+      - "spec-trait-impl/**"
       - ".github/workflows/**"
 
 jobs:
