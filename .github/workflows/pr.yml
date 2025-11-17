@@ -1,48 +1,22 @@
 name: PULL REQUEST CI
 
 on:
-  pull_request:
+  pull_request: # same repo pr
     branches:
       - main
     paths:
-      - "spec-trait-inst/src/**"
-      - "spec-trait-inst/Cargo.lock"
-      - "spec-trait-inst/Cargo.toml"
-      - "spec-trait-inst/rustfmt.toml"
-      - "spec-trait-inst/rust-toolchain.toml"
-      - "spec-trait-inst/tests/**"
-      - "spec-trait-impl/src/**"
-      - "spec-trait-impl/crates/**"
-      - "spec-trait-impl/Cargo.lock"
-      - "spec-trait-impl/Cargo.toml"
-      - "spec-trait-impl/tests/**"
+      - "spec-trait-inst/**"
+      - "spec-trait-impl/**"
       - ".github/workflows/**"
-  pull_request_target:
+  pull_request_target: # forked repo pr
     branches:
       - main
     paths:
-      - "spec-trait-inst/src/**"
-      - "spec-trait-inst/Cargo.lock"
-      - "spec-trait-inst/Cargo.toml"
-      - "spec-trait-inst/rustfmt.toml"
-      - "spec-trait-inst/rust-toolchain.toml"
-      - "spec-trait-inst/tests/**"
-      - "spec-trait-impl/src/**"
-      - "spec-trait-impl/crates/**"
-      - "spec-trait-impl/Cargo.lock"
-      - "spec-trait-impl/Cargo.toml"
-      - "spec-trait-impl/tests/**"
+      - "spec-trait-inst/**"
+      - "spec-trait-impl/**"
       - ".github/workflows/**"
 
 jobs:
-  # only run this job for:
-  # - pull_request when the head repo is the same repo (same-repo PRs)
-  # - pull_request_target when the head repo is a different repo (forks)
   call-ci:
-    if: >
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'pull_request_target' &&
-       github.event.pull_request.head.repo.full_name != github.repository)
     uses: ./.github/workflows/ci.yml
     secrets: inherit
