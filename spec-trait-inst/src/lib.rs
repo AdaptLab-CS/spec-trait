@@ -47,6 +47,10 @@ pub struct CliArgs {
     #[clap(long)]
     print_spec_targets: bool,
 
+    // Print possible specialization targets
+    #[clap(long)]
+    print_spec_data: bool,
+
     // Provide a file to filter the analysis
     #[clap(long)]
     filter_with_file: Option<String>,

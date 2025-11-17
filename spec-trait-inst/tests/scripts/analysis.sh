@@ -1,0 +1,512 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+usage() {
+  sed -n '1,200p' <<'USAGE'
+Usage: analysis.sh [-f <file>] [-w <workdir>] [-l <logs>] [-k] [-c] [-h]
+  -f file with newline-separated repo URLs (default: ./scripts/run-on-repos.txt, relative to tests/)
+  -w workdir where repos are cloned (default: ./workspaces, relative to tests/)
+  -l logs directory (default: ./logs, relative to tests/)
+  -c continue: don't delete old entries from summary file before running (default: false)
+  -k keep clones (default: false)
+  -h show this help message and exit
+
+This script expects to be run from the tests/ directory:
+  cd ./spec-trait-inst/tests
+  ./scripts/analysis.sh
+USAGE
+  exit 1
+}
+
+# ensure we're running from the tests/ directory
+if [[ "$(basename "$PWD")" != "tests" ]]; then
+  echo "Error: this script must be run from the tests/ directory (pwd: $PWD)" >&2
+  echo "cd into the tests/ directory and run ./scripts/analysis.sh" >&2
+  exit 2
+fi
+
+base_dir="$PWD"
+file="$base_dir/scripts/repos.txt"
+workdir="$base_dir/workspaces"
+logs="$base_dir/logs"
+continue=false
+keep=false
+
+while getopts "f:w:l:ckh" opt; do
+  case "$opt" in
+    f) file="$OPTARG" ;;
+    w) workdir="$OPTARG" ;;
+    l) logs="$OPTARG" ;;
+    c) continue=true ;;
+    k) keep=true ;;
+    h) usage ;;
+    *) usage ;;
+  esac
+done
+
+if [[ ! -f "$file" ]]; then
+  echo "File not found: $file" >&2
+  exit 3
+fi
+
+mkdir -p "$workdir" "$logs"
+
+# remove any existing .log files in logs before running
+shopt -s nullglob
+# remove old logs
+if ! $continue; then
+  for f in "$logs"/*.log; do
+    rm -f -- "$f"
+  done
+fi
+shopt -u nullglob
+
+# prepare summary file
+summary="$base_dir/scripts/summary.csv"
+if ! $continue && [[ -f "$summary" ]]; then
+  echo "url,crate_name,members_count,dependencies_count,crates_io_downloads,github_stars,analysis_total_time_seconds,analysis_peak_rss_MB,total_fns,total_traits,total_bare_fns,total_trait_fns,total_trait_impl_fns,total_inherent_impl_fns,total_macro_fns,all_fn_specializable_fn_pairs,all_fn_specializable_trait_pairs,all_fn_specializable_fns,all_fn_specializable_traits,all_fn_already_specializable_fn_pairs,all_fn_already_specializable_trait_pairs,all_fn_already_specializable_fns,all_fn_already_specializable_traits,all_fn_already_specialized_fn_pairs,all_fn_already_specialized_trait_pairs,all_fn_already_specialized_fns,all_fn_already_specialized_traits,all_fn_newly_specializable_fn_pairs,all_fn_newly_specializable_trait_pairs,all_fn_newly_specializable_fns,all_fn_newly_specializable_traits,all_fn_already_specializable_unspecialized_fn_pairs,all_fn_already_specializable_unspecialized_trait_pairs,all_fn_already_specializable_unspecialized_fns,all_fn_already_specializable_unspecialized_traits,bare_fn_specializable_fn_pairs,bare_fn_specializable_trait_pairs,bare_fn_specializable_fns,bare_fn_specializable_traits,bare_fn_already_specializable_fn_pairs,bare_fn_already_specializable_trait_pairs,bare_fn_already_specializable_fns,bare_fn_already_specializable_traits,bare_fn_already_specialized_fn_pairs,bare_fn_already_specialized_trait_pairs,bare_fn_already_specialized_fns,bare_fn_already_specialized_traits,bare_fn_newly_specializable_fn_pairs,bare_fn_newly_specializable_trait_pairs,bare_fn_newly_specializable_fns,bare_fn_newly_specializable_traits,bare_fn_already_specializable_unspecialized_fn_pairs,bare_fn_already_specializable_unspecialized_trait_pairs,bare_fn_already_specializable_unspecialized_fns,bare_fn_already_specializable_unspecialized_traits,trait_fn_specializable_fn_pairs,trait_fn_specializable_trait_pairs,trait_fn_specializable_fns,trait_fn_specializable_traits,trait_fn_already_specializable_fn_pairs,trait_fn_already_specializable_trait_pairs,trait_fn_already_specializable_fns,trait_fn_already_specializable_traits,trait_fn_already_specialized_fn_pairs,trait_fn_already_specialized_trait_pairs,trait_fn_already_specialized_fns,trait_fn_already_specialized_traits,trait_fn_newly_specializable_fn_pairs,trait_fn_newly_specializable_trait_pairs,trait_fn_newly_specializable_fns,trait_fn_newly_specializable_traits,trait_fn_already_specializable_unspecialized_fn_pairs,trait_fn_already_specializable_unspecialized_trait_pairs,trait_fn_already_specializable_unspecialized_fns,trait_fn_already_specializable_unspecialized_traits,trait_impl_fn_specializable_fn_pairs,trait_impl_fn_specializable_trait_pairs,trait_impl_fn_specializable_fns,trait_impl_fn_specializable_traits,trait_impl_fn_already_specializable_fn_pairs,trait_impl_fn_already_specializable_trait_pairs,trait_impl_fn_already_specializable_fns,trait_impl_fn_already_specializable_traits,trait_impl_fn_already_specialized_fn_pairs,trait_impl_fn_already_specialized_trait_pairs,trait_impl_fn_already_specialized_fns,trait_impl_fn_already_specialized_traits,trait_impl_fn_newly_specializable_fn_pairs,trait_impl_fn_newly_specializable_trait_pairs,trait_impl_fn_newly_specializable_fns,trait_impl_fn_newly_specializable_traits,trait_impl_fn_already_specializable_unspecialized_fn_pairs,trait_impl_fn_already_specializable_unspecialized_trait_pairs,trait_impl_fn_already_specializable_unspecialized_fns,trait_impl_fn_already_specializable_unspecialized_traits,inherent_impl_fn_specializable_fn_pairs,inherent_impl_fn_specializable_trait_pairs,inherent_impl_fn_specializable_fns,inherent_impl_fn_specializable_traits,inherent_impl_fn_already_specializable_fn_pairs,inherent_impl_fn_already_specializable_trait_pairs,inherent_impl_fn_already_specializable_fns,inherent_impl_fn_already_specializable_traits,inherent_impl_fn_already_specialized_fn_pairs,inherent_impl_fn_already_specialized_trait_pairs,inherent_impl_fn_already_specialized_fns,inherent_impl_fn_already_specialized_traits,inherent_impl_fn_newly_specializable_fn_pairs,inherent_impl_fn_newly_specializable_trait_pairs,inherent_impl_fn_newly_specializable_fns,inherent_impl_fn_newly_specializable_traits,inherent_impl_fn_already_specializable_unspecialized_fn_pairs,inherent_impl_fn_already_specializable_unspecialized_trait_pairs,inherent_impl_fn_already_specializable_unspecialized_fns,inherent_impl_fn_already_specializable_unspecialized_traits,macro_fn_specializable_fn_pairs,macro_fn_specializable_trait_pairs,macro_fn_specializable_fns,macro_fn_specializable_traits,macro_fn_already_specializable_fn_pairs,macro_fn_already_specializable_trait_pairs,macro_fn_already_specializable_fns,macro_fn_already_specializable_traits,macro_fn_already_specialized_fn_pairs,macro_fn_already_specialized_trait_pairs,macro_fn_already_specialized_fns,macro_fn_already_specialized_traits,macro_fn_newly_specializable_fn_pairs,macro_fn_newly_specializable_trait_pairs,macro_fn_newly_specializable_fns,macro_fn_newly_specializable_traits,macro_fn_already_specializable_unspecialized_fn_pairs,macro_fn_already_specializable_unspecialized_trait_pairs,macro_fn_already_specializable_unspecialized_fns,macro_fn_already_specializable_unspecialized_traits" > "$summary"
+fi
+
+# sanitize name helper
+sanitize() {
+  echo "$1" | sed -E 's/[^a-zA-Z0-9._-]/_/g'
+}
+
+# Count workspace members declared in a Cargo.toml file at the repository root.
+# Returns 0 when no [workspace] members are found or file missing.
+count_workspace_members() {
+  local toml_file="$1"
+  if [[ ! -f "$toml_file" ]]; then
+    echo 0
+    return
+  fi
+
+  # If there's a [workspace] table, parse members. If not, but there's a [package] table,
+  # treat it as a single-crate repository and return 1. Otherwise return 0.
+  if grep -q '^\[workspace\]' "$toml_file"; then
+    # Find the first 'members = [' occurrence after [workspace]
+    start_line=$(awk 'BEGIN{in_ws=0} /^\[workspace\]/{in_ws=1} in_ws && /members[ \t]*=/ {print NR; exit}' "$toml_file" || true)
+    if [[ -z "$start_line" ]]; then
+      echo 0
+      return
+    fi
+
+    # Extract from the members= line until the first closing ']' and count entries
+    members_block=$(tail -n +"$start_line" "$toml_file" | awk '{print} /\]/{exit}')
+    # Try inline form first: members = ["a","b"]
+    inline=$(echo "$members_block" | tr -d '\n' | sed 's/.*\[//;s/\].*//')
+    if [[ -n "$inline" ]]; then
+      IFS=',' read -ra parts <<< "$inline"
+      cnt=0
+      for p in "${parts[@]}"; do
+        # trim whitespace
+        p="${p#"${p%%[![:space:]]*}"}"
+        p="${p%"${p##*[![:space:]]}"}"
+        # remove surrounding quotes if present
+        if { [[ "${p:0:1}" == '"' && "${p: -1}" == '"' ]] || [[ "${p:0:1}" == "'" && "${p: -1}" == "'" ]]; }; then
+          p="${p:1:-1}"
+        fi
+        [[ -n "$p" ]] && ((cnt++))
+      done
+      echo "$cnt"
+      return
+    fi
+
+    # fallback: count quoted entries across multiple lines
+    cnt=$(echo "$members_block" | grep -o '"[^"]\+"' | wc -l || true)
+    echo "${cnt:-0}"
+    return
+  elif grep -q '^\[package\]' "$toml_file"; then
+    # single-package crate
+    echo 1
+    return
+  else
+    echo 0
+    return
+  fi
+}
+
+
+# Count workspace dependencies declared in a Cargo.toml file at the repository root.
+# Returns 0 when no dependencies are found or file missing.
+count_workspace_dependencies() {
+  local toml_file="$1"
+  if [[ ! -f "$toml_file" ]]; then
+    echo 0
+    return
+  fi
+
+  # Count dependency entries in
+  # [workspace.dependencies], [dependencies], [dev-dependencies], [build-dependencies].
+  sum=0
+  for sec in "workspace.dependencies" "dependencies" "dev-dependencies" "build-dependencies"; do
+    # find the section header line number; start from the next line (content)
+    start_line=$(awk -v sec="$sec" 'BEGIN{target="[" sec "]"} $0==target{print NR+1; exit}' "$toml_file" || true)
+    if [[ -n "$start_line" ]]; then
+      # read from the first content line and stop at the next table/header
+      deps_block=$(tail -n +"$start_line" "$toml_file" | awk '/^\[/{exit} {print}')
+      cnt=$(echo "$deps_block" \
+        | sed -nE 's/^[[:space:]]*([^[:space:]=\[]+)[[:space:]]*=.*/\1/p' \
+        | sed '/^[[:space:]]*#/d' \
+        | wc -l || true)
+      sum=$((sum + cnt))
+    fi
+  done
+  echo "$sum"
+  return
+}
+
+# Extract owner/repo path from common GitHub URL formats.
+# Accepts: https://github.com/owner/repo(.git), http(s) with trailing path, git@github.com:owner/repo.git
+get_github_repo_path() {
+  local url="$1"
+  # We assume the input URL is a GitHub URL (https or ssh) and extract owner/repo.
+  # Handles forms like:
+  #   git@github.com:owner/repo.git
+  #   https://github.com/owner/repo
+  #   https://github.com/owner/repo.git
+  #   https://github.com/owner/repo/tree/main
+  if [[ "$url" =~ ^git@github.com:([^/]+/[^/]+)(\.git)?$ ]]; then
+    echo "${BASH_REMATCH[1]}" | sed 's/\.git$//'
+    return
+  fi
+
+  if [[ "$url" =~ ^https?://([^/]+)/(.*)$ ]]; then
+    host="${BASH_REMATCH[1]}"
+    path="${BASH_REMATCH[2]}"
+    # only accept github.com host; if other host provided, still attempt to parse
+    # take first two path segments as owner/repo
+    owner=$(echo "$path" | cut -d'/' -f1)
+    repo=$(echo "$path" | cut -d'/' -f2)
+    repo=$(echo "$repo" | sed 's/\.git$//')
+    if [[ -n "$owner" && -n "$repo" ]]; then
+      echo "$owner/$repo"
+      return
+    fi
+  fi
+
+  # If nothing matched, return empty to indicate failure
+  echo ""
+}
+
+# Query GitHub API for repo stars. Returns integer >=0 or 0 on failure.
+# If GITHUB_TOKEN is set in the environment, use it for authenticated requests (higher rate limit).
+get_github_stars() {
+  local url="$1"
+  local repo_path
+  repo_path=$(get_github_repo_path "$url")
+  if [[ -z "$repo_path" ]]; then
+    echo 0
+    return
+  fi
+
+  api_url="https://api.github.com/repos/$repo_path"
+  if [[ -n "${GITHUB_TOKEN-}" ]]; then
+    auth_header=( -H "Authorization: token ${GITHUB_TOKEN}" )
+  else
+    auth_header=()
+  fi
+
+  # Query API (silent). We only need the stargazers_count field.
+  resp=$(curl -sS -H "Accept: application/vnd.github.v3+json" "${auth_header[@]}" "$api_url" || true)
+  if [[ -z "$resp" ]]; then
+    echo 0
+    return
+  fi
+  # Extract stargazers_count using grep/sed
+  stars=$(echo "$resp" | grep -o '"stargazers_count"[[:space:]]*:[[:space:]]*[0-9]\+' | grep -o '[0-9]\+' || true)
+  if [[ -n "$stars" ]]; then
+    echo "$stars"
+    return
+  fi
+
+  # fallback 0
+  echo 0
+}
+
+# Parse a Cargo.toml and return the package.name if present; empty string otherwise.
+parse_package_name() {
+  local toml_file="$1"
+  if [[ ! -f "$toml_file" ]]; then
+    echo ""
+    return
+  fi
+
+  # Extract lines inside the [package] table (stop at next table)
+  local pkg_block
+  pkg_block=$(awk 'BEGIN{in_pkg=0} /^\[package\]/{in_pkg=1; next} in_pkg && /^\[/{exit} in_pkg{print}' "$toml_file" || true)
+  if [[ -z "$pkg_block" ]]; then
+    echo ""
+    return
+  fi
+
+  # Look for a name = "..." or name = '...' line and capture the value.
+  # Use sed with a double-quoted script to allow both quote types in the regex.
+  local name
+  name=$(printf '%s\n' "$pkg_block" \
+    | sed -nE "s/^[[:space:]]*name[[:space:]]*=[[:space:]]*['\"]?([^'\"#[:space:]]+)['\"]?.*/\1/p" \
+    | head -n1 || true)
+
+  echo "${name:-}"
+}
+
+# Extract workspace member paths from a top-level Cargo.toml. Prints one path per line.
+extract_workspace_member_paths() {
+  local toml_file="$1"
+  if [[ ! -f "$toml_file" ]]; then
+    return
+  fi
+  start_line=$(awk 'BEGIN{in_ws=0} /^\[workspace\]/{in_ws=1} in_ws && /members[ \t]*=/ {print NR; exit}' "$toml_file" || true)
+  if [[ -z "$start_line" ]]; then
+    return
+  fi
+  members_block=$(tail -n +"$start_line" "$toml_file" | awk '{print} /\]/{exit}')
+  inline=$(echo "$members_block" | tr -d '\n' | sed 's/.*\[//;s/\].*//')
+  if [[ -n "$inline" ]]; then
+      # split by comma using bash to avoid awk-quoting issues and print each member on its own line
+      IFS=',' read -ra _parts <<< "$inline"
+      for part in "${_parts[@]}"; do
+        p="$part"
+        # trim leading/trailing whitespace using bash parameter expansion
+        p="${p#${p%%[![:space:]]*}}"
+        p="${p%${p##*[![:space:]]}}"
+        # remove surrounding quotes if both ends match (single or double)
+        if { [[ "${p:0:1}" == '"' && "${p: -1}" == '"' ]] || [[ "${p:0:1}" == "'" && "${p: -1}" == "'" ]]; }; then
+          p="${p:1:-1}"
+        fi
+        if [[ -n "$p" ]]; then
+          printf '%s\n' "$p"
+        fi
+      done
+    return
+  fi
+  # fallback: try to parse quoted entries across lines
+  echo "$members_block" | grep -o '"[^"]\+"' | sed 's/"//g' || true
+}
+
+# Query crates.io for a crate name and return its downloads (integer), 0 on failure
+get_crates_io_downloads_for_name() {
+  local crate="$1"
+  local api_url="https://crates.io/api/v1/crates/$crate"
+  local user_agent="${CRATES_IO_USER_AGENT:-spec-trait-inst/1.0}"
+  local resp
+
+  resp=$(curl -sS -H "Accept: application/json" -H "User-Agent: $user_agent" "$api_url" || true)
+  if [[ -z "$resp" ]]; then
+    echo 0
+    return
+  fi
+
+  # If API returned an errors object, treat as unavailable
+  if echo "$resp" | grep -q '"errors"[[:space:]]*:'; then
+    echo 0
+    return
+  fi
+
+  # collapse JSON to a single line, then look for "crate" object and its "downloads" field
+  one_line=$(echo "$resp" | tr -d '\n' | sed 's/[[:space:]]\+/ /g')
+
+  # pick the first "downloads" anywhere in the JSON
+  downloads=$(echo "$one_line" | grep -o '"downloads"[[:space:]]*:[[:space:]]*[0-9]\+' | head -n1 | grep -o '[0-9]\+' || true)
+  if [[ -n "$downloads" ]]; then
+    echo "$downloads"
+  else
+    echo 0
+  fi
+}
+
+# Get total crates.io downloads for a repository at path (target_dir).
+# Sums downloads for package in top-level Cargo.toml or for all workspace members.
+get_crates_io_downloads() {
+  local repo_dir="$1"
+  local fallback_name="${2-}"
+  local top_manifest="$repo_dir/Cargo.toml"
+  if [[ ! -f "$top_manifest" ]]; then
+    echo 0
+    return
+  fi
+  # if top-level package, use that
+  pkg=$(parse_package_name "$top_manifest" | tr -d '\n')
+  if [[ -n "$pkg" ]]; then
+    get_crates_io_downloads_for_name "$pkg"
+    return
+  fi
+  # fallback: if no package name found, use provided fallback repo name as crate name
+  if [[ -n "$fallback_name" ]]; then
+    get_crates_io_downloads_for_name "$fallback_name"
+    return
+  fi
+  # else, try workspace members
+  sum=0
+  while IFS= read -r member; do
+    # member paths are relative to repo_dir
+    member_path=$(echo "$member" | sed 's#^/*##')
+    manifest_path="$repo_dir/$member_path/Cargo.toml"
+    # if manifest exists, parse package name
+    if [[ -f "$manifest_path" ]]; then
+      name=$(parse_package_name "$manifest_path" | tr -d '\n')
+      if [[ -n "$name" ]]; then
+        d=$(get_crates_io_downloads_for_name "$name")
+        sum=$((sum + d))
+      fi
+    else
+      # fallback: assume member name is last path segment
+      name=$(basename "$member_path")
+      d=$(get_crates_io_downloads_for_name "$name")
+      sum=$((sum + d))
+    fi
+  done < <(extract_workspace_member_paths "$top_manifest")
+  echo "$sum"
+}
+
+# https://doc.rust-lang.org/cargo/reference/features.html#mutually-exclusive-features
+get_cmd() {
+  local repo_name="$1"
+  local excluded_repos=("libc" "log" "parking_lot" "gitoxide" "nushell" "polars" "quiche" "hyperswitch" "cargo") 
+  local base_cmd="clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_LOG_STYLE=always RUST_LOG=debug LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-trait-inst --print-spec-data"
+
+  if [[ " ${excluded_repos[*]} " == *" $repo_name "* ]]; then
+    echo "$base_cmd"
+  else
+    echo "$base_cmd -- --all-features"
+  fi
+}
+
+i=0
+while IFS= read -r raw || [[ -n "$raw" ]]; do
+  line="${raw%%#*}"            # strip trailing comment
+  line="${line#"${line%%[![:space:]]*}"}"  # trim left
+  line="${line%"${line##*[![:space:]]}"}"  # trim right
+  [[ -z "$line" ]] && continue
+
+  url="$line"
+  i=$((i+1))
+
+  # derive repo name from URL
+  base="$(basename "${url%%\?*}")"
+  repo_name="${base%.git}"
+  repo_name="$(sanitize "$repo_name")"
+ 
+  echo "[$i] $repo_name"
+
+  # if requested, skip repos already present in the summary file
+  if $continue && [[ -f "$summary" ]]; then
+    if awk -v url="$url" -F, '
+      {
+        f=$1;
+        sub(/^"/, "", f);
+        sub(/"$/, "", f);
+        if (f == url) { found=1; exit }
+      }
+      END { exit !found }
+    ' "$summary"; then
+      echo "Skipping $url (already in summary)"
+      continue
+    fi
+  fi
+
+  # ensure unique
+  target_dir="$workdir/$repo_name"
+  if [[ -e "$target_dir" ]]; then
+    suffix=1
+    while [[ -e "${target_dir}-${suffix}" ]]; do
+      suffix=$((suffix+1))
+    done
+    target_dir="${target_dir}-${suffix}"
+  fi
+
+  echo "Cloning from $url"
+  if ! git clone --recurse-submodules --depth 1 "$url" "$target_dir" >/dev/null 2>&1; then
+    echo "Error: clone failed for $repo_name (exit 4)"
+    echo "Aborting due to error."
+    exit 4
+  fi
+
+  # remove existing rust-toolchain.toml to avoid toolchain conflicts
+  if [[ -f "$target_dir/rust-toolchain.toml" ]]; then
+    rm "$target_dir/rust-toolchain.toml"
+  fi
+
+  # run the cargo command
+  log_file="$logs/${repo_name}.log"
+  echo "Running in $target_dir"
+  pushd "$target_dir" >/dev/null
+  # run command, capture exit code
+  # Use bash -lc to allow shell features in cmd
+  if bash -lc "$(get_cmd "$repo_name")" > "$log_file" 2>&1; then
+    rc=0
+  else
+    rc=$?
+  fi
+  popd >/dev/null
+
+  # return if error 
+  if [[ $rc -ne 0 ]]; then
+    echo "Error: command failed for $repo_name (exit $rc)"
+    echo "Aborting due to error."
+    exit $rc
+  fi
+
+  # count workspace members in the repo's top-level Cargo.toml (0 if none)
+  manifest="$target_dir/Cargo.toml"
+  members_count=$(count_workspace_members "$manifest")
+  dependencies_count=$(count_workspace_dependencies "$manifest")
+  # query GitHub stars (0 if unavailable)
+  github_stars=$(get_github_stars "$url")
+  # query crates.io downloads (sum for workspace or single crate)
+  crates_downloads=$(get_crates_io_downloads "$target_dir" "$repo_name")
+
+  # get time and memory usage from log ("STIAnalysis for crate $repo_name completed in $elapsed_time s with peak rss $peak_rss MB")
+  # collect all occurrences (one per member)
+  mapfile -t _time_lines < <(grep -oP 'STIAnalysis for crate .* completed in \K[0-9.]+' "$log_file" || true)
+  mapfile -t _rss_lines < <(grep -oP 'STIAnalysis for crate .* with peak rss \K[0-9]+' "$log_file" || true)
+  total_time=0
+  peak_rss=0
+  for t in "${_time_lines[@]}"; do
+    total_time=$(echo "$total_time + $t" | bc)
+  done
+  for r in "${_rss_lines[@]}"; do
+    # skip empty entries
+    [[ -z "$r" ]] && continue
+    if (( r > peak_rss )); then
+      peak_rss=$r
+    fi
+  done
+
+  # get specialization analysis results from log ("Specialization analysis data: $specialization_data")
+  # collect all occurrences (one per member) and sum each comma-separated column
+  mapfile -t _spec_lines < <(grep -oP 'Specialization analysis data: \K.*' "$log_file" || true)
+  if [[ ${#_spec_lines[@]} -eq 0 ]]; then
+    specialization_data=""
+  else
+    declare -a _sums=()
+    for _line in "${_spec_lines[@]}"; do
+      # split on commas
+      IFS=',' read -ra _parts <<< "$_line"
+      for idx in "${!_parts[@]}"; do
+        p="${_parts[idx]}"
+        # trim whitespace
+        p="${p#"${p%%[![:space:]]*}"}"
+        p="${p%"${p##*[![:space:]]}"}"
+        # default empty->0 and ensure numeric (non-numeric treated as 0)
+        if [[ -z "$p" || ! "$p" =~ ^-?[0-9]+$ ]]; then
+          p=0
+        fi
+        _sums[idx]=$(( ${_sums[idx]:-0} + p ))
+      done
+    done
+    # rebuild comma-separated list (preserve order)
+    specialization_data="$(IFS=,; echo "${_sums[*]}")"
+  fi
+
+  # append parsed results to summary (one final line per repo)
+  echo "\"$url\",\"$repo_name\",$members_count,$dependencies_count,$crates_downloads,$github_stars,$total_time,$peak_rss,$specialization_data" >> "$summary"
+
+  # remove repo if needed
+  if ! $keep; then
+    rm -rf "$target_dir"
+  fi
+  
+done < "$file"
+
+echo "All done. Summary: $summary"

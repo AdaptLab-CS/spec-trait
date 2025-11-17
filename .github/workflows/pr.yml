@@ -8,6 +8,7 @@ on:
       - "spec-trait-inst/Cargo.toml"
       - "spec-trait-inst/rustfmt.toml"
       - "spec-trait-inst/config/**"
+      - "spec-trait-inst/tests/**"
       - "spec-trait-impl/src/**"
       - "spec-trait-impl/crates/**"
       - "spec-trait-impl/Cargo.lock"

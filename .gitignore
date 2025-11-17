@@ -27,5 +27,5 @@ Cargo.lock
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
-# Results log files from run-on-repos
-**/tests/results/*.log
+# Results log files from analysis script
+*.log

@@ -39,4 +39,5 @@ mod test_build_tree {
     build_test!(matches);
     build_test!(collections);
     build_test!(loops);
+    build_test!(trait_impl_mod);
 }
