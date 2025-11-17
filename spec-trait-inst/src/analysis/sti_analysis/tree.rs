@@ -2,8 +2,8 @@ use super::distance::Node;
 use super::Analyzer;
 use rustc_ast::LitKind;
 use rustc_hir::{
-    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, BodyId, ConstArg, ConstArgKind, Expr,
-    ExprKind, ImplItem, ImplItemKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind,
+    AssignOp, AssignOpKind, BinOp, BinOpKind, Block, BodyId, ConstArg, ConstArgKind, ConstItemRhs,
+    Expr, ExprKind, ImplItem, ImplItemKind, Item, ItemKind, Mutability, Pat, PatExpr, PatExprKind,
     PatKind, Path, QPath, RangeEnd, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind, Ty, TyKind,
     UnOp,
 };
@@ -240,7 +240,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 let sub_name = self.pat_to_string(sub);
                 format!("*{}", sub_name)
             }
-            PatKind::Ref(sub, _) => {
+            PatKind::Ref(sub, _, _) => {
                 let sub_name = self.pat_to_string(sub);
                 format!("&{}", sub_name)
             }
@@ -391,7 +391,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.visit_body_expr(&anon_const.body);
                 self.pop_node();
             }
-            ConstArgKind::Infer(_, _) => {
+            _ => {
                 log::debug!("Unhandled const arg: {:?}", c);
                 self.add_leaf(NodeKind::Unknown(format!("{:?}", c)));
             }
@@ -641,10 +641,12 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
                 self.visit_body_expr(body_id);
                 self.pop_node();
             }
-            ItemKind::Const(ident, _, _, body_id) => {
+            ItemKind::Const(ident, _, _, body) => {
                 let name = ident.to_string();
                 self.push_node(NodeKind::VarDef(VarKind::Const, name));
-                self.visit_body_expr(body_id);
+                if let ConstItemRhs::Body(body_id) = body {
+                    self.visit_body_expr(body_id);
+                }
                 self.pop_node();
             }
             ItemKind::Fn {
@@ -739,7 +741,9 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match &item.kind {
             ImplItemKind::Const(_, body) => {
                 self.push_node(NodeKind::VarDef(VarKind::Const, name));
-                self.visit_body_expr(body);
+                if let ConstItemRhs::Body(body) = body {
+                    self.visit_body_expr(body);
+                }
                 self.pop_node();
             }
             ImplItemKind::Fn(sig, body_id) => {
@@ -757,7 +761,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match &item.kind {
             TraitItemKind::Const(_, body) => {
                 self.push_node(NodeKind::VarDef(VarKind::Const, name));
-                if let Some(body) = body {
+                if let Some(ConstItemRhs::Body(body)) = body {
                     self.visit_body_expr(body);
                 }
                 self.pop_node();

@@ -11,8 +11,8 @@ Note that for macOS, the `LD_LIBRARY_PATH` should be replaced with `DYLD_LIBRARY
 Setup the nightly toolchain:
 
 ```bash
-rustup toolchain install nightly-2025-11-07
-rustup component add --toolchain nightly-2025-11-07 rust-src rustc-dev llvm-tools-preview miri rust-analyzer clippy
+rustup toolchain install nightly-2025-11-17
+rustup component add --toolchain nightly-2025-11-17 rust-src rustc-dev llvm-tools-preview miri rust-analyzer clippy
 ```
 
 ### Test
