@@ -33,6 +33,9 @@ jobs:
         run: rustup component add --toolchain ${{ matrix.toolchain }} rustfmt
 
       # spec-trait-inst checks
+      - name: Clean cargo (spec-trait-inst)
+        working-directory: spec-trait-inst
+        run: cargo +${{ matrix.toolchain }} clean
       - name: Run cargo build (spec-trait-inst)
         working-directory: spec-trait-inst
         run: cargo +${{ matrix.toolchain }} build --verbose
@@ -47,6 +50,9 @@ jobs:
         run: cargo +${{ matrix.toolchain }} fmt -- --check
 
       # spec-trait-impl checks
+      - name: Clean cargo (spec-trait-impl)
+        working-directory: spec-trait-impl
+        run: cargo +${{ matrix.toolchain }} clean
       - name: Run cargo build (spec-trait-impl)
         working-directory: spec-trait-impl
         run: cargo +${{ matrix.toolchain }} build --verbose
