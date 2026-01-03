@@ -73,18 +73,23 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
 
     /// Get pairs of specializable functions along with their similarity score.
     pub fn get_specializable_fns(&self) -> Vec<SpecializablePair<'a>> {
-        let mut specializable = vec![];
+        let mut specializable: Vec<SpecializablePair> = vec![];
         let fns = self.get_fns_with_tree();
         for (i, (fn_a, tree_a)) in fns.iter().enumerate() {
             log::trace!("processing function {}/{}", i + 1, fns.len());
             for (fn_b, tree_b) in fns.iter().skip(i + 1) {
                 if specializable_fn_heuristic(fn_a, fn_b) {
                     if let Some(similarity) = self.is_specializable(tree_a, tree_b) {
-                        specializable.push(SpecializablePair {
-                            fn_a,
-                            fn_b,
-                            similarity,
-                        });
+                        if !specializable.iter().any(|pair| {
+                            pair.fn_a.id == fn_a.id && pair.fn_b.id == fn_b.id
+                                || pair.fn_a.id == fn_b.id && pair.fn_b.id == fn_a.id
+                        }) {
+                            specializable.push(SpecializablePair {
+                                fn_a,
+                                fn_b,
+                                similarity,
+                            });
+                        }
                     }
                 }
             }
