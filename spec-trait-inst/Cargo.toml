@@ -1,6 +1,6 @@
 [package]
 name = "spec-trait-inst"
-version = "0.1.0-nightly-2025-11-17"
+version = "0.1.0-nightly-2026-01-01"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
