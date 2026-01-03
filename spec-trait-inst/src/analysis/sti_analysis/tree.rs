@@ -285,7 +285,6 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
         match &expr.kind {
             PatExprKind::Lit { lit, negated: _ } => self.lit_to_string(lit.node),
             PatExprKind::Path(qpath) => self.qpath_to_string(qpath),
-            _ => format!("{:?}", expr.kind),
         }
     }
 

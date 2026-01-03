@@ -31,7 +31,7 @@ pub struct CliArgs {
     #[clap(long)]
     color_log: bool,
 
-    /// Print the AST of the crate
+    // Print the AST of the crate
     #[clap(long)]
     print_crate: bool,
 
