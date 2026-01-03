@@ -111,6 +111,13 @@ impl<T> Foo<T> for ZST {
     }
 }
 
+#[when(T = fn(&u8) -> &u8)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, _x: T) {
+        println!("Foo impl ZST where T is a function pointer from &u8 to &u8");
+    }
+}
+
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
@@ -286,6 +293,7 @@ fn main() {
     spec! { zst.foo(&1i32); ZST; [&i32] } // -> "Foo impl ZST where T is &'a _"
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  } // -> "Foo impl ZST where T implements Bar"
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar } // -> "Foo impl ZST where T implements Bar and FooBar"
+    spec! { zst.foo(|x: &u8| x); ZST; [fn(&u8) -> &u8] } // -> "Foo impl ZST where T is a function pointer from &u8 to &u8"
     spec! { zst.foo(1i8); ZST; [i8] } // -> "Default Foo for ZST"
     println!();
 
