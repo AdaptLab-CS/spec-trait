@@ -73,7 +73,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
 
     /// Get pairs of specializable functions along with their similarity score.
     pub fn get_specializable_fns(&self) -> Vec<SpecializablePair<'a>> {
-        let mut specializable: Vec<SpecializablePair> = vec![];
+        let mut specializable = vec![];
         let mut seen = HashSet::new();
         let fns = self.get_fns_with_tree();
         for (i, (fn_a, tree_a)) in fns.iter().enumerate() {
