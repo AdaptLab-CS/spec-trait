@@ -5,8 +5,8 @@ use crate::{
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use syn::{
-    Expr, GenericArgument, GenericParam, Generics, Ident, PathArguments, Type, TypeArray,
-    TypeReference, TypeSlice, TypeTuple,
+    Expr, GenericArgument, GenericParam, Generics, Ident, PathArguments, ReturnType, Type,
+    TypeArray, TypeReference, TypeSlice, TypeTuple,
 };
 
 pub type Aliases = HashMap<String, Vec<String>>;
@@ -57,6 +57,22 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
                 elem: Box::new(resolved_elem),
                 ..slice.clone()
             })
+        }
+
+        // fn(T) -> U
+        Type::BareFn(bare_fn) => {
+            let mut resolved = bare_fn.clone();
+
+            for input in &mut resolved.inputs {
+                input.ty = resolve_type(&input.ty, aliases);
+            }
+
+            if let ReturnType::Type(arrow, ty) = &resolved.output {
+                let new_ty = resolve_type(ty, aliases);
+                resolved.output = ReturnType::Type(*arrow, Box::new(new_ty));
+            }
+
+            Type::BareFn(resolved)
         }
 
         // T, T<U>
@@ -203,6 +219,41 @@ fn can_assign(
                 && (matches!(array1.len, Expr::Infer(_))
                     || matches!(array2.len, Expr::Infer(_))
                     || to_string(&array1.len) == to_string(&array2.len))
+        }
+
+        // fn(T) -> U
+        (Type::BareFn(fn1), Type::BareFn(fn2)) => {
+            let unsafety_compatible = matches!(
+                (&fn1.unsafety, &fn2.unsafety),
+                (None, None) | (Some(_), Some(_))
+            );
+
+            let abi_compatible = match (&fn1.abi, &fn2.abi) {
+                (None, None) => true,
+                (Some(a1), Some(a2)) => to_string(a1) == to_string(a2),
+                _ => false,
+            };
+
+            fn1.inputs.len() == fn2.inputs.len()
+                && unsafety_compatible
+                && abi_compatible
+                && fn1
+                    .inputs
+                    .iter()
+                    .zip(&fn2.inputs)
+                    .all(|(arg1, arg2)| can_assign(&arg1.ty, &arg2.ty, generics))
+                && {
+                    let ret1 = match &fn1.output {
+                        ReturnType::Default => str_to_type_name("()"),
+                        ReturnType::Type(_, ty) => *ty.clone(),
+                    };
+                    let ret2 = match &fn2.output {
+                        ReturnType::Default => str_to_type_name("()"),
+                        ReturnType::Type(_, ty) => *ty.clone(),
+                    };
+
+                    can_assign(&ret1, &ret2, generics)
+                }
         }
 
         // `T`, `T<U>`, `T<_>`
@@ -379,6 +430,18 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
                 }
             }
         }
+
+        // fn(T) -> U
+        Type::BareFn(bare_fn) => {
+            for input in &mut bare_fn.inputs {
+                replace_type(&mut input.ty, prev, new);
+            }
+
+            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
+                replace_type(ty, prev, new);
+            }
+        }
+
         _ => {}
     }
 }
@@ -409,6 +472,15 @@ pub fn replace_lifetime(ty: &mut Type, prev: &str, new: &str) {
                         }
                     }
                 }
+            }
+        }
+        Type::BareFn(bare_fn) => {
+            for input in &mut bare_fn.inputs {
+                replace_lifetime(&mut input.ty, prev, new);
+            }
+
+            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
+                replace_lifetime(ty, prev, new);
             }
         }
         _ => {}
@@ -460,6 +532,18 @@ pub fn strip_lifetimes(ty: &mut Type, generics: &Generics) {
                 }
             }
         }
+
+        // fn(T) -> U
+        Type::BareFn(bare_fn) => {
+            for input in &mut bare_fn.inputs {
+                strip_lifetimes(&mut input.ty, generics);
+            }
+
+            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
+                strip_lifetimes(ty, generics);
+            }
+        }
+
         _ => {}
     }
 }
@@ -536,6 +620,20 @@ pub fn assign_lifetimes(t1: &mut Type, t2: &Type, generics: &mut ConstrainedGene
                 };
             }),
 
+        // fn(T) -> U
+        (Type::BareFn(fn1), Type::BareFn(fn2)) => {
+            fn1.inputs
+                .iter_mut()
+                .zip(&fn2.inputs)
+                .for_each(|(arg1, arg2)| assign_lifetimes(&mut arg1.ty, &arg2.ty, generics));
+
+            if let (ReturnType::Type(_, ty1), ReturnType::Type(_, ty2)) =
+                (&mut fn1.output, &fn2.output)
+            {
+                assign_lifetimes(ty1, ty2, generics);
+            }
+        }
+
         _ => {}
     }
 }
@@ -578,6 +676,17 @@ pub fn replace_infers(
                         }
                     }
                 }
+            }
+        }
+
+        // fn(T) -> U
+        Type::BareFn(bare_fn) => {
+            for input in &mut bare_fn.inputs {
+                replace_infers(&mut input.ty, generics, counter, new_generics);
+            }
+
+            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
+                replace_infers(ty, generics, counter, new_generics);
             }
         }
 
@@ -941,6 +1050,42 @@ mod tests {
     }
 
     #[test]
+    fn compare_types_fn() {
+        let mut g = ConstrainedGenerics::default();
+
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(u8) -> i32");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(_) -> _");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(T) -> i32");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(u8) -> T");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(T) -> T");
+        assert!(!can_assign(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(i32) -> i32");
+        assert!(!can_assign(&t1, &t2, &mut g));
+
+        let t1 = str_to_type_name("fn(u8) -> i32");
+        let t2 = str_to_type_name("fn(u8) -> u8");
+        assert!(!can_assign(&t1, &t2, &mut g));
+    }
+
+    #[test]
     fn compare_types_nested() {
         let mut g = ConstrainedGenerics::default();
 
@@ -973,6 +1118,7 @@ mod tests {
             "(T)",
             "Other<T>",
             "T<Other>",
+            "fn(T) -> Other",
         ];
         for ty in types {
             let type_ = str_to_type_name(ty);
@@ -991,6 +1137,7 @@ mod tests {
             "(T)",
             "Other<T>",
             "T<VOther>",
+            "fn(T) -> Other",
         ];
         for ty in types {
             let type_ = str_to_type_name(ty);
@@ -1112,6 +1259,24 @@ mod tests {
 
         let mut ty: Type = parse2(quote! { Option<T> }).unwrap();
         replace_type(&mut ty, "Option<T>", &new_ty);
+
+        assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
+    }
+
+    #[test]
+    fn replace_type_fn() {
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        let mut ty: Type = parse2(quote! { fn(T) -> T }).unwrap();
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "fn(String) -> String".to_string().replace(" ", "")
+        );
+
+        let mut ty: Type = parse2(quote! { fn(T) -> T }).unwrap();
+        replace_type(&mut ty, "fn(T) -> T", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
     }
@@ -1268,6 +1433,31 @@ mod tests {
         assert_eq!(
             new_generics,
             vec!["__G_0__".to_string(), "__G_1__".to_string()]
+        );
+    }
+
+    #[test]
+    fn replace_infers_fn() {
+        let mut ty: Type = parse2(quote! { fn(_, &[_]) -> _ }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "fn(__G_0__, &[__G_1__]) -> __G_2__"
+                .to_string()
+                .replace(" ", "")
+        );
+        assert_eq!(
+            new_generics,
+            vec![
+                "__G_0__".to_string(),
+                "__G_1__".to_string(),
+                "__G_2__".to_string()
+            ]
         );
     }
 
