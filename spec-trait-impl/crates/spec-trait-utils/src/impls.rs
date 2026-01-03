@@ -116,7 +116,12 @@ impl Specializable for ImplBody {
 impl ImplBody {
     fn get_spec_trait_name(&self) -> String {
         match &self.condition {
-            Some(c) => format!("{}_{}_{}", self.trait_name, self.type_name, to_hash(c)),
+            Some(c) => format!(
+                "{}_{}_{}",
+                self.trait_name,
+                to_hash(&self.type_name),
+                to_hash(c)
+            ),
             None => self.trait_name.to_owned(),
         }
     }
