@@ -4,6 +4,7 @@ use std::fmt::Debug;
 #[allow(clippy::upper_case_acronyms)]
 struct ZST;
 struct ZST2;
+struct S<T>(T);
 
 trait Foo<T> {
     fn foo(&self, x: T);
@@ -16,6 +17,10 @@ trait Foo2<T, U> {
 #[allow(dead_code)]
 trait Foo3<T> {
     fn foo(&self, x: T, y: String);
+}
+
+trait Foo4 {
+    fn foo(&self);
 }
 
 type MyType = u8;
@@ -239,10 +244,26 @@ impl<T, U> Foo<U> for T {
     }
 }
 
+// T - Foo4
+impl<T> Foo4 for T {
+    fn foo(&self) {
+        println!("Default Foo4 for T");
+    }
+}
+
+#[when(T = u32)]
+impl<T> Foo4 for S<T> {
+    fn foo(&self) {
+        println!("Foo4 impl S<T> where T is u32");
+    }
+}
+
 fn main() {
     let zst = ZST;
     let zst2 = ZST2;
     let x = vec![1i32];
+    let s1 = S(1u32);
+    let s2 = S(1i8);
 
     // ZST - Foo
     spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType } // -> "Foo impl ZST where T is MyType"
@@ -291,4 +312,10 @@ fn main() {
     spec! { 1i32.foo("str"); i32; [&str] } // -> "Foo impl T where U is &str"
     spec! { zst.foo("str"); ZST; [&str] } // -> "Foo impl T where U is &str"
     spec! { 1u8.foo(1u8); u8; [u8] } // -> "Foo impl T where T is not i32 or ZST"
+    println!();
+
+    // T - Foo4
+    spec! { s1.foo(); S<u32>; [] } // -> "Foo4 impl S<T> where T is u32"
+    spec! { s2.foo(); S<i8>; [] } // -> "Default Foo4 for T"
+    println!();
 }
