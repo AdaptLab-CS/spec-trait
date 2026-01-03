@@ -251,10 +251,17 @@ impl<T> Foo4 for T {
     }
 }
 
-#[when(T = u32)]
+#[when(T = i32)]
 impl<T> Foo4 for S<T> {
     fn foo(&self) {
-        println!("Foo4 impl S<T> where T is u32");
+        println!("Foo4 impl S<T> where T is i32");
+    }
+}
+
+#[when(T = i32)]
+impl<T> Foo4 for Vec<T> {
+    fn foo(&self) {
+        println!("Foo4 impl Vec<T> where T is i32");
     }
 }
 
@@ -262,8 +269,8 @@ fn main() {
     let zst = ZST;
     let zst2 = ZST2;
     let x = vec![1i32];
-    let s1 = S(1u32);
-    let s2 = S(1i8);
+    let s1 = S(1i32);
+    let s2 = S(1u8);
 
     // ZST - Foo
     spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType } // -> "Foo impl ZST where T is MyType"
@@ -315,7 +322,8 @@ fn main() {
     println!();
 
     // T - Foo4
-    spec! { s1.foo(); S<u32>; [] } // -> "Foo4 impl S<T> where T is u32"
-    spec! { s2.foo(); S<i8>; [] } // -> "Default Foo4 for T"
+    spec! { s1.foo(); S<i32>; [] } // -> "Foo4 impl S<T> where T is i32"
+    spec! { x.foo(); Vec<i32>; [] } // -> "Foo4 impl Vec<T> where T is i32"
+    spec! { s2.foo(); S<u8>; [] } // -> "Default Foo4 for T"
     println!();
 }
