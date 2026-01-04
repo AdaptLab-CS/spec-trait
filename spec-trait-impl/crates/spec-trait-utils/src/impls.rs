@@ -119,7 +119,7 @@ impl ImplBody {
             Some(c) => format!(
                 "{}_{}_{}",
                 self.trait_name,
-                to_hash(&self.type_name),
+                to_hash(&self.type_name.replace(" ", "")),
                 to_hash(c)
             ),
             None => self.trait_name.to_owned(),
