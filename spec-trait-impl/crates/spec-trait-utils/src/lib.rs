@@ -6,4 +6,5 @@ pub mod impls;
 pub mod parsing;
 mod specialize;
 pub mod traits;
+mod type_visitor;
 pub mod types;
