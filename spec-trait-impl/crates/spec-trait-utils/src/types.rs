@@ -1,12 +1,13 @@
 use crate::{
     conversions::{str_to_generics, str_to_lifetime, str_to_type_name, to_string},
     specialize::collect_generics_lifetimes,
+    type_visitor::VisitTypeInDepth,
 };
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use syn::{
-    Expr, GenericArgument, GenericParam, Generics, Ident, PathArguments, ReturnType, Type,
-    TypeArray, TypeReference, TypeSlice, TypeTuple,
+    Expr, GenericArgument, GenericParam, Generics, Ident, Lifetime, PathArguments, ReturnType,
+    Type, TypeParamBound, TypeReference,
 };
 
 pub type Aliases = HashMap<String, Vec<String>>;
@@ -18,88 +19,24 @@ pub fn get_concrete_type(type_or_alias: &str, aliases: &Aliases) -> String {
 }
 
 fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
-    match unwrap_paren(ty) {
-        // (T, U)
-        Type::Tuple(tuple) => {
-            let resolved_elems = tuple
-                .elems
-                .iter()
-                .map(|elem| resolve_type(elem, aliases))
-                .collect();
-            Type::Tuple(TypeTuple {
-                elems: resolved_elems,
-                ..tuple.clone()
-            })
-        }
-
-        // &T
-        Type::Reference(reference) => {
-            let resolved_elem = resolve_type(&reference.elem, aliases);
-            Type::Reference(TypeReference {
-                elem: Box::new(resolved_elem),
-                ..reference.clone()
-            })
-        }
-
-        // [T; N]
-        Type::Array(array) => {
-            let resolved_elem = resolve_type(&array.elem, aliases);
-            Type::Array(TypeArray {
-                elem: Box::new(resolved_elem),
-                ..array.clone()
-            })
-        }
-
-        // [T]
-        Type::Slice(slice) => {
-            let resolved_elem = resolve_type(&slice.elem, aliases);
-            Type::Slice(TypeSlice {
-                elem: Box::new(resolved_elem),
-                ..slice.clone()
-            })
-        }
-
-        // fn(T) -> U
-        Type::BareFn(bare_fn) => {
-            let mut resolved = bare_fn.clone();
-
-            for input in &mut resolved.inputs {
-                input.ty = resolve_type(&input.ty, aliases);
-            }
-
-            if let ReturnType::Type(arrow, ty) = &resolved.output {
-                let new_ty = resolve_type(ty, aliases);
-                resolved.output = ReturnType::Type(*arrow, Box::new(new_ty));
-            }
-
-            Type::BareFn(resolved)
-        }
-
-        // T, T<U>
-        Type::Path(type_path) if type_path.qself.is_none() => {
-            let mut resolved_path = type_path.clone();
-
-            let ident = type_path.path.segments.last().unwrap().ident.to_string();
-            if let Some((k, _)) = aliases.iter().find(|(_, v)| v.contains(&ident)) {
-                return str_to_type_name(k);
-            }
-
-            for segment in &mut resolved_path.path.segments {
-                if let PathArguments::AngleBracketed(args) = &mut segment.arguments {
-                    for arg in &mut args.args {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            *inner_ty = resolve_type(inner_ty, aliases);
-                        }
-                    }
-                }
-            }
-
-            Type::Path(resolved_path)
-        }
-
-        // Default case: return the type as-is
-        _ => ty.clone(),
+    struct TypeResolver<'a> {
+        aliases: &'a Aliases,
     }
+    impl<'a> VisitTypeInDepth for TypeResolver<'a> {
+        fn before_visit_type(&mut self, ty: &mut Type) {
+            *ty = unwrap_paren(ty).clone();
+            if let Some((k, _)) = self
+                .aliases
+                .iter()
+                .find(|(_, v)| v.contains(&to_string(ty)))
+            {
+                *ty = str_to_type_name(k);
+            }
+        }
+    }
+    let mut ty = ty.clone();
+    TypeResolver { aliases }.visit_type(&mut ty);
+    ty
 }
 
 type GenericsMap = HashMap<String, Option<String>>;
@@ -288,6 +225,41 @@ fn can_assign(
                     })
         }
 
+        // impl T<U>
+        (Type::ImplTrait(tr1), Type::ImplTrait(tr2)) => {
+            tr1.bounds.len() == tr2.bounds.len()
+                && tr1
+                    .bounds
+                    .iter()
+                    .zip(&tr2.bounds)
+                    .all(|(b1, b2)| match (b1, b2) {
+                        (TypeParamBound::Trait(tb1), TypeParamBound::Trait(tb2)) => {
+                            tb1.path.segments.len() == tb2.path.segments.len()
+                                && tb1.path.segments.iter().zip(&tb2.path.segments).all(
+                                    |(seg1, seg2)| match (&seg1.arguments, &seg2.arguments) {
+                                        (
+                                            PathArguments::AngleBracketed(args1),
+                                            PathArguments::AngleBracketed(args2),
+                                        ) => {
+                                            args1.args.len() == args2.args.len()
+                                                && args1.args.iter().zip(&args2.args).all(
+                                                    |(arg1, arg2)| match (arg1, arg2) {
+                                                        (
+                                                            GenericArgument::Type(t1),
+                                                            GenericArgument::Type(t2),
+                                                        ) => can_assign(t1, t2, generics),
+                                                        _ => false,
+                                                    },
+                                                )
+                                        }
+                                        _ => seg1.arguments.is_empty() && seg2.arguments.is_empty(),
+                                    },
+                                )
+                        }
+                        _ => false,
+                    })
+        }
+
         _ => false,
     }
 }
@@ -371,181 +343,71 @@ pub fn type_contains_lifetime(ty: &Type, lifetime: &str) -> bool {
 
 /// Replaces all occurrences of `prev` in the given type with `new`.
 pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
-    if to_string(ty) == to_string(&str_to_type_name(prev)) {
-        *ty = new.clone();
-        return;
+    struct TypeReplacer {
+        prev: String,
+        new: Type,
     }
-
-    match ty {
-        // (T, U)
-        Type::Tuple(t) => {
-            for elem in &mut t.elems {
-                replace_type(elem, prev, new);
+    impl VisitTypeInDepth for TypeReplacer {
+        fn visit_ident(&mut self, ident: &mut Ident) {
+            if ident == &self.prev {
+                *ident = Ident::new(&to_string(&self.new.clone()), Span::call_site());
             }
         }
-
-        // &T
-        Type::Reference(r) => replace_type(&mut r.elem, prev, new),
-
-        // [T; N]
-        Type::Array(a) => replace_type(&mut a.elem, prev, new),
-
-        // [T]
-        Type::Slice(s) => replace_type(&mut s.elem, prev, new),
-
-        // (T)
-        Type::Paren(s) => replace_type(&mut s.elem, prev, new),
-
-        // _
-        Type::Infer(_) if prev == "_" => {
-            *ty = new.clone();
-        }
-
-        // T, T<U>
-        Type::Path(type_path) => {
-            // T
-            if type_path.qself.is_none()
-                && type_path.path.segments.len() == 1
-                && type_path.path.segments[0].ident == prev
-                && type_path.path.segments[0].arguments.is_empty()
-            {
-                *ty = new.clone();
-                return;
-            }
-
-            // T<U>
-            for seg in &mut type_path.path.segments {
-                // T
-                if seg.ident == prev {
-                    seg.ident = Ident::new(&to_string(&new.clone()), Span::call_site());
-                }
-
-                // <U>
-                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
-                    for arg in ab.args.iter_mut() {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            replace_type(inner_ty, prev, new);
-                        }
-                    }
-                }
+        fn before_visit_type(&mut self, ty: &mut Type) {
+            if to_string(ty) == to_string(&str_to_type_name(self.prev.as_str())) {
+                *ty = self.new.clone();
             }
         }
-
-        // fn(T) -> U
-        Type::BareFn(bare_fn) => {
-            for input in &mut bare_fn.inputs {
-                replace_type(&mut input.ty, prev, new);
-            }
-
-            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
-                replace_type(ty, prev, new);
-            }
-        }
-
-        _ => {}
     }
+    TypeReplacer {
+        prev: prev.to_string(),
+        new: new.clone(),
+    }
+    .visit_type(ty);
 }
 
 /// Replaces all occurrences of `prev` lifetime in the given type with `new`.
 pub fn replace_lifetime(ty: &mut Type, prev: &str, new: &str) {
-    match ty {
-        Type::Reference(r) => {
-            if r.lifetime.as_ref().is_some_and(|l| l.to_string() == prev) {
-                r.lifetime = Some(str_to_lifetime(new));
-            }
-            replace_lifetime(&mut r.elem, prev, new);
-        }
-        Type::Tuple(t) => {
-            for elem in &mut t.elems {
-                replace_lifetime(elem, prev, new);
-            }
-        }
-        Type::Array(a) => replace_lifetime(&mut a.elem, prev, new),
-        Type::Slice(s) => replace_lifetime(&mut s.elem, prev, new),
-        Type::Paren(p) => replace_lifetime(&mut p.elem, prev, new),
-        Type::Path(type_path) => {
-            for seg in &mut type_path.path.segments {
-                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
-                    for arg in ab.args.iter_mut() {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            replace_lifetime(inner_ty, prev, new);
-                        }
-                    }
-                }
-            }
-        }
-        Type::BareFn(bare_fn) => {
-            for input in &mut bare_fn.inputs {
-                replace_lifetime(&mut input.ty, prev, new);
-            }
-
-            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
-                replace_lifetime(ty, prev, new);
-            }
-        }
-        _ => {}
+    struct LifetimeReplacer {
+        prev: String,
+        new: String,
     }
+    impl VisitTypeInDepth for LifetimeReplacer {
+        fn visit_lifetime(&mut self, lifetime: &mut Lifetime) {
+            if lifetime.to_string() == self.prev {
+                *lifetime = Lifetime::new(&self.new, Span::call_site());
+            }
+        }
+    }
+    LifetimeReplacer {
+        prev: prev.to_string(),
+        new: new.to_string(),
+    }
+    .visit_type(ty);
 }
 
 /// removes all lifetimes present in generics
 pub fn strip_lifetimes(ty: &mut Type, generics: &Generics) {
-    match ty {
-        // (T, U)
-        Type::Tuple(t) => {
-            for elem in &mut t.elems {
-                strip_lifetimes(elem, generics);
-            }
-        }
-
-        // &T
-        Type::Reference(r) => {
-            let generics_lifetimes = collect_generics_lifetimes::<HashSet<_>>(generics);
-
-            if r.lifetime
-                .as_ref()
-                .is_some_and(|l| generics_lifetimes.contains(&l.to_string()))
-            {
-                r.lifetime = None;
-            }
-
-            strip_lifetimes(&mut r.elem, generics);
-        }
-
-        // [T; N]
-        Type::Array(a) => strip_lifetimes(&mut a.elem, generics),
-
-        // [T]
-        Type::Slice(s) => strip_lifetimes(&mut s.elem, generics),
-
-        // (T)
-        Type::Paren(s) => strip_lifetimes(&mut s.elem, generics),
-
-        // T, T<U>
-        Type::Path(type_path) => {
-            for seg in &mut type_path.path.segments {
-                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
-                    for arg in ab.args.iter_mut() {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            strip_lifetimes(inner_ty, generics);
-                        }
-                    }
-                }
-            }
-        }
-
-        // fn(T) -> U
-        Type::BareFn(bare_fn) => {
-            for input in &mut bare_fn.inputs {
-                strip_lifetimes(&mut input.ty, generics);
-            }
-
-            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
-                strip_lifetimes(ty, generics);
-            }
-        }
-
-        _ => {}
+    struct LifetimeStripper {
+        generics: HashSet<String>,
     }
+    impl VisitTypeInDepth for LifetimeStripper {
+        fn visit_type_reference(&mut self, ty: &mut TypeReference) {
+            if ty
+                .lifetime
+                .as_ref()
+                .is_some_and(|l| self.generics.contains(&l.to_string()))
+            {
+                ty.lifetime = None;
+            }
+
+            self.visit_type(&mut ty.elem);
+        }
+    }
+    LifetimeStripper {
+        generics: collect_generics_lifetimes::<HashSet<_>>(generics),
+    }
+    .visit_type(ty);
 }
 
 /// replaces all lifetimes with the most specific one in two types
@@ -634,11 +496,35 @@ pub fn assign_lifetimes(t1: &mut Type, t2: &Type, generics: &mut ConstrainedGene
             }
         }
 
+        // impl T<U>
+        (Type::ImplTrait(impl1), Type::ImplTrait(impl2)) => {
+            for (bound1, bound2) in impl1.bounds.iter_mut().zip(&impl2.bounds) {
+                if let (TypeParamBound::Trait(trait1), TypeParamBound::Trait(trait2)) =
+                    (bound1, bound2)
+                {
+                    for (seg1, seg2) in trait1.path.segments.iter_mut().zip(&trait2.path.segments) {
+                        if let (
+                            PathArguments::AngleBracketed(args1),
+                            PathArguments::AngleBracketed(args2),
+                        ) = (&mut seg1.arguments, &seg2.arguments)
+                        {
+                            for (arg1, arg2) in args1.args.iter_mut().zip(&args2.args) {
+                                if let (GenericArgument::Type(t1), GenericArgument::Type(t2)) =
+                                    (arg1, arg2)
+                                {
+                                    assign_lifetimes(t1, t2, generics);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         _ => {}
     }
 }
 
-// TODO: use replace_type to simplify this function
 /// Replaces all occurrences of `_` (inferred types) in the given type with fresh generic type parameters.
 pub fn replace_infers(
     ty: &mut Type,
@@ -646,59 +532,26 @@ pub fn replace_infers(
     counter: &mut usize,
     new_generics: &mut Vec<String>,
 ) {
-    match ty {
-        // (T, U, _)
-        Type::Tuple(t) => {
-            for elem in &mut t.elems {
-                replace_infers(elem, generics, counter, new_generics);
-            }
-        }
-
-        // &_
-        Type::Reference(r) => replace_infers(&mut r.elem, generics, counter, new_generics),
-
-        // [_; N]
-        Type::Array(a) => replace_infers(&mut a.elem, generics, counter, new_generics),
-
-        // [_]
-        Type::Slice(s) => replace_infers(&mut s.elem, generics, counter, new_generics),
-
-        // (_)
-        Type::Paren(p) => replace_infers(&mut p.elem, generics, counter, new_generics),
-
-        // T<_>
-        Type::Path(type_path) => {
-            for seg in &mut type_path.path.segments {
-                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
-                    for arg in ab.args.iter_mut() {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            replace_infers(inner_ty, generics, counter, new_generics);
-                        }
-                    }
-                }
-            }
-        }
-
-        // fn(T) -> U
-        Type::BareFn(bare_fn) => {
-            for input in &mut bare_fn.inputs {
-                replace_infers(&mut input.ty, generics, counter, new_generics);
-            }
-
-            if let ReturnType::Type(_, ty) = &mut bare_fn.output {
-                replace_infers(ty, generics, counter, new_generics);
-            }
-        }
-
-        // _
-        Type::Infer(_) => {
-            let name = get_unique_generic_name(generics, counter, None);
-            *ty = str_to_type_name(&name);
-            new_generics.push(name);
-        }
-
-        _ => {}
+    struct InferReplacer<'a> {
+        generics: &'a mut HashSet<String>,
+        counter: &'a mut usize,
+        new_generics: &'a mut Vec<String>,
     }
+    impl VisitTypeInDepth for InferReplacer<'_> {
+        fn visit_type_default(&mut self, ty: &mut Type) {
+            if matches!(ty, Type::Infer(_)) {
+                let name = get_unique_generic_name(self.generics, self.counter, None);
+                *ty = str_to_type_name(&name);
+                self.new_generics.push(name);
+            }
+        }
+    }
+    InferReplacer {
+        generics,
+        counter,
+        new_generics,
+    }
+    .visit_type(ty);
 }
 
 pub fn get_unique_generic_name(
@@ -785,6 +638,23 @@ mod tests {
         assert_eq!(
             to_string(&resolved).replace(" ", ""),
             "Option<(u8,Vec<u8>)>"
+        );
+    }
+
+    #[test]
+    fn resolve_type_fn() {
+        let ty = str_to_type_name("fn(MyType) -> MyType");
+        let resolved = resolve_type(&ty, &get_aliases());
+        assert_eq!(to_string(&resolved).replace(" ", ""), "fn(u8)->u8");
+    }
+
+    #[test]
+    fn resolve_type_impl_trait() {
+        let ty = str_to_type_name("impl Into<MyType>");
+        let resolved = resolve_type(&ty, &get_aliases());
+        assert_eq!(
+            to_string(&resolved).replace(" ", ""),
+            "impl Into<u8>".replace(" ", "")
         );
     }
 
@@ -1108,6 +978,20 @@ mod tests {
     }
 
     #[test]
+    fn compare_types_impl_trait() {
+        let mut g = ConstrainedGenerics::default();
+
+        let t1 = str_to_type_name("impl Into<u8>");
+        let t2 = str_to_type_name("impl Into<u8>");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("impl Into<u8>");
+        let t2 = str_to_type_name("impl Into<T>");
+        assert!(can_assign(&t1, &t2, &mut g));
+    }
+
+    #[test]
     fn contains_type_true() {
         let types = vec![
             "T",
@@ -1299,6 +1183,19 @@ mod tests {
         replace_type(&mut ty, "Option<(T, &[T], T<T<i32>>)>", &new_ty);
 
         assert_eq!(to_string(&ty).replace(" ", ""), "String".to_string());
+    }
+
+    #[test]
+    fn replace_type_impl_trait() {
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        let mut ty: Type = parse2(quote! { impl Into<T> }).unwrap();
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "impl Into<String>".to_string().replace(" ", "")
+        );
     }
 
     #[test]

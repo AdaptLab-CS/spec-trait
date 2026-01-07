@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::conditions::WhenCondition;
-use crate::conversions::{str_to_lifetime, str_to_type_name};
+use crate::conversions::{str_to_generics, str_to_lifetime, str_to_type_name};
 use crate::types::{
     Aliases, replace_infers, replace_type, type_assignable, type_contains, type_contains_lifetime,
 };
@@ -101,11 +101,13 @@ pub fn apply_type_condition<T: Specializable>(
     for generic in new_generics {
         add_generic_type(generics, &generic);
         add_generic_type(other_generics, &generic);
+        // TODO: add generic to impl Trait types
     }
 
     // remove generic type
     remove_generic(generics, &item_generic);
     remove_generic(other_generics, impl_generic);
+    // TODO: remove generic from impl Trait types
 
     // replace generic type with type in the items
     let mut replacer = TypeReplacer {
@@ -207,6 +209,16 @@ pub fn get_used_generics<T: Specializable>(target: &T, generics: &Generics) -> H
     target.handle_items_visit(&mut visitor);
 
     visitor.used_generics
+}
+
+pub fn handle_generics<F: FnMut(&str)>(generics_str: &str, mut generics_fn: F) {
+    let generics = str_to_generics(generics_str);
+    for g in collect_generics_lifetimes::<Vec<_>>(&generics) {
+        generics_fn(&g);
+    }
+    for g in collect_generics_types::<Vec<_>>(&generics) {
+        generics_fn(&g);
+    }
 }
 
 #[cfg(test)]

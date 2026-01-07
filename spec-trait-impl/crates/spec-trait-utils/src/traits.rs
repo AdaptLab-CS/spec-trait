@@ -9,7 +9,7 @@ use crate::parsing::{
 };
 use crate::specialize::{
     Specializable, TypeReplacer, add_generic_lifetime, add_generic_type, apply_type_condition,
-    get_assignable_conditions, get_used_generics, remove_generic,
+    get_assignable_conditions, get_used_generics, handle_generics, remove_generic,
 };
 use crate::types::get_unique_generic_name;
 use proc_macro2::TokenStream;
@@ -110,25 +110,11 @@ impl TraitBody {
         let mut new_trait = self.clone();
         let mut specialized = new_trait.clone();
 
-        // set specialized trait name
-        specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
-
         // replace generics with unique generic name
         specialized.replace_generics_names();
 
-        // set missing generic lifetimes
-        let mut generics = str_to_generics(&specialized.generics);
-        let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
-        let specialized_impl_generics = str_to_generics(impl_generics);
-        for generic in get_generics_lifetimes::<Vec<_>>(impl_generics) {
-            if specialized
-                .get_corresponding_generic(&specialized_impl_generics, &generic)
-                .is_none()
-            {
-                add_generic_lifetime(&mut generics, &generic);
-            }
-        }
-        specialized.generics = to_string(&generics);
+        // add missing generics from impl
+        specialized.add_missing_generics(impl_body);
 
         // apply condition
         if let Some(condition) = &impl_body.condition {
@@ -136,39 +122,57 @@ impl TraitBody {
             specialized.apply_condition(&mut impl_generics, condition);
         }
 
-        // set missing generic types
-        let mut generics = str_to_generics(&specialized.generics);
-        let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
-        let specialized_impl_generics = str_to_generics(impl_generics);
-        for generic in get_generics_types::<Vec<_>>(impl_generics) {
-            if specialized
-                .get_corresponding_generic(&specialized_impl_generics, &generic)
-                .is_none()
-            {
-                add_generic_type(&mut generics, &generic);
-            }
-        }
-        specialized.generics = to_string(&generics);
+        // fix generics
+        specialized.add_missing_generics(impl_body);
+        specialized.remove_unused_generics();
 
-        // clean unused generics
-        let used_generics =
-            get_used_generics(&specialized, &str_to_generics(&specialized.generics));
+        // set specialized trait name
+        specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
+        let mut replacer = TypeReplacer {
+            generic: self.name.clone(),
+            type_: str_to_type_name(&specialized.name),
+        };
+        specialized.handle_items_replace(&mut replacer);
 
-        let mut generics = str_to_generics(&specialized.generics);
-        for generic in get_generics_lifetimes::<Vec<_>>(&specialized.generics) {
-            if !used_generics.contains(&generic) {
-                remove_generic(&mut generics, &generic);
-            }
-        }
-        for generic in get_generics_types::<Vec<_>>(&specialized.generics) {
-            if !used_generics.contains(&generic) {
-                remove_generic(&mut generics, &generic);
-            }
-        }
-        specialized.generics = to_string(&generics);
+        // TODO: fix generics for impl Trait types
 
+        // set specialized trait
         new_trait.specialized = Some(Box::new(specialized));
         new_trait
+    }
+
+    /// add missing generics from impl to trait
+    fn add_missing_generics(&mut self, impl_body: &ImplBody) {
+        let mut generics = str_to_generics(&self.generics);
+        let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
+        let specialized_impl_generics = str_to_generics(impl_generics);
+        handle_generics(impl_generics, |generic| {
+            if self
+                .get_corresponding_generic(&specialized_impl_generics, generic)
+                .is_none()
+            {
+                if generic.starts_with("'") {
+                    add_generic_lifetime(&mut generics, generic);
+                } else {
+                    add_generic_type(&mut generics, generic);
+                }
+            }
+        });
+        self.generics = to_string(&generics);
+        self.generics = to_string(&generics);
+    }
+
+    /// remove unused generics from trait
+    fn remove_unused_generics(&mut self) {
+        // clean unused generics
+        let used_generics = get_used_generics(self, &str_to_generics(&self.generics));
+        let mut generics = str_to_generics(&self.generics);
+        handle_generics(&self.generics, |generic| {
+            if !used_generics.contains(generic) {
+                remove_generic(&mut generics, generic);
+            }
+        });
+        self.generics = to_string(&generics);
     }
 
     /// apply a condition to the trait body, modifying its generics and items
