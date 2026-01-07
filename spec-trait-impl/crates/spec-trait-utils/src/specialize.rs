@@ -101,11 +101,13 @@ pub fn apply_type_condition<T: Specializable>(
     for generic in new_generics {
         add_generic_type(generics, &generic);
         add_generic_type(other_generics, &generic);
+        // TODO: add generic to impl Trait types
     }
 
     // remove generic type
     remove_generic(generics, &item_generic);
     remove_generic(other_generics, impl_generic);
+    // TODO: remove generic from impl Trait types
 
     // replace generic type with type in the items
     let mut replacer = TypeReplacer {
