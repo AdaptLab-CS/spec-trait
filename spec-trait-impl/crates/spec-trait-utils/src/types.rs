@@ -540,7 +540,7 @@ pub fn replace_infers(
     impl VisitTypeInDepth for InferReplacer<'_> {
         fn visit_type_default(&mut self, ty: &mut Type) {
             if matches!(ty, Type::Infer(_)) {
-                let name = get_unique_generic_name(&mut self.generics, &mut self.counter, None);
+                let name = get_unique_generic_name(self.generics, self.counter, None);
                 *ty = str_to_type_name(&name);
                 self.new_generics.push(name);
             }

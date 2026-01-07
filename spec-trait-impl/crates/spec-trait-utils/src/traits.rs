@@ -110,9 +110,6 @@ impl TraitBody {
         let mut new_trait = self.clone();
         let mut specialized = new_trait.clone();
 
-        // set specialized trait name
-        specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
-
         // replace generics with unique generic name
         specialized.replace_generics_names();
 
@@ -129,7 +126,8 @@ impl TraitBody {
         specialized.add_missing_generics(impl_body);
         specialized.remove_unused_generics();
 
-        // replace trait name everywhere
+        // set specialized trait name
+        specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
         let mut replacer = TypeReplacer {
             generic: self.name.clone(),
             type_: str_to_type_name(&specialized.name),
@@ -138,23 +136,25 @@ impl TraitBody {
 
         // TODO: fix generics for impl Trait types
 
+        // set specialized trait
         new_trait.specialized = Some(Box::new(specialized));
         new_trait
     }
 
+    /// add missing generics from impl to trait
     fn add_missing_generics(&mut self, impl_body: &ImplBody) {
         let mut generics = str_to_generics(&self.generics);
         let impl_generics = &impl_body.specialized.as_ref().unwrap().trait_generics;
         let specialized_impl_generics = str_to_generics(impl_generics);
         handle_generics(impl_generics, |generic| {
             if self
-                .get_corresponding_generic(&specialized_impl_generics, &generic)
+                .get_corresponding_generic(&specialized_impl_generics, generic)
                 .is_none()
             {
                 if generic.starts_with("'") {
-                    add_generic_lifetime(&mut generics, &generic);
+                    add_generic_lifetime(&mut generics, generic);
                 } else {
-                    add_generic_type(&mut generics, &generic);
+                    add_generic_type(&mut generics, generic);
                 }
             }
         });
@@ -162,7 +162,7 @@ impl TraitBody {
         self.generics = to_string(&generics);
     }
 
-    // add missing generics and remove unused ones
+    /// remove unused generics from trait
     fn remove_unused_generics(&mut self) {
         // clean unused generics
         let used_generics = get_used_generics(self, &str_to_generics(&self.generics));

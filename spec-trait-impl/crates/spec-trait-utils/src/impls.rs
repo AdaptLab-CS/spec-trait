@@ -130,9 +130,6 @@ impl ImplBody {
         let mut new_impl = self.clone();
         let mut specialized = new_impl.clone();
 
-        // set specialized trait name
-        specialized.trait_name = specialized.get_spec_trait_name();
-
         // apply condition
         if let Some(condition) = &self.condition {
             specialized.apply_condition(condition);
@@ -142,7 +139,8 @@ impl ImplBody {
         specialized.add_missing_generics();
         specialized.remove_unused_generics();
 
-        // replace trait name everywhere
+        // set specialized trait name
+        specialized.trait_name = specialized.get_spec_trait_name();
         let mut replacer = TypeReplacer {
             generic: self.trait_name.clone(),
             type_: str_to_type_name(&specialized.trait_name),
@@ -151,10 +149,12 @@ impl ImplBody {
 
         // TODO: fix generics for impl Trait types
 
+        // set specialized trait
         new_impl.specialized = Some(Box::new(specialized));
         new_impl
     }
 
+    /// add missing generics from impl to trait
     fn add_missing_generics(&mut self) {
         let mut trait_generics = str_to_generics(&self.trait_generics);
         let curr_generics_types = get_generics_types::<HashSet<_>>(&self.trait_generics);
@@ -170,6 +170,7 @@ impl ImplBody {
         self.trait_generics = to_string(&trait_generics);
     }
 
+    /// remove unused generics from impl and trait
     fn remove_unused_generics(&mut self) {
         let used_generics = get_used_generics(self, &str_to_generics(&self.impl_generics));
         let mut impl_generics = str_to_generics(&self.impl_generics);
