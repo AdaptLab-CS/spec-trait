@@ -113,6 +113,13 @@ impl TraitBody {
         // set specialized trait name
         specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
 
+        // replace trait name everywhere
+        let mut replacer = TypeReplacer {
+            generic: self.name.clone(),
+            type_: str_to_type_name(&specialized.name),
+        };
+        specialized.handle_items_replace(&mut replacer);
+
         // replace generics with unique generic name
         specialized.replace_generics_names();
 
@@ -166,6 +173,8 @@ impl TraitBody {
             }
         }
         specialized.generics = to_string(&generics);
+
+        // TODO: fix generics for impl Trait types
 
         new_trait.specialized = Some(Box::new(specialized));
         new_trait

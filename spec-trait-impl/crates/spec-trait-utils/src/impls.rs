@@ -8,7 +8,7 @@ use crate::parsing::{
     parse_generics,
 };
 use crate::specialize::{
-    Specializable, add_generic_lifetime, add_generic_type, apply_type_condition,
+    Specializable, TypeReplacer, add_generic_lifetime, add_generic_type, apply_type_condition,
     get_assignable_conditions, get_used_generics, remove_generic,
 };
 use crate::types::{replace_type, type_contains, type_contains_lifetime};
@@ -133,6 +133,13 @@ impl ImplBody {
         // set specialized trait name
         specialized.trait_name = specialized.get_spec_trait_name();
 
+        // replace trait name everywhere
+        let mut replacer = TypeReplacer {
+            generic: self.trait_name.clone(),
+            type_: str_to_type_name(&specialized.trait_name),
+        };
+        specialized.handle_items_replace(&mut replacer);
+
         // apply condition
         if let Some(condition) = &self.condition {
             specialized.apply_condition(condition);
@@ -179,6 +186,8 @@ impl ImplBody {
         }
         specialized.impl_generics = to_string(&impl_generics);
         specialized.trait_generics = to_string(&trait_generics);
+
+        // TODO: fix generics for impl Trait types
 
         new_impl.specialized = Some(Box::new(specialized));
         new_impl
