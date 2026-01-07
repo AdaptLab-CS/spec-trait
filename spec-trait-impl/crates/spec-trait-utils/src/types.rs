@@ -23,7 +23,7 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
         aliases: &'a Aliases,
     }
     impl<'a> VisitTypeInDepth for TypeResolver<'a> {
-        fn visit_type_common(&mut self, ty: &mut Type) {
+        fn before_visit_type(&mut self, ty: &mut Type) {
             *ty = unwrap_paren(ty).clone();
             if let Some((k, _)) = self
                 .aliases
@@ -353,7 +353,7 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
                 *ident = Ident::new(&to_string(&self.new.clone()), Span::call_site());
             }
         }
-        fn visit_type_common(&mut self, ty: &mut Type) {
+        fn before_visit_type(&mut self, ty: &mut Type) {
             if to_string(ty) == to_string(&str_to_type_name(self.prev.as_str())) {
                 *ty = self.new.clone();
             }

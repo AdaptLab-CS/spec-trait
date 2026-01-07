@@ -28,7 +28,7 @@ pub trait VisitTypeInDepth {
 
     /// General Type visitor
     fn visit_type(&mut self, ty: &mut Type) {
-        self.visit_type_common(ty);
+        self.before_visit_type(ty);
         match ty {
             Type::Tuple(type_tuple) => self.visit_type_tuple(type_tuple),
             Type::Reference(type_reference) => self.visit_type_reference(type_reference),
@@ -43,7 +43,7 @@ pub trait VisitTypeInDepth {
     }
 
     /// Common visitor called before specific type visitors
-    fn visit_type_common(&mut self, _ty: &mut Type) {}
+    fn before_visit_type(&mut self, _ty: &mut Type) {}
 
     /// Default visitor for types not explicitly handled
     fn visit_type_default(&mut self, _ty: &mut Type) {}

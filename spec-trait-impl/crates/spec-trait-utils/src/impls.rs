@@ -9,7 +9,7 @@ use crate::parsing::{
 };
 use crate::specialize::{
     Specializable, TypeReplacer, add_generic_lifetime, add_generic_type, apply_type_condition,
-    get_assignable_conditions, get_used_generics, remove_generic,
+    get_assignable_conditions, get_used_generics, handle_generics, remove_generic,
 };
 use crate::types::{replace_type, type_contains, type_contains_lifetime};
 use proc_macro2::TokenStream;
@@ -133,6 +133,15 @@ impl ImplBody {
         // set specialized trait name
         specialized.trait_name = specialized.get_spec_trait_name();
 
+        // apply condition
+        if let Some(condition) = &self.condition {
+            specialized.apply_condition(condition);
+        }
+
+        // fix generics
+        specialized.add_missing_generics();
+        specialized.remove_unused_generics();
+
         // replace trait name everywhere
         let mut replacer = TypeReplacer {
             generic: self.trait_name.clone(),
@@ -140,57 +149,45 @@ impl ImplBody {
         };
         specialized.handle_items_replace(&mut replacer);
 
-        // apply condition
-        if let Some(condition) = &self.condition {
-            specialized.apply_condition(condition);
-        }
-
-        // set missing generics
-        let mut trait_generics = str_to_generics(&specialized.trait_generics);
-        let curr_generics_types = get_generics_types::<HashSet<_>>(&specialized.trait_generics);
-        let curr_generics_lifetimes =
-            get_generics_lifetimes::<HashSet<_>>(&specialized.trait_generics);
-        for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
-            if !curr_generics_types.contains(&generic) {
-                add_generic_type(&mut trait_generics, &generic);
-            }
-        }
-        for generic in get_generics_lifetimes::<Vec<_>>(&specialized.impl_generics) {
-            if !curr_generics_lifetimes.contains(&generic) {
-                add_generic_lifetime(&mut trait_generics, &generic);
-            }
-        }
-        specialized.trait_generics = to_string(&trait_generics);
-
-        // clean unused generics
-        let used_generics =
-            get_used_generics(&specialized, &str_to_generics(&specialized.impl_generics));
-
-        let mut impl_generics = str_to_generics(&specialized.impl_generics);
-        let mut trait_generics = str_to_generics(&specialized.trait_generics);
-        for generic in get_generics_lifetimes::<Vec<_>>(&specialized.impl_generics) {
-            if !used_generics.contains(&generic) {
-                remove_generic(&mut trait_generics, &generic);
-                if !type_contains_lifetime(&str_to_type_name(&specialized.type_name), &generic) {
-                    remove_generic(&mut impl_generics, &generic);
-                }
-            }
-        }
-        for generic in get_generics_types::<Vec<_>>(&specialized.impl_generics) {
-            if !used_generics.contains(&generic) {
-                remove_generic(&mut trait_generics, &generic);
-                if !type_contains(&str_to_type_name(&specialized.type_name), &generic) {
-                    remove_generic(&mut impl_generics, &generic);
-                }
-            }
-        }
-        specialized.impl_generics = to_string(&impl_generics);
-        specialized.trait_generics = to_string(&trait_generics);
-
         // TODO: fix generics for impl Trait types
 
         new_impl.specialized = Some(Box::new(specialized));
         new_impl
+    }
+
+    fn add_missing_generics(&mut self) {
+        let mut trait_generics = str_to_generics(&self.trait_generics);
+        let curr_generics_types = get_generics_types::<HashSet<_>>(&self.trait_generics);
+        let curr_generics_lifetimes = get_generics_lifetimes::<HashSet<_>>(&self.trait_generics);
+        handle_generics(&self.impl_generics, |generic| {
+            if generic.starts_with("'") && !curr_generics_lifetimes.contains(generic) {
+                add_generic_lifetime(&mut trait_generics, generic);
+            }
+            if !generic.starts_with("'") && !curr_generics_types.contains(generic) {
+                add_generic_type(&mut trait_generics, generic);
+            }
+        });
+        self.trait_generics = to_string(&trait_generics);
+    }
+
+    fn remove_unused_generics(&mut self) {
+        let used_generics = get_used_generics(self, &str_to_generics(&self.impl_generics));
+        let mut impl_generics = str_to_generics(&self.impl_generics);
+        let mut trait_generics = str_to_generics(&self.trait_generics);
+        handle_generics(&self.impl_generics, |generic| {
+            if !used_generics.contains(generic) {
+                remove_generic(&mut trait_generics, generic);
+                let ty = str_to_type_name(&self.type_name);
+                if !generic.starts_with("'") && !type_contains(&ty, generic) {
+                    remove_generic(&mut impl_generics, generic);
+                }
+                if generic.starts_with("'") && !type_contains_lifetime(&ty, generic) {
+                    remove_generic(&mut impl_generics, generic);
+                }
+            }
+        });
+        self.impl_generics = to_string(&impl_generics);
+        self.trait_generics = to_string(&trait_generics);
     }
 
     /// apply a condition to the impl body, modifying its generics and items
