@@ -280,6 +280,7 @@ fn main() {
     let s2 = S(1u8);
 
     // ZST - Foo
+    spec! { zst.foo(1u8); ZST; [MyType] } // -> "Foo impl ZST where T is MyType"
     spec! { zst.foo(1u8); ZST; [u8]; u8 = MyType } // -> "Foo impl ZST where T is MyType"
     spec! { zst.foo(vec![1i32]); ZST; [Vec<i32>]; Vec<i32> = MyVecAlias } // -> "Foo impl ZST where T is MyVecAlias"
     spec! { zst.foo(vec![1u8]); ZST; [Vec<u8>]; u8 = MyType } // -> "Foo impl ZST where T is Vec<u8>"

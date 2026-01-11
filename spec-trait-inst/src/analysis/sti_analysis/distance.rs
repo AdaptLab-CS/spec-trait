@@ -30,6 +30,7 @@ type TreeDistanceTable = HashMap<(usize, usize), usize>;
 type ForestDistanceTable = Vec<Vec<usize>>;
 
 /// Computes the similarity between two trees based on their edit distance.
+/// The similarity is defined as 1 - (distance / max_size), where max_size is the size of the larger tree.
 pub fn compute_similarity<T: Eq + Debug>(a: &Node<T>, b: &Node<T>) -> f64 {
     let dist = compute_tree_distance(a, b) as f64;
     let max_size = a.size().max(b.size()) as f64;
@@ -96,7 +97,7 @@ fn post_order_and_leftmost<'a, T: Eq + Debug>(root: &'a Node<T>) -> PostOrder<'a
     PostOrder { nodes, leftmost }
 }
 
-/// Collect nodes in post order.
+/// Collect nodes in post order (children first, then node).
 fn collect_post_order<'a, T: Eq + Debug>(n: &'a Node<T>, out: &mut Vec<&'a Node<T>>) {
     for c in &n.children {
         collect_post_order(c, out);
@@ -142,6 +143,7 @@ fn compute_key_root_distance<T: Eq + Debug>(
             let left_b_i = post_b.leftmost[post_b_i]; // leftmost of current index in B
 
             // both node_a and node_b are roots of their respective (sub)trees in this forest
+            // so we can compute the tree distance directly
             if left_a_i == kr_a_leftmost && left_b_i == kr_b_leftmost {
                 let node_a = post_a.nodes[post_a_i]; // node at current index in A
                 let node_b = post_b.nodes[post_b_i]; // node at current index in B
@@ -170,6 +172,7 @@ fn compute_key_root_distance<T: Eq + Debug>(
 }
 
 /// Initializes the forest distance table with base cases.
+/// The first row and column represent the cost of converting to/from an empty tree.
 fn init_forest_distance(n: usize, m: usize) -> ForestDistanceTable {
     let mut fd = vec![vec![0; m + 1]; n + 1];
     fd.iter_mut().enumerate().for_each(|(i, row)| row[0] = i); // deletion

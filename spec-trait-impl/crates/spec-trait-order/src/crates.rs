@@ -6,8 +6,11 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Crate {
+    /// The name of the crate
     pub name: String,
+    /// The parsed content of the crate
     pub content: CrateCache,
+    /// The list of source files paths in the crate
     #[cfg(test)]
     files: Vec<PathBuf>,
 }
@@ -27,6 +30,7 @@ pub fn get_crates(dir: &Path) -> Vec<Crate> {
         .collect()
 }
 
+/// Extract crate information from the `[package]` section of Cargo.toml
 fn get_crate_from_package(value: &toml::Value, dir: &Path) -> Option<Crate> {
     let package = value.get("package")?;
     let name = package.get("name")?.as_str()?;
@@ -43,6 +47,8 @@ fn get_crate_from_package(value: &toml::Value, dir: &Path) -> Option<Crate> {
     })
 }
 
+/// Extract information from the `[workspace]` members section of Cargo.toml
+/// and for each member, gather crate information
 fn get_crates_from_workspace_members(value: &toml::Value, dir: &Path) -> Vec<Crate> {
     let members = value
         .get("workspace")

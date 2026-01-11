@@ -4,6 +4,7 @@ use syn::{Item, Path, UseTree};
 const MACRO_PACKAGE: &str = "spec_trait_macro";
 const MACRO_NAME: &str = "when";
 
+/// Collect all aliases for the `when` macro from the given items.
 pub fn collect_when_aliases(items: &[Item]) -> HashSet<String> {
     let mut set = HashSet::new();
 
@@ -16,6 +17,7 @@ pub fn collect_when_aliases(items: &[Item]) -> HashSet<String> {
     set
 }
 
+/// Recursively traverse the `UseTree` to find aliases for the `when` macro.
 fn collect_aliases_from_tree(tree: &UseTree, prefix_spec: bool, set: &mut HashSet<String>) {
     match tree {
         // `use spec_trait_macro::...`
@@ -50,6 +52,8 @@ fn collect_aliases_from_tree(tree: &UseTree, prefix_spec: bool, set: &mut HashSe
     }
 }
 
+/// Check if the given path corresponds to the `when` macro,
+/// considering both direct usage and aliases collected earlier.
 pub fn is_when_macro(path: &Path, when_aliases: &HashSet<String>) -> bool {
     // `when` imported directly or via alias
     when_aliases.contains(&path.segments.last().unwrap().ident.to_string()) ||

@@ -116,6 +116,7 @@ pub struct BodyTree<'tcx, 'a> {
 }
 
 impl<'tcx, 'a> BodyTree<'tcx, 'a> {
+    /// Create a new BodyTree by visiting the body with the given BodyId
     pub fn new(analyzer: &'a Analyzer<'tcx>, id: &BodyId) -> Self {
         let mut tree = Self {
             analyzer,
@@ -128,6 +129,7 @@ impl<'tcx, 'a> BodyTree<'tcx, 'a> {
 
         tree.visit_body_expr(id);
 
+        // if the root has a single Block child, promote its children to root
         if tree.root.children.len() == 1 && tree.root.children[0].label == NodeKind::Block {
             tree.root = tree.root.children.remove(0);
         }

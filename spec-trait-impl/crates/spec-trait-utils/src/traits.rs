@@ -242,11 +242,12 @@ impl TraitBody {
     }
 
     /**
-       get the generic in the trait corresponding to the impl_generic in the impl
-       # Example:
-       for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
-       - impl_generic = T -> trait_generic = A
-       - impl_generic = U -> trait_generic = B
+        get the generic in the trait corresponding to the impl_generic in the impl
+        # Example:
+        for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
+        - impl_generic = T -> trait_generic = A
+        - impl_generic = U -> trait_generic = B
+        - impl_generic = C -> None
     */
     pub fn get_corresponding_generic(
         &self,

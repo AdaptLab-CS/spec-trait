@@ -22,6 +22,9 @@ pub trait Specializable {
     fn handle_items_visit<V: for<'a> Visit<'a>>(&self, visitor: &mut V);
 }
 
+/// Filters the given conditions to return only those that are assignable.
+/// If there are multiple type conditions for the same generic, only the most specific one is kept.
+/// If there are conflicting types that are not mutually assignable, they are not included.
 pub fn get_assignable_conditions(
     conditions: &[WhenCondition],
     generics: &str,
@@ -38,6 +41,7 @@ pub fn get_assignable_conditions(
                         && !type_assignable(other_t, t, generics, &Aliases::default())
                 });
 
+                // if there are no conflicts, keep only the most specific type
                 if diff_types || !most_specific {
                     None
                 } else {
@@ -49,6 +53,8 @@ pub fn get_assignable_conditions(
         .collect()
 }
 
+/// Returns the list of types assigned to the given generic in the conditions,
+/// ordered from least specific to most specific.
 fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]) -> Vec<String> {
     let mut types = conditions
         .iter()
@@ -57,6 +63,7 @@ fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]
             _ => None,
         })
         .collect::<Vec<_>>();
+    // `Vec<_>` is less specific than `Vec<String>`
     types.sort_by_key(|t| t.replace("_", "").len());
     types
 }

@@ -48,6 +48,7 @@ impl From<&SpecBody> for VarBody {
     }
 }
 
+/// Get type aliases from annotations
 pub fn get_type_aliases(ann: &[Annotation]) -> Aliases {
     let mut aliases = Aliases::new();
 
@@ -63,6 +64,7 @@ pub fn get_type_aliases(ann: &[Annotation]) -> Aliases {
     aliases
 }
 
+/// Get variable information for each generic in the impl
 fn get_vars(
     ann: &AnnotationBody,
     impl_: &ImplBody,
@@ -81,7 +83,7 @@ fn get_vars(
             );
 
             match trait_.get_corresponding_generic(&str_to_generics(&impl_.trait_generics), g) {
-                // get type
+                // get type from trait (generic already existed before specialization)
                 Some(trait_generic) => {
                     let from_trait = get_generic_constraints_from_trait(
                         &trait_generic,
@@ -94,7 +96,7 @@ fn get_vars(
                     from_trait.into_iter().chain(from_type).collect::<Vec<_>>()
                 }
 
-                // get from specialized instead
+                // get from specialized trait (generic was added during specialization)
                 None => {
                     let trait_generic = trait_
                         .specialized
@@ -136,7 +138,7 @@ fn get_vars(
 /**
    Get the parameter types from a trait function.
    # Example
-   `fn foo(&self, x: T, y: u32);` returns `vec!["T", "u32"]`
+   - `fn foo(&self, x: T, y: u32);` -> `vec!["T", "u32"]`
 */
 fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
     trait_fn
