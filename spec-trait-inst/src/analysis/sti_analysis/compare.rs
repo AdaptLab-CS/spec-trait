@@ -17,6 +17,7 @@ pub struct STIComparison<'tcx, 'a> {
 pub struct SpecializablePair<'a> {
     pub fn_a: &'a VisitedFn,
     pub fn_b: &'a VisitedFn,
+    /// The similarity score between the two functions
     pub similarity: f64,
 }
 
@@ -24,6 +25,7 @@ pub struct SpecializablePair<'a> {
 pub struct SpecializableTraitPair<'a> {
     pub trait_a: &'a VisitedTrait,
     pub trait_b: &'a VisitedTrait,
+    /// The similarity score between the two traits
     pub similarity: f64,
 }
 
@@ -49,8 +51,11 @@ impl Display for SpecializableTraitPair<'_> {
 
 #[derive(Debug)]
 struct TraitInfo<'a> {
+    /// The trait
     tr: &'a VisitedTrait,
+    /// Number of function items in the trait
     fn_items: usize,
+    /// Number of specializable function items in the trait
     specializable_fn_items: usize,
 }
 
@@ -94,7 +99,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         specializable
     }
 
-    /// Get pairs of specializable functions along with their similarity score.
+    /// Get pairs of specializable traits along with their similarity score.
     pub fn get_specializable_traits(
         &self,
         specializable_fn_pairs: &Vec<&SpecializablePair<'a>>,
@@ -142,6 +147,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
                     .and_then(|tr| trait_info.get(&tr)),
             ) {
                 if specializable_trait_pair_heuristic(trait_a, trait_b) {
+                    // similarity is the minimum similarity among all function pairs
                     if let Some(similarity) = traits.get_mut(&key(trait_a, trait_b)) {
                         *similarity = (*similarity).min(pair.similarity);
                     } else {
@@ -170,7 +176,8 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
         let max_size = a_size.max(b_size) as f64;
         let min_size = a_size.min(b_size) as f64;
 
-        // we would at least need to remove (max_size - min_size) nodes
+        // return early if the size difference is too big,
+        // since we would at least need to remove (max_size - min_size) nodes
         if min_size / max_size < THRESHOLD {
             return None;
         }
@@ -190,6 +197,7 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
             .iter()
             .filter_map(|visited_fn| {
                 let tree = BodyTree::new(self.analyzer, &visited_fn.body);
+                // only keep functions with non-empty bodies
                 if tree.root.children.is_empty() {
                     None
                 } else {
@@ -201,6 +209,8 @@ impl<'tcx, 'a> STIComparison<'tcx, 'a> {
 }
 
 /// A heuristic to quickly determine if two functions could be specializable.
+/// This checks the number of arguments, the similarity of names,
+/// the parent trait (if any), and the self type (if any).
 fn specializable_fn_heuristic(fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
     fn_a.args.len() == fn_b.args.len()
         && names_similar(&fn_a.name, &fn_b.name)
@@ -217,11 +227,14 @@ fn specializable_fn_heuristic(fn_a: &VisitedFn, fn_b: &VisitedFn) -> bool {
 }
 
 /// A heuristic to quickly determine if two traits could be specializable.
+/// This checks the number of items and the similarity of names.
 fn specializable_trait_heuristic(tr_a: &VisitedTrait, tr_b: &VisitedTrait) -> bool {
     tr_a.items == tr_b.items && names_similar(&tr_a.name, &tr_b.name)
 }
 
 /// A heuristic to quickly determine if two traits could be specializable.
+/// This builds upon `specializable_trait_heuristic` and also checks
+/// the number of function items and specializable function items.
 fn specializable_trait_pair_heuristic<'a>(tr_a: &TraitInfo<'a>, tr_b: &TraitInfo<'a>) -> bool {
     let max_diff = |a: usize, b: usize| a.abs_diff(b) <= 1;
     specializable_trait_heuristic(tr_a.tr, tr_b.tr)
@@ -234,6 +247,8 @@ fn specializable_trait_pair_heuristic<'a>(tr_a: &TraitInfo<'a>, tr_b: &TraitInfo
 }
 
 /// A heuristic to quickly determine if two functions could be already specializable.
+/// This builds upon `specializable_fn_heuristic` and also checks that the self types
+/// are the same and that there is at least one differing argument type that is not generic.
 pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
     specializable_fn_heuristic(pair.fn_a, pair.fn_b)
         && pair.fn_a.self_type == pair.fn_b.self_type
@@ -249,6 +264,8 @@ pub fn already_specializable_heuristic(pair: &SpecializablePair) -> bool {
 }
 
 /// A heuristic to quickly determine if two functions are already specialized.
+/// This builds upon `already_specializable_heuristic` and also checks that
+/// the function IDs are the same and that they belong to the same trait (if any).
 pub fn already_specialized_heuristic(pair: &SpecializablePair) -> bool {
     already_specializable_heuristic(pair)
         && pair.fn_a.id == pair.fn_b.id
@@ -260,6 +277,7 @@ pub fn already_specialized_heuristic(pair: &SpecializablePair) -> bool {
         })
 }
 
+/// Check if a type string contains any of the given generics.
 fn contains_generics(ty: &str, generics: &[String]) -> bool {
     generics.iter().filter(|gen| !gen.contains("$")).any(|gen| {
         if gen.starts_with("'") {

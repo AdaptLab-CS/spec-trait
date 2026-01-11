@@ -22,13 +22,19 @@ pub struct VisitedTrait {
 
 #[derive(Debug)]
 pub struct VisitedFn {
+    /// Name of the function
     pub name: String,
+    /// DefId of the function
     pub id: DefId,
+    /// Argument types as Strings
     pub args: Vec<String>,
+    /// BodyId of the function
     pub body: BodyId,
     /// all the generics that might be used in the fn (both fn generics and impl / trait generics)
     pub generics: Vec<String>,
+    /// If the function is part of a trait impl or a trait, this contains the trait info
     pub parent_trait: Option<VisitedTrait>,
+    /// If the function is part of a trait impl or an inherent impl, this contains the self type info
     pub self_type: Option<String>,
 }
 
@@ -168,7 +174,6 @@ impl<'tcx> NestedFilter<'tcx> for NestedFilterAll {
     const INTRA: bool = true;
 }
 
-// NOTE(bruzzone): `visit_ty_unambig` and `visit_const_arg_unambig` are defined in VisitorExt, so we need to import it.
 impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     type NestedFilter = NestedFilterAll;
 

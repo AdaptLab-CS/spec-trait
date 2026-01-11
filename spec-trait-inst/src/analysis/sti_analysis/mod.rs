@@ -7,6 +7,7 @@ use super::Analyzer;
 use compare::{STIComparison, SpecializablePair, SpecializableTraitPair};
 use itertools::Itertools;
 use rustc_hir::def_id::LOCAL_CRATE;
+use rustc_hir::{ItemId, ItemKind};
 use std::{cell::Cell, time::Duration};
 use sti_visitor::{STIVisitor, VisitedFn, VisitedTrait};
 
@@ -27,7 +28,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         }
     }
 
-    fn visit_item(&self, visitor: &mut STIVisitor<'tcx, 'a>, item_id: &rustc_hir::ItemId) {
+    fn visit_item(&self, visitor: &mut STIVisitor<'tcx, 'a>, item_id: &ItemId) {
         let hir_id = self
             .analyzer
             .tcx
@@ -35,13 +36,14 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         let item = self.analyzer.tcx.hir_item(*item_id);
         visitor.visit_with_hir_id_and_item(hir_id, item);
 
-        if let rustc_hir::ItemKind::Mod(_, module) = &item.kind {
+        if let ItemKind::Mod(_, module) = &item.kind {
             for sub in module.item_ids {
                 self.visit_item(visitor, sub);
             }
         }
     }
 
+    /// Analyze a group of specializable function pairs to extract trait pairs and unique functions and traits.
     fn analyze_group(
         &self,
         comparison: &STIComparison<'tcx, 'a>,
@@ -72,6 +74,12 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         )
     }
 
+    /// For each group (specializable, already specializable, already specialized, newly specializable,
+    /// already specializable but not specialized), returns:
+    /// - number of specializable function pairs
+    /// - number of specializable trait pairs
+    /// - number of specializable functions
+    /// - number of specializable traits
     fn get_groups(
         &self,
         comparison: &STIComparison<'tcx, 'a>,
@@ -145,6 +153,8 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         ]
     }
 
+    /// Analyze the visited functions for specialization targets.
+    /// Prints the results if the corresponding CLI flags are set.
     fn analyze(&self, visitor: &STIVisitor<'tcx, 'a>) {
         let comparison = STIComparison::new(self.analyzer, visitor);
         let specializable_pairs = comparison.get_specializable_fns();
@@ -168,7 +178,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
         }
 
         if self.analyzer.cli_args.print_spec_data {
-            // groups
+            // groups: total, bare fns, trait fns, trait impl fns, inherent impl fns, macro fns
             let is_bare_fn = |f: &VisitedFn| f.parent_trait.is_none() && f.self_type.is_none();
             let specializable_pairs_from_bare_fns = specializable_pairs
                 .iter()
@@ -237,7 +247,7 @@ impl<'tcx, 'a> STIAnalysis<'tcx, 'a> {
                 .filter(|f| is_macro_fn(f))
                 .count();
 
-            // groups values
+            // groups values: total, specializable, already specializable, already specialized, newly specializable, already specializable but not specialized
             let base_group = self.get_groups(&comparison, &specializable_pairs.iter().collect());
             let bare_fn_group = self.get_groups(&comparison, &specializable_pairs_from_bare_fns);
             let trait_group = self.get_groups(&comparison, &specializable_pairs_from_traits);
