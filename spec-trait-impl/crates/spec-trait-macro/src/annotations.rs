@@ -7,8 +7,11 @@ use syn::{Error, Expr, Ident, Lit, Token, Type, bracketed, parenthesized, token}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Annotation {
+    /// `<type>: <trait1> + <trait2> + ...`
     Trait(String /* type */, Vec<String> /* traits */),
+    /// `<type> = <alias>`
     Alias(String /* type */, String /* alias */),
+    /// `<type>: '<lifetime>`
     Lifetime(String /* type */, String /* lifetime */),
 }
 
@@ -79,6 +82,10 @@ impl Parse for AnnotationBody {
     }
 }
 
+/// Parse the method call of the form `variable.function(args...)`
+/// # Example:
+/// - `x.my_method(1u8, "abc")` -> `("x", "my_method", ["1u8", "abc"])`
+/// - `var.foo()` -> `("var", "foo", [])`
 fn parse_call(input: ParseStream) -> Result<(String, String, Vec<String>), Error> {
     let var = if input.peek(Ident) {
         to_string(&input.parse::<Ident>()?)
@@ -104,6 +111,11 @@ fn parse_call(input: ParseStream) -> Result<(String, String, Vec<String>), Error
     Ok((var, fn_.to_string(), args.iter().map(to_string).collect()))
 }
 
+/// Parse the variable type and argument types
+/// # Example:
+/// - `MyType; [u8, &str]` -> `("MyType", ["u8", "&str"])`
+/// - `MyType; []` -> `("MyType", [])`
+/// - `MyType` -> `("MyType", [])`
 fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
     let var_type: Type = input.parse()?;
 
@@ -131,6 +143,7 @@ fn parse_types(input: ParseStream) -> Result<(String, Vec<String>), Error> {
     Ok((to_string(&var_type), args_types))
 }
 
+/// Parse the annotations
 fn parse_annotations(input: ParseStream) -> Result<Vec<Annotation>, Error> {
     input
         .parse_terminated(Annotations::parse, Token![;])

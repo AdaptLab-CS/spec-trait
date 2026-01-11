@@ -41,6 +41,7 @@ pub fn write_cache(cache: &CrateCache, crate_name: Option<String>) {
     write_top_level_cache(&top_level_cache);
 }
 
+/// Initialize an empty cache
 pub fn reset() {
     let empty_cache = Cache::new();
     write_top_level_cache(&empty_cache);
@@ -65,11 +66,13 @@ pub fn add_impl(imp: ImplBody) {
     write_cache(&cache, None);
 }
 
+/// Get the trait with the given name
 pub fn get_trait_by_name(trait_name: &str) -> Option<TraitBody> {
     let cache = read_cache(None);
     cache.traits.into_iter().find(|tr| tr.name == trait_name)
 }
 
+/// Get all traits that have a function with the given name and number of arguments
 pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
     let cache = read_cache(None);
     cache
@@ -79,6 +82,7 @@ pub fn get_traits_by_fn(fn_name: &str, args_len: usize) -> Vec<TraitBody> {
         .collect()
 }
 
+/// Get all impls for the given type that implement any of the given traits
 pub fn get_impls_by_type_and_traits(
     type_name: &str,
     traits: &[TraitBody],

@@ -229,6 +229,8 @@ impl ImplBody {
                 self.impl_generics = to_string(&generics);
             }
 
+            // WhenCondition::Any should never appear here
+            // WhenCondition::Not can't be applied directly
             _ => {}
         }
     }
@@ -239,6 +241,7 @@ impl ImplBody {
        for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
        - trait_generic = A -> trait_generic = T
        - trait_generic = B -> trait_generic = U
+       - trait_generic = C -> None
     */
     pub fn get_corresponding_generic(
         &self,

@@ -9,13 +9,18 @@ use syn::{Error, Ident, Token, parenthesized};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq)]
 pub enum WhenCondition {
+    /// `<generic> = <type>`
     Type(
         String, /* generic */
         String, /* type (without lifetime) */
     ),
+    /// `<generic>: <trait1> + <trait2> + ...`
     Trait(String /* generic */, Vec<String> /* traits */),
+    /// `all(<cond1>, <cond2>, ...)`
     All(Vec<WhenCondition>),
+    /// `any(<cond1>, <cond2>, ...)`
     Any(Vec<WhenCondition>),
+    /// `not(<cond>)`
     Not(Box<WhenCondition>),
 }
 

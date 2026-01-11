@@ -34,6 +34,7 @@ impl TryFrom<(&Vec<ImplBody>, &Vec<TraitBody>, &AnnotationBody)> for SpecBody {
             .filter_map(|impl_| {
                 let trait_ = traits.iter().find(|tr| tr.name == impl_.trait_name)?;
 
+                // ensure that the generics in the trait and impl match
                 if get_generics_types::<Vec<_>>(&trait_.generics).len()
                     != get_generics_types::<Vec<_>>(&impl_.trait_generics).len()
                     || get_generics_lifetimes::<Vec<_>>(&trait_.generics).len()
@@ -99,7 +100,7 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
         None => Some(default),
         // from when macro
         Some(cond) => {
-            let var = VarBody::from(&default); // TODO: handle conflicting vars
+            let var = VarBody::from(&default); // TODO: handle conflicting vars (early return None)
             let (satisfied, constraints) = satisfies_condition(cond, &var, &default.constraints);
 
             if satisfied {
@@ -113,6 +114,8 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
     }
 }
 
+/// checks if the given condition is satisfied by the given var info and constraints
+/// if satisfied, it returns the updated constraints
 fn satisfies_condition(
     condition: &WhenCondition,
     var: &VarBody,
@@ -262,6 +265,8 @@ fn satisfies_condition(
     }
 }
 
+/// fills the constraints for each generic parameter from trait and specialized trait,
+/// based on the constraints from impl and type
 fn fill_trait_constraints(constraints: &Constraints, spec: &SpecBody) -> Constraints {
     let mut constraints = constraints.clone();
     constraints.from_trait = get_trait_constraints(&spec.trait_, &spec.impl_, &constraints);
@@ -278,6 +283,7 @@ fn fill_trait_constraints(constraints: &Constraints, spec: &SpecBody) -> Constra
     constraints
 }
 
+/// gets the constraints for each generic parameter from trait based on the constraints from impl
 fn get_trait_constraints(
     trait_: &TraitBody,
     impl_: &ImplBody,
@@ -324,6 +330,7 @@ impl From<&SpecBody> for TokenStream {
     }
 }
 
+/// gets the types for the generics in the spec body
 pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
     let trait_body = spec
         .trait_
@@ -344,6 +351,7 @@ pub fn get_types_for_generics(spec: &SpecBody) -> TokenStream {
     }
 }
 
+/// gets the type for a generic parameter based on the constraints
 fn get_type(generic: &str, constraints: &Constraints) -> String {
     constraints
         .from_impl

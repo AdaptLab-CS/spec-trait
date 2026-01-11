@@ -190,6 +190,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     }
 
     fn visit_item(&mut self, item: &'tcx Item) {
+        // bare function
         if let ItemKind::Fn {
             ident,
             sig,
@@ -207,6 +208,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     }
 
     fn visit_impl_item(&mut self, item: &'tcx ImplItem) {
+        // trait impl or inherent impl function
         if let ImplItemKind::Fn(sig, body) = item.kind {
             let impl_id = self
                 .analyzer
@@ -244,6 +246,7 @@ impl<'tcx> Visitor<'tcx> for STIVisitor<'tcx, '_> {
     }
 
     fn visit_trait_item(&mut self, item: &'tcx TraitItem) {
+        // trait function with default implementation
         if let TraitItemKind::Fn(sig, TraitFn::Provided(body)) = item.kind {
             log::trace!("Visiting trait fn: {}", item.ident);
 
