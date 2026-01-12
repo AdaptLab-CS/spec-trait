@@ -1,3 +1,9 @@
+mod base;
+mod lifetimes;
+mod nested;
+mod traits;
+mod types;
+
 use spec_trait_macro::{spec, when};
 use std::fmt::Debug;
 
@@ -359,4 +365,11 @@ fn main() {
     spec! { x.foo(); Vec<i32>; [] } // -> "Foo4 impl Vec<T> where T is i32"
     spec! { s2.foo(); S<u8>; [] } // -> "Default Foo4 for T"
     println!();
+
+    // Run other cases
+    base::run();
+    types::run();
+    traits::run();
+    lifetimes::run();
+    nested::run();
 }
