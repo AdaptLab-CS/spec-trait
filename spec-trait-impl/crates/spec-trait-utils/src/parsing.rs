@@ -3,8 +3,8 @@ use crate::specialize::{add_generic_type, collect_generics_lifetimes, collect_ge
 use quote::ToTokens;
 use syn::parse::ParseStream;
 use syn::{
-    Error, GenericParam, Generics, Ident, Lifetime, PredicateLifetime, PredicateType, Token, Type,
-    TypeParam, WherePredicate,
+    BoundLifetimes, Error, GenericParam, Generics, Lifetime, PredicateLifetime, PredicateType,
+    Token, Type, TypeParam, TypeParamBound, WherePredicate,
 };
 
 pub trait ParseTypeOrLifetimeOrTrait<T> {
@@ -25,7 +25,7 @@ pub fn parse_type_or_lifetime_or_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     if input.peek(Token![=]) {
         parse_type::<T, U>(ident, input)
     } else if input.peek(Token![:]) {
-        parse_trait::<T, U>(ident, input)
+        parse_trait_or_lifetime::<T, U>(ident, input)
     } else {
         Err(Error::new(
             input.span(),
@@ -34,6 +34,7 @@ pub fn parse_type_or_lifetime_or_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     }
 }
 
+/// parse type from `T = Type`
 fn parse_type<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     ident: &str,
     input: ParseStream,
@@ -43,7 +44,8 @@ fn parse_type<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     Ok(T::from_type(ident.to_string(), to_string(&type_)))
 }
 
-fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
+/// parse trait(s) and lifetime from `T: Trait1 + Trait2 + 'a`
+fn parse_trait_or_lifetime<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     ident: &str,
     input: ParseStream,
 ) -> Result<U, Error> {
@@ -62,7 +64,7 @@ fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
             }
             lifetime = Some(input.parse::<Lifetime>()?.to_string());
         } else {
-            traits.push(input.parse::<Ident>()?.to_string());
+            traits.push(parse_trait(input)?);
         }
 
         if input.peek(Token![+]) {
@@ -78,6 +80,25 @@ fn parse_trait<T: ParseTypeOrLifetimeOrTrait<U>, U>(
     }
 
     Ok(T::from_trait(ident.to_string(), traits, lifetime))
+}
+
+/// parse a single trait bound, possibly with `for<'a>` lifetimes
+fn parse_trait(input: ParseStream) -> Result<String, Error> {
+    if input.peek(Token![for]) {
+        // `for<'a>`
+        let bound_lifetimes: BoundLifetimes = input.parse()?;
+        // Trait<'a> or Fn(&'a u8) -> &'a u8
+        let bound: TypeParamBound = input.parse()?;
+
+        Ok(format!(
+            "{} {}",
+            to_string(&bound_lifetimes),
+            to_string(&bound)
+        ))
+    } else {
+        let bound: TypeParamBound = input.parse()?;
+        Ok(to_string(&bound))
+    }
 }
 
 /**
@@ -200,7 +221,7 @@ mod tests {
     use super::*;
     use quote::quote;
     use syn::parse::Parse;
-    use syn::parse2;
+    use syn::{Ident, parse2};
 
     #[derive(Debug, PartialEq)]
     enum MockTypeOrTrait {
@@ -257,6 +278,36 @@ mod tests {
         assert_eq!(
             result,
             MockTypeOrTrait::Trait("MyType".to_string(), vec!["Clone".to_string()], None)
+        );
+    }
+
+    #[test]
+    fn parse_trait_lifetimes() {
+        let input = quote! { MyType: for<'a> Clone<'a> };
+        let result: MockTypeOrTrait = parse2(input).unwrap();
+
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Trait(
+                "MyType".to_string(),
+                vec!["for < 'a > Clone < 'a >".to_string()],
+                None
+            )
+        );
+    }
+
+    #[test]
+    fn parse_trait_fn() {
+        let input = quote! { MyType: for<'a> Fn(&'a u8) -> &'a u8 };
+        let result: MockTypeOrTrait = parse2(input).unwrap();
+
+        assert_eq!(
+            result,
+            MockTypeOrTrait::Trait(
+                "MyType".to_string(),
+                vec!["for < 'a > Fn (& 'a u8) -> & 'a u8".to_string()],
+                None
+            )
         );
     }
 

@@ -118,6 +118,20 @@ impl<T> Foo<T> for ZST {
     }
 }
 
+#[when(T: Fn(i32) -> i32)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, _x: T) {
+        println!("Foo impl ZST where T implements Fn(i32) -> i32");
+    }
+}
+
+#[when(T: for<'a> Fn(&'a i32) -> i32)]
+impl<T> Foo<T> for ZST {
+    fn foo(&self, _x: T) {
+        println!("Foo impl ZST where T implements for<'a> Fn(&'a i32) -> i32");
+    }
+}
+
 // ZST - Foo2
 
 impl<T, U> Foo2<T, U> for ZST {
@@ -130,6 +144,13 @@ impl<T, U> Foo2<T, U> for ZST {
 impl<T, U> Foo2<T, U> for ZST {
     fn foo(&self, _x: T, _y: U) {
         println!("Foo2 for ZST where T is MyType");
+    }
+}
+
+#[when(U = Vec<T>)]
+impl<T, U> Foo2<T, U> for ZST {
+    fn foo(&self, _x: T, _y: U) {
+        println!("Foo2 for ZST where U is Vec<T>");
     }
 }
 
@@ -295,11 +316,14 @@ fn main() {
     spec! { zst.foo(1i32); ZST; [i32]; i32: Bar  } // -> "Foo impl ZST where T implements Bar"
     spec! { zst.foo(1i64); ZST; [i64]; i64: Bar + FooBar } // -> "Foo impl ZST where T implements Bar and FooBar"
     spec! { zst.foo(|x: &u8| x); ZST; [fn(&u8) -> &u8] } // -> "Foo impl ZST where T is a function pointer from &u8 to &u8"
+    spec! { zst.foo(|x: i32| x); ZST; [T]; T: Fn(i32) -> i32 } // -> "Foo impl ZST where T implements Fn(i32) -> i32"
+    spec! { zst.foo(|x: &i32| *x); ZST; [T]; T: for<'a> Fn(&'a i32) -> i32 } // -> "Foo impl ZST where T implements for<'a> Fn(&'a i32) -> i32"
     spec! { zst.foo(1i8); ZST; [i8] } // -> "Default Foo for ZST"
     println!();
 
     // ZST - Foo2
     spec! { zst.foo(1u8, 2u8); ZST; [u8, u8]; u8 = MyType } // -> "Foo2 for ZST where T is MyType"
+    spec! { zst.foo(2u8, vec![2u8]); ZST; [u8, Vec<u8>] } // "Foo2 for ZST where U is Vec<T>"
     spec! { zst.foo(1i32, 1i32); ZST; [i32, i32] } // -> "Default Foo2 for ZST"
     println!();
 

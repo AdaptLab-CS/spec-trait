@@ -52,7 +52,7 @@ impl Display for WhenCondition {
 
 impl Hash for WhenCondition {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.to_string().hash(state);
+        self.to_string().replace(" ", "").hash(state);
     }
 }
 
