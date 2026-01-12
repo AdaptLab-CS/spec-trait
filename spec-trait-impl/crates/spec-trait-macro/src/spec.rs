@@ -11,7 +11,8 @@ use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::{get_generics_lifetimes, get_generics_types};
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{
-    assign_lifetimes, get_concrete_type, type_assignable, type_assignable_generic_constraints,
+    assign_lifetimes, get_concrete_type, trait_assignable, type_assignable,
+    type_assignable_generic_constraints,
 };
 use std::cmp::Ordering;
 
@@ -206,9 +207,9 @@ fn satisfies_condition(
 
             let violates_constraints =
                 // generic parameter is not present in the function parameters or the trait does not match
-                generic_var.is_none_or(|v| traits.iter().any(|t| !v.traits.contains(t))) ||
+                generic_var.is_none_or(|v| traits.iter().any(|t| !v.traits.iter().any(|concrete_trait| trait_assignable(concrete_trait, t)))) ||
                 // generic parameter is forbidden to be implement one of the traits
-                constraint.not_traits.iter().any(|t| traits.contains(t)) ||
+                constraint.not_traits.iter().any(|t| traits.iter().any(|tr| trait_assignable(tr, t))) ||
                 // generic parameter is already assigned to a type that does not implement one of the traits
                 constraint.type_.as_ref().is_some_and(|ty| {
                     let declared_type_var = var.vars
@@ -216,7 +217,7 @@ fn satisfies_condition(
                         .find(|v|
                             type_assignable(&v.concrete_type, ty, &var.generics, &var.aliases)
                         );
-                    declared_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.contains(tr)))
+                    declared_type_var.is_none_or(|v| traits.iter().any(|tr| !v.traits.iter().any(|concrete_trait| trait_assignable(concrete_trait, tr))))
                 });
 
             constraint.generics = var.generics.clone();

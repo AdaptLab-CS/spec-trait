@@ -91,6 +91,7 @@ pub fn type_assignable_generic_constraints(
     }
 }
 
+/// check if concrete_type can be assigned to declared_or_concrete_type
 pub fn type_assignable(
     concrete_type: &str,
     declared_or_concrete_type: &str,
@@ -99,6 +100,11 @@ pub fn type_assignable(
 ) -> bool {
     type_assignable_generic_constraints(concrete_type, declared_or_concrete_type, generics, aliases)
         .is_some()
+}
+
+/// check if concrete_trait can be assigned to declared_or_concrete_trait
+pub fn trait_assignable(concrete_trait: &str, declared_or_concrete_trait: &str) -> bool {
+    concrete_trait.replace(" ", "") == declared_or_concrete_trait.replace(" ", "")
 }
 
 /// check if concrete_type can be assigned to declared_type
