@@ -46,7 +46,7 @@ pub fn run() {
     let x = BaseType;
 
     spec! { x.base_method(42u8); BaseType; [u8] } // T is u8
-    spec! { x.base_method(3.14f32); BaseType; [f32]; f32: Copy } // T implements Copy
+    spec! { x.base_method(1.2f32); BaseType; [f32]; f32: Copy } // T implements Copy
     spec! { x.base_method(1i32); BaseType; [i32] } // T is String or i32
     spec! { x.base_method(vec![1, 2, 3]); BaseType; [Vec<i32>]; i32: Copy } // T is a Vec of Copy
     spec! { x.base_method(&x); BaseType; [&BaseType] } // Default
