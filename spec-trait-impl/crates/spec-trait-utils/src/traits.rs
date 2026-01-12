@@ -11,7 +11,7 @@ use crate::specialize::{
     Specializable, TypeReplacer, add_generic_lifetime, add_generic_type, apply_type_condition,
     get_assignable_conditions, get_used_generics, handle_generics, remove_generic,
 };
-use crate::types::get_unique_generic_name;
+use crate::types::{get_unique_generic_name, replace_type};
 use proc_macro2::TokenStream;
 use quote::quote;
 use serde::{Deserialize, Serialize};
@@ -191,8 +191,27 @@ impl TraitBody {
 
             WhenCondition::Type(impl_generic, type_) => {
                 let mut generics = str_to_generics(&self.generics);
+                let mut actual_type = str_to_type_name(type_);
 
-                apply_type_condition(self, &mut generics, impl_generics, impl_generic, type_);
+                // replace all generics in type with new generics names coming from replace_generics_names
+                // e.g. `Vec<T>` -> `Vec<__G_0__>`
+                handle_generics(&to_string(impl_generics), |generic| {
+                    if let Some(corresponding_generic) =
+                        self.get_corresponding_generic(impl_generics, generic)
+                    {
+                        let type_ = str_to_type_name(&corresponding_generic);
+                        replace_type(&mut actual_type, generic, &type_);
+                    }
+                });
+
+                // apply the type condition
+                apply_type_condition(
+                    self,
+                    &mut generics,
+                    impl_generics,
+                    impl_generic,
+                    &to_string(&actual_type),
+                );
 
                 self.generics = to_string(&generics);
             }
