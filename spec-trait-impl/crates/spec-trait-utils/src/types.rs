@@ -164,7 +164,7 @@ fn can_assign(
                     || to_string(&array1.len) == to_string(&array2.len))
         }
 
-        // fn(T) -> U
+        // `fn(T) -> U`, `for<'a> fn(&'a T) -> U`
         (Type::BareFn(fn1), Type::BareFn(fn2)) => {
             let unsafety_compatible = matches!(
                 (&fn1.unsafety, &fn2.unsafety),
@@ -176,6 +176,26 @@ fn can_assign(
                 (Some(a1), Some(a2)) => to_string(a1) == to_string(a2),
                 _ => false,
             };
+
+            // extend generics with the generics from the fn: `for<'a> fn(&'a T) -> U`
+            let all_new_lifetimes = fn1
+                .lifetimes
+                .as_ref()
+                .map(|bl| &bl.lifetimes)
+                .iter()
+                .chain(fn2.lifetimes.as_ref().map(|bl| &bl.lifetimes).iter())
+                .flat_map(|lts| {
+                    lts.iter().filter_map(|gp| {
+                        if let GenericParam::Lifetime(lt) = gp {
+                            Some((lt.lifetime.to_string(), None))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect::<GenericsMap>();
+
+            generics.lifetimes.extend(all_new_lifetimes);
 
             fn1.inputs.len() == fn2.inputs.len()
                 && unsafety_compatible
@@ -289,11 +309,12 @@ fn check_and_assign_type_generic(
         .cloned()
         .is_some_and(|assigned| {
             assigned.clone().is_none_or(|assigned| {
-                can_assign(
-                    &str_to_type_name(concrete_type),
-                    &str_to_type_name(&assigned),
-                    generics,
-                )
+                declared_type == assigned
+                    || can_assign(
+                        &str_to_type_name(concrete_type),
+                        &str_to_type_name(&assigned),
+                        generics,
+                    )
             })
         })
     {
@@ -958,6 +979,48 @@ mod tests {
 
         let t1 = str_to_type_name("fn(u8) -> i32");
         let t2 = str_to_type_name("fn(u8) -> u8");
+        assert!(!can_assign(&t1, &t2, &mut g));
+    }
+
+    #[test]
+    fn compare_types_generic_fn() {
+        let mut g = ConstrainedGenerics::default();
+
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g = ConstrainedGenerics::default();
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a _) -> _");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g = ConstrainedGenerics::default();
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a T) -> i32");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g = ConstrainedGenerics::default();
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a u8) -> T");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g = ConstrainedGenerics::default();
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a T) -> T");
+        assert!(!can_assign(&t1, &t2, &mut g));
+
+        g = ConstrainedGenerics::default();
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a i32) -> i32");
+        assert!(!can_assign(&t1, &t2, &mut g));
+
+        g = ConstrainedGenerics::default();
+        let t1 = str_to_type_name("for<'a> fn(&'a u8) -> i32");
+        let t2 = str_to_type_name("for<'a> fn(&'a u8) -> u8");
         assert!(!can_assign(&t1, &t2, &mut g));
     }
 

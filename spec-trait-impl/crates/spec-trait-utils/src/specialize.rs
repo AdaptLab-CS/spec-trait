@@ -337,6 +337,18 @@ mod tests {
     }
 
     #[test]
+    fn get_assignable_conditions_nested_types() {
+        let conditions = vec![
+            WhenCondition::Type("T".into(), "A".into()),
+            WhenCondition::Type("U".into(), "for <'a> fn(&'a T) -> T".into()),
+        ];
+
+        let res = get_assignable_conditions(&conditions, "<T, U>");
+
+        assert_eq!(res.len(), 2);
+    }
+
+    #[test]
     fn get_generic_types_from_conditions_ordering_and_filtering() {
         let conditions = vec![
             WhenCondition::Type("T".into(), "A".into()),

@@ -40,8 +40,15 @@ impl<T, U> BaseTrait<T> for BaseType {
     }
 }
 
+#[when(not(T = &BaseType))]
+impl<T> BaseTrait<T> for BaseType {
+    fn base_method(&self, _x: T) {
+        println!("T is not &BaseType");
+    }
+}
+
 pub fn run() {
-    println!("\n- Base Cases:");
+    println!("\n- Base Examples:");
 
     let x = BaseType;
 
@@ -49,5 +56,6 @@ pub fn run() {
     spec! { x.base_method(1.2f32); BaseType; [f32]; f32: Copy } // T implements Copy
     spec! { x.base_method(1i32); BaseType; [i32] } // T is String or i32
     spec! { x.base_method(vec![1, 2, 3]); BaseType; [Vec<i32>]; i32: Copy } // T is a Vec of Copy
+    spec! { x.base_method(1i8); BaseType; [i8] } // T is not &BaseType
     spec! { x.base_method(&x); BaseType; [&BaseType] } // Default
 }
