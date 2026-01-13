@@ -41,7 +41,7 @@ impl<T, U> BaseTrait<T> for BaseType {
 }
 
 pub fn run() {
-    println!("\n- Base Cases:");
+    println!("\n- Base Examples:");
 
     let x = BaseType;
 

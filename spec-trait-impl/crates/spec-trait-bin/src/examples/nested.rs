@@ -27,7 +27,7 @@ impl<T, U> NestedTrait<T, U> for BaseType {
 }
 
 pub fn run() {
-    println!("\n- Nested Cases:");
+    println!("\n- Nested Examples:");
 
     let x = BaseType;
 

@@ -65,7 +65,7 @@ impl<T> TypesTrait<T> for BaseType {
 }
 
 pub fn run() {
-    println!("\n- Types Cases:");
+    println!("\n- Types Examples:");
 
     let x = BaseType;
 

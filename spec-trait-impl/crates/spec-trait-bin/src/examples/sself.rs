@@ -60,7 +60,7 @@ impl<T, U, V> SelfTrait<T> for (U, V) {
 }
 
 pub fn run() {
-    println!("\n- Self Cases:");
+    println!("\n- Self Examples:");
 
     let x = BaseType1;
     spec! { x.self_method(42u8); BaseType1; [u8] } // -> "BaseType1: T is u8"

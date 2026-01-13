@@ -294,7 +294,7 @@ impl<T> Foo4 for Vec<T> {
 }
 
 pub fn run() {
-    println!("\n- All Cases:");
+    println!("\n- All Examples:");
 
     let zst = ZST;
     let zst2 = ZST2;

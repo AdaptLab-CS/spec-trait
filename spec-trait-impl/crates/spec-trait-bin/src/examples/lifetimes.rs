@@ -27,7 +27,7 @@ impl<T> LifetimesTrait<T> for BaseType {
 }
 
 pub fn run() {
-    println!("\n- Lifetimes Cases:");
+    println!("\n- Lifetimes Examples:");
 
     let x = BaseType;
 
