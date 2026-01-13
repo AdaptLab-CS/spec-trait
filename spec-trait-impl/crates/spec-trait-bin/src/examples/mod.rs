@@ -6,6 +6,7 @@ mod order;
 mod sself;
 mod traits;
 mod types;
+mod higher;
 
 pub fn run() {
     base::run();
@@ -14,6 +15,7 @@ pub fn run() {
     lifetimes::run();
     nested::run();
     sself::run();
+    higher::run();
     order::run();
     all::run();
 }

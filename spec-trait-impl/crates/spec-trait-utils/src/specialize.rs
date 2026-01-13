@@ -36,10 +36,11 @@ pub fn get_assignable_conditions(
             WhenCondition::Type(g, t) => {
                 let types = get_generic_types_from_conditions(g, conditions);
                 let most_specific = types.last() == Some(t);
-                let diff_types = types.iter().any(|other_t| {
-                    !type_assignable(t, other_t, generics, &Aliases::default())
-                        && !type_assignable(other_t, t, generics, &Aliases::default())
-                });
+                let diff_types = types.len() > 1
+                    && types.iter().any(|other_t| {
+                        !type_assignable(t, other_t, generics, &Aliases::default())
+                            && !type_assignable(other_t, t, generics, &Aliases::default())
+                    });
 
                 // if there are no conflicts, keep only the most specific type
                 if diff_types || !most_specific {
@@ -334,6 +335,18 @@ mod tests {
             res[0],
             WhenCondition::Trait("T".into(), vec!["Copy".into()])
         );
+    }
+
+    #[test]
+    fn get_assignable_conditions_nested_types() {
+        let conditions = vec![
+            WhenCondition::Type("T".into(), "A".into()),
+            WhenCondition::Type("U".into(), "for <'a> fn(&'a T) -> T".into()),
+        ];
+
+        let res = get_assignable_conditions(&conditions, "<T, U>");
+
+        assert_eq!(res.len(), 2);
     }
 
     #[test]
