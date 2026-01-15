@@ -1,6 +1,9 @@
+use crate::SpecBody;
 use proc_macro2::TokenStream;
 use spec_trait_utils::conversions::{str_to_generics, str_to_type_name, to_string};
+use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{Aliases, replace_type, strip_lifetimes, type_assignable};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -171,6 +174,38 @@ impl FromIterator<(String, Constraint)> for Constraints {
             constraints.from_impl.insert(generic, constraint);
         }
         constraints
+    }
+}
+
+impl Constraints {
+    /// fills the constraints for each generic parameter from trait and specialized trait,
+    /// based on the constraints from impl and type
+    pub fn fill_trait_constraints(&self, spec: &SpecBody) -> Constraints {
+        let mut constraints = self.clone();
+        constraints.from_trait = self.get_trait_constraints(&spec.trait_, &spec.impl_);
+        constraints.from_specialized_trait = self.get_trait_constraints(
+            spec.trait_.specialized.as_ref().unwrap(),
+            spec.impl_.specialized.as_ref().unwrap(),
+        );
+        constraints.from_type = Constraint {
+            generics: spec.impl_.impl_generics.clone(),
+            type_: Some(spec.impl_.type_name.clone()),
+            ..Default::default()
+        };
+        constraints
+    }
+
+    /// gets the constraints for each generic parameter from trait based on the constraints from impl
+    fn get_trait_constraints(&self, trait_: &TraitBody, impl_: &ImplBody) -> ConstraintMap {
+        let mut new_constraints = ConstraintMap::new();
+        for trait_generic in get_generics_types::<Vec<_>>(&trait_.generics) {
+            let corresponding_generic = impl_
+                .get_corresponding_generic(&str_to_generics(&trait_.generics), &trait_generic)
+                .unwrap();
+            let constraint = self.from_impl.get(&corresponding_generic);
+            new_constraints.insert(trait_generic, constraint.cloned().unwrap_or_default());
+        }
+        new_constraints
     }
 }
 

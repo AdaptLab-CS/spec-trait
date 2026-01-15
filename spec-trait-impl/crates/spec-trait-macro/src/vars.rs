@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::SpecBody;
 use crate::annotations::{Annotation, AnnotationBody};
 use spec_trait_utils::conversions::{
@@ -9,8 +7,10 @@ use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::get_generics_types;
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{
-    Aliases, get_concrete_type, type_assignable, type_assignable_generic_constraints, type_contains,
+    Aliases, GenericsMap, get_concrete_type, type_assignable, type_assignable_generic_constraints,
+    type_contains,
 };
+use std::collections::HashSet;
 use syn::{FnArg, TraitItemFn, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -35,16 +35,18 @@ pub struct VarBody {
     pub vars: Vec<VarInfo>,
 }
 
-impl From<&SpecBody> for VarBody {
-    fn from(spec: &SpecBody) -> Self {
+impl TryFrom<&SpecBody> for VarBody {
+    type Error = String;
+
+    fn try_from(spec: &SpecBody) -> Result<Self, Self::Error> {
         let aliases = get_type_aliases(&spec.annotations.annotations);
         let generics = spec.impl_.impl_generics.clone();
-        let vars = get_vars(&spec.annotations, &spec.impl_, &spec.trait_, &aliases);
-        VarBody {
+        let vars = get_vars(&spec.annotations, &spec.impl_, &spec.trait_, &aliases)?;
+        Ok(VarBody {
             aliases,
             generics,
             vars,
-        }
+        })
     }
 }
 
@@ -70,69 +72,92 @@ fn get_vars(
     impl_: &ImplBody,
     trait_: &TraitBody,
     aliases: &Aliases,
-) -> Vec<VarInfo> {
-    get_generics_types::<Vec<_>>(&impl_.impl_generics)
-        .iter()
-        .flat_map(|g| {
-            let from_type = get_generic_constraints_from_type(g, impl_, ann, aliases);
-            let from_type_specialized = get_generic_constraints_from_type(
-                g,
-                impl_.specialized.as_ref().unwrap(),
-                ann,
-                aliases,
-            );
+) -> Result<Vec<VarInfo>, String> {
+    let generics = get_generics_types::<Vec<_>>(&impl_.impl_generics);
 
-            match trait_.get_corresponding_generic(&str_to_generics(&impl_.trait_generics), g) {
-                // get type from trait (generic already existed before specialization)
-                Some(trait_generic) => {
-                    let from_trait = get_generic_constraints_from_trait(
-                        &trait_generic,
-                        trait_,
-                        impl_,
-                        ann,
-                        aliases,
+    let mut res: HashSet<VarInfo> = HashSet::new();
+
+    for g in &generics {
+        let from_type = get_generic_constraints_from_type(g, impl_, ann, aliases);
+        let from_type_specialized =
+            get_generic_constraints_from_type(g, impl_.specialized.as_ref().unwrap(), ann, aliases);
+
+        let corresponding_generics =
+            trait_.get_corresponding_generics(&str_to_generics(&impl_.trait_generics), g);
+
+        if corresponding_generics.len() > 1 {
+            let mut resulting_vars = Vec::new();
+
+            for trait_generic in &corresponding_generics {
+                let mut from_trait =
+                    get_generic_constraints_from_trait(trait_generic, trait_, impl_, ann, aliases)?;
+                resulting_vars.append(&mut from_trait);
+            }
+
+            resulting_vars.extend(from_type.iter().cloned());
+
+            let conflicting_vars = resulting_vars
+                .iter()
+                .map(|v| &v.concrete_type)
+                .collect::<HashSet<_>>();
+
+            if conflicting_vars.len() > 1 {
+                return Err(format!(
+                    "Multiple conflicting constraints found for generic {}: {:?}",
+                    g, conflicting_vars
+                ));
+            }
+        }
+
+        match corresponding_generics.first() {
+            // get type from trait (generic already existed before specialization)
+            Some(trait_generic) => {
+                let from_trait =
+                    get_generic_constraints_from_trait(trait_generic, trait_, impl_, ann, aliases)?;
+
+                res.extend(from_trait.into_iter().chain(from_type));
+            }
+
+            // get from specialized trait (generic was added during specialization)
+            None => {
+                let trait_generic = trait_
+                    .specialized
+                    .as_ref()
+                    .unwrap()
+                    .get_corresponding_generic(
+                        &str_to_generics(&impl_.specialized.as_ref().unwrap().trait_generics),
+                        g,
                     );
 
-                    from_trait.into_iter().chain(from_type).collect::<Vec<_>>()
-                }
+                if let Some(trait_generic) = trait_generic {
+                    let from_trait = get_generic_constraints_from_trait(
+                        &trait_generic,
+                        trait_.specialized.as_ref().unwrap(),
+                        impl_.specialized.as_ref().unwrap(),
+                        ann,
+                        aliases,
+                    )?;
 
-                // get from specialized trait (generic was added during specialization)
-                None => {
-                    let trait_generic = trait_
-                        .specialized
-                        .as_ref()
-                        .unwrap()
-                        .get_corresponding_generic(
-                            &str_to_generics(&impl_.specialized.as_ref().unwrap().trait_generics),
-                            g,
-                        );
-
-                    if let Some(trait_generic) = trait_generic {
-                        let from_trait = get_generic_constraints_from_trait(
-                            &trait_generic,
-                            trait_.specialized.as_ref().unwrap(),
-                            impl_.specialized.as_ref().unwrap(),
-                            ann,
-                            aliases,
-                        );
-
+                    res.extend(
                         from_trait
                             .into_iter()
                             .chain(from_type_specialized)
-                            .collect::<Vec<_>>()
-                    } else {
-                        // get from type only
+                            .collect::<Vec<_>>(),
+                    );
+                } else {
+                    // get from type only
+                    res.extend(
                         from_type
                             .into_iter()
                             .chain(from_type_specialized)
-                            .collect::<Vec<_>>()
-                    }
+                            .collect::<Vec<_>>(),
+                    );
                 }
             }
-        })
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect()
+        }
+    }
+
+    Ok(res.into_iter().collect())
 }
 
 /**
@@ -158,7 +183,7 @@ fn get_generic_constraints_from_trait(
     impl_: &ImplBody,
     ann: &AnnotationBody,
     aliases: &Aliases,
-) -> Vec<VarInfo> {
+) -> Result<Vec<VarInfo>, String> {
     let trait_fn = trait_.find_fn(&ann.fn_, ann.args.len()).unwrap();
     let param_types = get_param_types(&trait_fn);
 
@@ -171,40 +196,68 @@ fn get_generic_constraints_from_trait(
 
     // generic passed but not used
     if params_with_trait_generic.is_empty() {
-        return vec![];
+        return Ok(vec![]);
     }
 
-    let (pos, trait_type_definition) = params_with_trait_generic.first().unwrap();
-    let concrete_type = &ann.args_types[*pos];
+    // unify constraints for all generics appearing in those params
+    let mut unified_generics = GenericsMap::new();
 
-    let mut res = HashSet::new();
+    for (pos, trait_type_definition) in params_with_trait_generic {
+        let concrete_type = &ann.args_types[pos];
 
-    let constrained_generics = type_assignable_generic_constraints(
-        concrete_type,
-        trait_type_definition,
-        &trait_.generics,
-        aliases,
-    );
+        let constrained_generics = type_assignable_generic_constraints(
+            concrete_type,
+            trait_type_definition,
+            &trait_.generics,
+            aliases,
+        )
+        .ok_or_else(|| {
+            format!(
+                "Type {} is not assignable to parameter {} of function {} (expected {})",
+                concrete_type, pos, ann.fn_, trait_type_definition
+            )
+        })?;
 
-    if let Some(generics_map) = constrained_generics {
-        for (generic, constraint) in generics_map.types {
-            if let Some(constraint) = constraint {
-                let impl_generic = impl_
-                    .get_corresponding_generic(&str_to_generics(&trait_.generics), &generic)
-                    .unwrap();
-                res.insert((constraint, impl_generic, generic));
+        for (generic, constraint) in constrained_generics.types {
+            if let Some(existing) = unified_generics.get(&generic) {
+                match (existing, &constraint) {
+                    (Some(e), Some(c)) if e != c => {
+                        return Err(format!(
+                            "Multiple conflicting constraints found for generic {}: {:?} vs {:?}",
+                            generic, e, c
+                        ));
+                    }
+                    (None, Some(_)) => {
+                        unified_generics.insert(generic, constraint);
+                    }
+                    _ => {}
+                }
+            } else {
+                unified_generics.insert(generic, constraint);
             }
         }
     }
 
-    res.into_iter()
+    let mut res = HashSet::new();
+
+    for (generic, constraint) in unified_generics {
+        if let Some(constraint) = constraint {
+            let impl_generic = impl_
+                .get_corresponding_generic(&str_to_generics(&trait_.generics), &generic)
+                .unwrap();
+            res.insert((constraint, impl_generic, generic));
+        }
+    }
+
+    Ok(res
+        .into_iter()
         .map(|(constraint, impl_generic, trait_generic)| VarInfo {
             impl_generic,
             trait_generic: Some(trait_generic),
             concrete_type: get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases),
             traits: get_type_traits(&constraint, &ann.annotations, aliases),
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>())
 }
 
 fn get_generic_constraints_from_type(
@@ -374,7 +427,7 @@ mod tests {
 
         let aliases = Aliases::new();
 
-        let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
+        let result = get_vars(&ann, &impl_body, &trait_body, &aliases).unwrap();
 
         assert_eq!(result.len(), 3);
         let t = result.iter().find(|v| v.impl_generic == "T").unwrap();
@@ -420,7 +473,7 @@ mod tests {
             Some(
                 WhenCondition::All(
                     vec![
-                        WhenCondition::Type("W".into(), "Vec<V>".into()),
+                        WhenCondition::Type("W".into(), "&Vec<V>".into()),
                         WhenCondition::Trait("V".into(), vec!["Debug".into()])
                     ]
                 )
@@ -461,7 +514,7 @@ mod tests {
 
         let aliases = Aliases::new();
 
-        let result = get_vars(&ann, &impl_body, &trait_body, &aliases);
+        let result = get_vars(&ann, &impl_body, &trait_body, &aliases).unwrap();
         println!("{:#?}", result);
 
         assert_eq!(result.len(), 5);
