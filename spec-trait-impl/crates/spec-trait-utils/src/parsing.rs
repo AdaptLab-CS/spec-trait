@@ -201,6 +201,11 @@ pub fn get_generics_lifetimes<T: FromIterator<String>>(generics_str: &str) -> T 
     collect_generics_lifetimes(&generics)
 }
 
+pub fn count_generics(generics_str: &str) -> usize {
+    let generics = str_to_generics(generics_str);
+    generics.params.len()
+}
+
 pub fn get_relevant_generics_names(generics: &Generics, generic: &str) -> Vec<String> {
     let get_lifetimes = generic.starts_with('\'');
     let get_types = !get_lifetimes;

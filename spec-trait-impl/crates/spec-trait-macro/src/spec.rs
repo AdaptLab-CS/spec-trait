@@ -300,7 +300,7 @@ fn has_inner_generic_conflict(generic: &str, generic_map: &GenericsMap, var: &Va
         .filter_map(|(inner_generic, constraint)| {
             constraint
                 .as_ref()
-                .and_then(|concrete_type| Some((inner_generic, concrete_type)))
+                .map(|concrete_type| (inner_generic, concrete_type))
         })
         .any(|(inner_generic, concrete_type)| {
             if inner_generic == generic {
@@ -312,11 +312,11 @@ fn has_inner_generic_conflict(generic: &str, generic_map: &GenericsMap, var: &Va
             if let Some(existing) = var.vars.iter().find(|v| v.impl_generic == *inner_generic) {
                 !type_assignable(
                     &existing.concrete_type,
-                    &concrete_type,
+                    concrete_type,
                     &var.generics,
                     &var.aliases,
                 ) || !type_assignable(
-                    &concrete_type,
+                    concrete_type,
                     &existing.concrete_type,
                     &var.generics,
                     &var.aliases,

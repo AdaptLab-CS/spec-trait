@@ -8,10 +8,10 @@ use crate::parsing::{
     get_generics_lifetimes, get_generics_types, get_relevant_generics_names, parse_generics,
 };
 use crate::specialize::{
-    Specializable, TypeReplacer, add_generic_lifetime, add_generic_type, apply_type_condition,
+    Specializable, add_generic_lifetime, add_generic_type, apply_type_condition,
     get_assignable_conditions, get_used_generics, handle_generics, remove_generic,
 };
-use crate::types::{get_unique_generic_name, replace_type};
+use crate::types::{LifetimeReplacer, TypeReplacer, get_unique_generic_name, replace_type};
 use proc_macro2::TokenStream;
 use quote::quote;
 use serde::{Deserialize, Serialize};
@@ -129,8 +129,8 @@ impl TraitBody {
         // set specialized trait name
         specialized.name = impl_body.specialized.as_ref().unwrap().trait_name.clone();
         let mut replacer = TypeReplacer {
-            generic: self.name.clone(),
-            type_: str_to_type_name(&specialized.name),
+            prev: self.name.clone(),
+            new: str_to_type_name(&specialized.name),
         };
         specialized.handle_items_replace(&mut replacer);
 
@@ -236,8 +236,8 @@ impl TraitBody {
 
             let type_ = str_to_type_name(&new_generic_name);
             let mut replacer = TypeReplacer {
-                generic: generic.to_owned(),
-                type_,
+                prev: generic.to_owned(),
+                new: type_,
             };
             self.handle_items_replace(&mut replacer);
         }
@@ -249,10 +249,9 @@ impl TraitBody {
             add_generic_lifetime(&mut trait_generics, &new_generic_name);
             remove_generic(&mut trait_generics, &generic);
 
-            let type_ = str_to_type_name(&new_generic_name);
-            let mut replacer = TypeReplacer {
-                generic: generic.to_owned(),
-                type_,
+            let mut replacer = LifetimeReplacer {
+                prev: generic.to_owned(),
+                new: new_generic_name,
             };
             self.handle_items_replace(&mut replacer);
         }
@@ -285,10 +284,10 @@ impl TraitBody {
 
         let mut result = Vec::new();
         for (idx, name) in impl_names.iter().enumerate() {
-            if name == impl_generic {
-                if let Some(trait_name) = trait_names.get(idx).cloned() {
-                    result.push(trait_name);
-                }
+            if name == impl_generic
+                && let Some(trait_name) = trait_names.get(idx).cloned()
+            {
+                result.push(trait_name);
             }
         }
 

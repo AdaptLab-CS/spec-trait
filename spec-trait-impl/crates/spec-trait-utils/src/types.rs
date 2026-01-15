@@ -5,6 +5,7 @@ use crate::{
 };
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
+use syn::visit_mut::{self, VisitMut};
 use syn::{
     Expr, GenericArgument, GenericParam, Generics, Ident, Lifetime, PathArguments, ReturnType,
     Type, TypeParamBound, TypeReference,
@@ -381,24 +382,32 @@ pub fn type_contains_lifetime(ty: &Type, lifetime: &str) -> bool {
     to_string(&type_) != to_string(ty)
 }
 
+pub struct TypeReplacer {
+    pub prev: String,
+    pub new: Type,
+}
+
+impl VisitMut for TypeReplacer {
+    fn visit_type_mut(&mut self, node: &mut Type) {
+        self.visit_type(node);
+        visit_mut::visit_type_mut(self, node);
+    }
+}
+impl VisitTypeInDepth for TypeReplacer {
+    fn visit_ident(&mut self, ident: &mut Ident) {
+        if ident == &self.prev {
+            *ident = Ident::new(&to_string(&self.new.clone()), Span::call_site());
+        }
+    }
+    fn before_visit_type(&mut self, ty: &mut Type) {
+        if to_string(ty) == to_string(&str_to_type_name(self.prev.as_str())) {
+            *ty = self.new.clone();
+        }
+    }
+}
+
 /// Replaces all occurrences of `prev` in the given type with `new`.
 pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
-    struct TypeReplacer {
-        prev: String,
-        new: Type,
-    }
-    impl VisitTypeInDepth for TypeReplacer {
-        fn visit_ident(&mut self, ident: &mut Ident) {
-            if ident == &self.prev {
-                *ident = Ident::new(&to_string(&self.new.clone()), Span::call_site());
-            }
-        }
-        fn before_visit_type(&mut self, ty: &mut Type) {
-            if to_string(ty) == to_string(&str_to_type_name(self.prev.as_str())) {
-                *ty = self.new.clone();
-            }
-        }
-    }
     TypeReplacer {
         prev: prev.to_string(),
         new: new.clone(),
@@ -406,19 +415,27 @@ pub fn replace_type(ty: &mut Type, prev: &str, new: &Type) {
     .visit_type(ty);
 }
 
-/// Replaces all occurrences of `prev` lifetime in the given type with `new`.
-pub fn replace_lifetime(ty: &mut Type, prev: &str, new: &str) {
-    struct LifetimeReplacer {
-        prev: String,
-        new: String,
+pub struct LifetimeReplacer {
+    pub prev: String,
+    pub new: String,
+}
+
+impl VisitMut for LifetimeReplacer {
+    fn visit_type_mut(&mut self, node: &mut Type) {
+        self.visit_type(node);
+        visit_mut::visit_type_mut(self, node);
     }
-    impl VisitTypeInDepth for LifetimeReplacer {
-        fn visit_lifetime(&mut self, lifetime: &mut Lifetime) {
-            if lifetime.to_string() == self.prev {
-                *lifetime = Lifetime::new(&self.new, Span::call_site());
-            }
+}
+impl VisitTypeInDepth for LifetimeReplacer {
+    fn visit_lifetime(&mut self, lifetime: &mut Lifetime) {
+        if lifetime.to_string() == self.prev {
+            *lifetime = Lifetime::new(&self.new, Span::call_site());
         }
     }
+}
+
+/// Replaces all occurrences of `prev` lifetime in the given type with `new`.
+pub fn replace_lifetime(ty: &mut Type, prev: &str, new: &str) {
     LifetimeReplacer {
         prev: prev.to_string(),
         new: new.to_string(),
