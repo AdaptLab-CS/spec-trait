@@ -71,15 +71,24 @@ impl From<Generics> for ConstrainedGenerics {
     }
 }
 
+fn get_type_from_generic(generic: &str, aliases: &Aliases) -> Type {
+    let ty = if generic.starts_with('\'') {
+        format!("&{} _", generic)
+    } else {
+        generic.to_string()
+    };
+
+    str_to_type_name(&get_concrete_type(&ty, aliases))
+}
+
 pub fn type_assignable_generic_constraints(
     concrete_type: &str,
     declared_or_concrete_type: &str,
     generics: &str,
     aliases: &Aliases,
 ) -> Option<ConstrainedGenerics> {
-    let concrete_type = str_to_type_name(&get_concrete_type(concrete_type, aliases));
-    let declared_or_concrete_type =
-        str_to_type_name(&get_concrete_type(declared_or_concrete_type, aliases));
+    let concrete_type = get_type_from_generic(concrete_type, aliases);
+    let declared_or_concrete_type = get_type_from_generic(declared_or_concrete_type, aliases);
 
     let generics = str_to_generics(generics);
     let mut generics = ConstrainedGenerics::from(generics);
@@ -351,6 +360,10 @@ fn check_and_assign_lifetime_generic(
 }
 
 pub fn type_contains(ty: &Type, generic: &str) -> bool {
+    if generic.starts_with('\'') {
+        return type_contains_lifetime(ty, generic);
+    }
+
     let mut type_ = ty.clone();
     let replacement = str_to_type_name("__G__");
 
