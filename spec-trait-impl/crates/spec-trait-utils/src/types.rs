@@ -39,7 +39,7 @@ fn resolve_type(ty: &Type, aliases: &Aliases) -> Type {
     ty
 }
 
-type GenericsMap = HashMap<String, Option<String>>;
+pub type GenericsMap = HashMap<String, Option<String>>;
 
 #[derive(Debug, Default)]
 pub struct ConstrainedGenerics {

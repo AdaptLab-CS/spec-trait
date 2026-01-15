@@ -261,27 +261,56 @@ impl TraitBody {
     }
 
     /**
+        get the generics in the trait corresponding to the impl_generic in the impl.
+        In most cases there is a single corresponding generic; however, if the same
+        impl generic is used multiple times in the trait instantiation (e.g.
+        `trait Trait<T, U>` with `impl<A> Trait<A, A> for ...`), this will return
+        all corresponding trait generics (e.g. `vec!["T", "U"]`).
+
+        # Example:
+        for trait `TraitName<A, B, C>` and impl `impl<T, U> TraitName<T, U, T> for MyType`
+        - impl_generic = T -> trait_generics = ["A", "C"]
+        - impl_generic = U -> trait_generics = ["B"]
+        - impl_generic = V -> []
+    */
+    pub fn get_corresponding_generics(
+        &self,
+        impl_generics: &Generics,
+        impl_generic: &str,
+    ) -> Vec<String> {
+        let trait_generics = str_to_generics(&self.generics);
+
+        let impl_names = get_relevant_generics_names(impl_generics, impl_generic);
+        let trait_names = get_relevant_generics_names(&trait_generics, impl_generic);
+
+        let mut result = Vec::new();
+        for (idx, name) in impl_names.iter().enumerate() {
+            if name == impl_generic {
+                if let Some(trait_name) = trait_names.get(idx).cloned() {
+                    result.push(trait_name);
+                }
+            }
+        }
+
+        result
+    }
+
+    /**
         get the generic in the trait corresponding to the impl_generic in the impl
         # Example:
         for trait `TraitName<A, B>` and impl `impl<T, U> TraitName<T, U> for MyType`
         - impl_generic = T -> trait_generic = A
         - impl_generic = U -> trait_generic = B
-        - impl_generic = C -> None
+        - impl_generic = V -> None
     */
     pub fn get_corresponding_generic(
         &self,
         impl_generics: &Generics,
         impl_generic: &str,
     ) -> Option<String> {
-        let trait_generics = str_to_generics(&self.generics);
-
-        let impl_generic_param = get_relevant_generics_names(impl_generics, impl_generic)
-            .iter()
-            .position(|param| param == impl_generic)?;
-
-        get_relevant_generics_names(&trait_generics, impl_generic)
-            .get(impl_generic_param)
-            .cloned()
+        self.get_corresponding_generics(impl_generics, impl_generic)
+            .into_iter()
+            .next()
     }
 }
 

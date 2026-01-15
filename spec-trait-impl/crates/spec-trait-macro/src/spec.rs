@@ -1,12 +1,10 @@
 use crate::annotations::AnnotationBody;
-use crate::constraints::{Constraint, ConstraintMap, Constraints};
+use crate::constraints::Constraints;
 use crate::vars::VarBody;
 use proc_macro2::TokenStream;
 use quote::quote;
 use spec_trait_utils::conditions::WhenCondition;
-use spec_trait_utils::conversions::{
-    str_to_expr, str_to_generics, str_to_trait_name, str_to_type_name, to_string,
-};
+use spec_trait_utils::conversions::{str_to_expr, str_to_trait_name, str_to_type_name, to_string};
 use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::{get_generics_lifetimes, get_generics_types};
 use spec_trait_utils::traits::TraitBody;
@@ -101,12 +99,12 @@ fn get_constraints(default: SpecBody) -> Option<SpecBody> {
         None => Some(default),
         // from when macro
         Some(cond) => {
-            let var = VarBody::from(&default); // TODO: handle conflicting vars (early return None)
+            let var = VarBody::try_from(&default).ok()?;
             let (satisfied, constraints) = satisfies_condition(cond, &var, &default.constraints);
 
             if satisfied {
                 let mut with_constraints = default.clone();
-                with_constraints.constraints = fill_trait_constraints(&constraints, &default);
+                with_constraints.constraints = constraints.fill_trait_constraints(&default);
                 Some(with_constraints)
             } else {
                 None
@@ -163,7 +161,13 @@ fn satisfies_condition(
                 // generic parameter should implement a trait that the type does not implement
                 declared_type_var.is_none_or(|v|
                     constraint.traits.iter().any(|t| !v.traits.contains(t))
-                );
+                )||
+                // generic parameter is already assigned to a different type
+                constraint.type_.as_ref().is_some_and(|ty| {
+                    !type_assignable(ty, &declared_type, &var.generics, &var.aliases)
+                })||
+                // the condition implies a different type for some other generic than what we already inferred
+                has_cross_generic_conflict(generic, &declared_type, var);
 
             constraint.generics = var.generics.clone();
             if violates_constraints {
@@ -266,39 +270,55 @@ fn satisfies_condition(
     }
 }
 
-/// fills the constraints for each generic parameter from trait and specialized trait,
-/// based on the constraints from impl and type
-fn fill_trait_constraints(constraints: &Constraints, spec: &SpecBody) -> Constraints {
-    let mut constraints = constraints.clone();
-    constraints.from_trait = get_trait_constraints(&spec.trait_, &spec.impl_, &constraints);
-    constraints.from_specialized_trait = get_trait_constraints(
-        spec.trait_.specialized.as_ref().unwrap(),
-        spec.impl_.specialized.as_ref().unwrap(),
-        &constraints,
-    );
-    constraints.from_type = Constraint {
-        generics: spec.impl_.impl_generics.clone(),
-        type_: Some(spec.impl_.type_name.clone()),
-        ..Default::default()
+/**
+    Checks if the condition implies a different type for some other generic than what we already inferred
+    # Example
+    For condition `U = Vec<T>` with concrete types `T = i32` and `U = Vec<u8>`.
+    The condition implies `T = u8` which conflicts with `T = i32`
+*/
+fn has_cross_generic_conflict(generic: &str, declared_type: &str, var: &VarBody) -> bool {
+    let Some(generic_var) = var.vars.iter().find(|v| v.impl_generic == generic) else {
+        return false;
     };
-    constraints
-}
 
-/// gets the constraints for each generic parameter from trait based on the constraints from impl
-fn get_trait_constraints(
-    trait_: &TraitBody,
-    impl_: &ImplBody,
-    constraints: &Constraints,
-) -> ConstraintMap {
-    let mut new_constraints = ConstraintMap::new();
-    for trait_generic in get_generics_types::<Vec<_>>(&trait_.generics) {
-        let corresponding_generic = impl_
-            .get_corresponding_generic(&str_to_generics(&trait_.generics), &trait_generic)
-            .unwrap();
-        let constraint = constraints.from_impl.get(&corresponding_generic);
-        new_constraints.insert(trait_generic, constraint.cloned().unwrap_or_default());
-    }
-    new_constraints
+    let Some(generics_map) = type_assignable_generic_constraints(
+        &generic_var.concrete_type,
+        declared_type,
+        &var.generics,
+        &var.aliases,
+    ) else {
+        return false;
+    };
+
+    generics_map
+        .types
+        .into_iter()
+        .filter_map(|(inner_generic, constraint)| {
+            constraint.map(|concrete_type| (inner_generic, concrete_type))
+        })
+        .any(|(inner_generic, concrete_type)| {
+            if inner_generic == generic {
+                return false;
+            }
+
+            // If we already know a concrete type for this inner generic from vars,
+            // it must be compatible with the one implied by the condition.
+            if let Some(existing) = var.vars.iter().find(|v| v.impl_generic == inner_generic) {
+                !type_assignable(
+                    &existing.concrete_type,
+                    &concrete_type,
+                    &var.generics,
+                    &var.aliases,
+                ) || !type_assignable(
+                    &concrete_type,
+                    &existing.concrete_type,
+                    &var.generics,
+                    &var.aliases,
+                )
+            } else {
+                false
+            }
+        })
 }
 
 impl From<&SpecBody> for TokenStream {
@@ -594,6 +614,33 @@ mod tests {
     }
 
     #[test]
+    fn cross_generic_conflict() {
+        let condition = WhenCondition::Type("U".into(), "Vec<T>".into());
+        let var = VarBody {
+            aliases: Aliases::default(),
+            generics: "<T, U>".to_string(),
+            vars: vec![
+                VarInfo {
+                    impl_generic: "T".into(),
+                    trait_generic: Some("T".into()),
+                    concrete_type: "i32".into(),
+                    traits: vec![],
+                },
+                VarInfo {
+                    impl_generic: "U".into(),
+                    trait_generic: Some("U".into()),
+                    concrete_type: "Vec<u8>".into(),
+                    traits: vec![],
+                },
+            ],
+        };
+
+        let (satisfies, _) = satisfies_condition(&condition, &var, &Constraints::default());
+
+        assert!(!satisfies);
+    }
+
+    #[test]
     fn default_impl() {
         let impls = vec![get_impl_body(None)];
         let traits = vec![get_trait_body(&impls[0])];
@@ -812,7 +859,6 @@ mod tests {
 
         assert!(!result.is_ok());
     }
-
     #[test]
     fn test_fill_trait_constraints() {
         let impl_ = get_impl_body(None);
@@ -838,7 +884,7 @@ mod tests {
             constraints: Constraints::default(),
         };
 
-        let filled = fill_trait_constraints(&constraints, &spec);
+        let filled = constraints.fill_trait_constraints(&spec);
 
         let c = filled.from_trait.get("A").unwrap();
         let sc = filled.from_specialized_trait.get("__G_0__").unwrap();
@@ -869,7 +915,7 @@ mod tests {
             constraints: Constraints::default(),
         };
 
-        let filled = fill_trait_constraints(&constraints, &spec);
+        let filled = constraints.fill_trait_constraints(&spec);
 
         let c = filled.from_trait.get("A").unwrap();
         assert_eq!(c, &Constraint::default());
