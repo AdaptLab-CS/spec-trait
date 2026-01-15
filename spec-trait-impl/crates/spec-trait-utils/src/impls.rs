@@ -8,10 +8,10 @@ use crate::parsing::{
     parse_generics,
 };
 use crate::specialize::{
-    Specializable, TypeReplacer, add_generic_lifetime, add_generic_type, apply_type_condition,
+    Specializable, add_generic_lifetime, add_generic_type, apply_type_condition,
     get_assignable_conditions, get_used_generics, handle_generics, remove_generic,
 };
-use crate::types::{replace_type, type_contains, type_contains_lifetime};
+use crate::types::{TypeReplacer, replace_type, type_contains, type_contains_lifetime};
 use proc_macro2::TokenStream;
 use quote::quote;
 use serde::{Deserialize, Serialize};
@@ -142,8 +142,8 @@ impl ImplBody {
         // set specialized trait name
         specialized.trait_name = specialized.get_spec_trait_name();
         let mut replacer = TypeReplacer {
-            generic: self.trait_name.clone(),
-            type_: str_to_type_name(&specialized.trait_name),
+            prev: self.trait_name.clone(),
+            new: str_to_type_name(&specialized.trait_name),
         };
         specialized.handle_items_replace(&mut replacer);
 

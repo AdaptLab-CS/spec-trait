@@ -157,7 +157,6 @@ fn get_vars(
             }
         }
     }
-    println!("vars: {:?}\n", res);
 
     Ok(res.into_iter().collect())
 }
@@ -437,7 +436,7 @@ mod tests {
         let impl_body = ImplBody::try_from((
             syn
                 ::parse_str::<TokenStream>(
-                    "impl<W, T, U: Debug, V> MyTrait<T, U> for V { fn foo(&self, x: T, y: u32, z: Vec<U>) {} }"
+                    "impl<'a, W, T, U: Debug, V> MyTrait<'a, T, U> for V { fn foo(&self, x: T, y: &'a u32, z: Vec<U>) {} }"
                 )
                 .unwrap(),
             None,
@@ -445,7 +444,7 @@ mod tests {
 
         let trait_body = TraitBody::try_from(
             syn::parse_str::<TokenStream>(
-                "trait MyTrait<A, B> { fn foo(&self, x: A, y: u32, z: Vec<B>); }",
+                "trait MyTrait<'b, A, B> { fn foo(&self, x: A, y: &'b u32, z: Vec<B>); }",
             )
             .unwrap(),
         )
@@ -456,10 +455,14 @@ mod tests {
             fn_: "foo".to_string(),
             args_types: vec![
                 "i32".to_string(),
-                "u32".to_string(),
+                "&'static u32".to_string(),
                 "Vec<&'static i32>".to_string(),
             ],
-            args: vec!["1i32".to_string(), "2u32".to_string(), "vec![]".to_string()],
+            args: vec![
+                "1i32".to_string(),
+                "&2u32".to_string(),
+                "vec![]".to_string(),
+            ],
             var: "x".to_string(),
             var_type: "MyType".to_string(),
             annotations: vec![Annotation::Trait("i32".into(), vec!["Debug".into()])],
@@ -469,10 +472,11 @@ mod tests {
 
         let result = get_vars(&ann, &impl_body, &trait_body, &aliases).unwrap();
 
-        assert_eq!(result.len(), 3);
+        assert_eq!(result.len(), 4);
         let t = result.iter().find(|v| v.impl_generic == "T").unwrap();
         let u = result.iter().find(|v| v.impl_generic == "U").unwrap();
         let v = result.iter().find(|v| v.impl_generic == "V").unwrap();
+        let a = result.iter().find(|v| v.impl_generic == "'a").unwrap();
         assert_eq!(
             t,
             &(VarInfo {
@@ -497,6 +501,15 @@ mod tests {
                 impl_generic: "V".to_string(),
                 trait_generic: None,
                 concrete_type: "MyType".to_string(),
+                traits: vec![],
+            })
+        );
+        assert_eq!(
+            a,
+            &(VarInfo {
+                impl_generic: "'a".to_string(),
+                trait_generic: Some("'b".to_string()),
+                concrete_type: "'static".to_string(),
                 traits: vec![],
             })
         );
@@ -557,10 +570,10 @@ mod tests {
         let result = get_vars(&ann, &impl_body, &trait_body, &aliases).unwrap();
         println!("{:#?}", result);
 
-        assert_eq!(result.len(), 5);
+        assert_eq!(result.len(), 6);
         let t = result.iter().find(|v| v.impl_generic == "T").unwrap();
         let u = result.iter().find(|v| v.impl_generic == "U").unwrap();
-        let v = result.iter().find(|v| v.impl_generic == "V");
+        let v = result.iter().find(|v| v.impl_generic == "V").unwrap();
         let w = result.iter().find(|v| v.impl_generic == "W").unwrap();
         let x = result.iter().find(|v| v.impl_generic == "X").unwrap();
         let y = result.iter().find(|v| v.impl_generic == "Y").unwrap();
@@ -582,7 +595,15 @@ mod tests {
                 traits: vec![],
             })
         );
-        assert!(v.is_none());
+        assert_eq!(
+            v,
+            &(VarInfo {
+                impl_generic: "V".to_string(),
+                trait_generic: Some("V".to_string()),
+                concrete_type: "i32".to_string(),
+                traits: vec![],
+            })
+        );
         assert_eq!(
             w,
             &(VarInfo {

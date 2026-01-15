@@ -2,7 +2,7 @@ use crate::SpecBody;
 use proc_macro2::TokenStream;
 use spec_trait_utils::conversions::{str_to_generics, str_to_type_name, to_string};
 use spec_trait_utils::impls::ImplBody;
-use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::parsing::{count_generics, get_generics_types};
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{Aliases, replace_type, strip_lifetimes, type_assignable};
 use std::cmp::Ordering;
@@ -41,6 +41,7 @@ impl Ord for Constraint {
             .then(self.traits.len().cmp(&other.traits.len()))
             .then(self.not_types.len().cmp(&other.not_types.len()))
             .then(self.not_traits.len().cmp(&other.not_traits.len()))
+            .then(count_generics(&other.generics).cmp(&count_generics(&self.generics)))
     }
 }
 

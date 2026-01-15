@@ -1,14 +1,14 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::conditions::WhenCondition;
-use crate::conversions::{str_to_generics, str_to_lifetime, str_to_type_name};
+use crate::conversions::{str_to_generics, str_to_lifetime, str_to_type_name, to_string};
 use crate::types::{
-    Aliases, replace_infers, replace_type, type_assignable, type_contains, type_contains_lifetime,
+    Aliases, TypeReplacer, replace_infers, type_assignable, type_contains, type_contains_lifetime,
 };
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit::Visit;
-use syn::visit_mut::{self, VisitMut};
+use syn::visit_mut::VisitMut;
 use syn::{GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam};
 
 // TODO: infer lifetimes as well
@@ -29,12 +29,13 @@ pub fn get_assignable_conditions(
     conditions: &[WhenCondition],
     generics: &str,
 ) -> Vec<WhenCondition> {
+    let conditions = merge_ref_and_lifetime(conditions.to_vec());
     conditions
         .iter()
         .filter_map(|c| match c {
             WhenCondition::Trait(_, _) => Some(c.clone()),
             WhenCondition::Type(g, t) => {
-                let types = get_generic_types_from_conditions(g, conditions);
+                let types = get_generic_types_from_conditions(g, &conditions);
                 let most_specific = types.last() == Some(t);
                 let diff_types = types.iter().any(|other_t| {
                     !type_assignable(t, other_t, generics, &Aliases::default())
@@ -53,6 +54,124 @@ pub fn get_assignable_conditions(
         .collect()
 }
 
+/// Splits a reference type `& 'a Type` into its lifetime and inner type components.
+/// Returns `None` if the type is not a reference.
+fn split_ref_type(ty: &str) -> Option<(Option<String>, String)> {
+    let ty = str_to_type_name(ty);
+    if let syn::Type::Reference(type_ref) = ty {
+        let lifetime = type_ref.lifetime.as_ref().map(|lt| lt.to_string());
+        let inner_type = to_string(&type_ref.elem);
+        Some((lifetime, inner_type))
+    } else {
+        None
+    }
+}
+
+/// Merge pairs of type conditions of the form
+/// `T = &Type` and `T = & 'a _` into a single `T = & 'a Type`.
+fn merge_ref_and_lifetime(conditions: Vec<WhenCondition>) -> Vec<WhenCondition> {
+    let mut generic_to_lifetimes: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut generic_to_types: HashMap<String, Vec<usize>> = HashMap::new();
+
+    // classify conditions
+    for (idx, cond) in conditions.iter().enumerate() {
+        if let WhenCondition::Type(g, t) = cond
+            && let Some((lt, inner)) = split_ref_type(t)
+        {
+            if lt.is_some() && inner == "_" {
+                generic_to_lifetimes.entry(g.clone()).or_default().push(idx);
+            } else if lt.is_none() && inner != "_" {
+                generic_to_types.entry(g.clone()).or_default().push(idx);
+            }
+        }
+    }
+
+    let mut removed = HashSet::new();
+    let mut new_conditions = Vec::new();
+
+    // for each generic, merge only when there is exactly one lifetime and one type
+    for (generic, lifetime_indices) in generic_to_lifetimes {
+        let type_indices = match generic_to_types.get(&generic) {
+            Some(v) if !v.is_empty() => v,
+            _ => continue,
+        };
+
+        // collect distinct lifetimes
+        let mut lifetimes = HashSet::new();
+        for &idx in &lifetime_indices {
+            if let WhenCondition::Type(_, t) = &conditions[idx]
+                && let Some((Some(lt), _)) = split_ref_type(t)
+            {
+                lifetimes.insert(lt);
+            }
+        }
+
+        // collect distinct inner types
+        let mut types = HashSet::new();
+        for &idx in type_indices {
+            if let WhenCondition::Type(_, t) = &conditions[idx]
+                && let Some((_, inner)) = split_ref_type(t)
+            {
+                types.insert(inner);
+            }
+        }
+
+        // if more than one distinct lifetime or type -> conflicting, no merge
+        if lifetimes.len() != 1 || types.len() != 1 {
+            continue;
+        }
+
+        // we know we can merge one pair
+        let lifetime_idx = lifetime_indices[0];
+        let type_idx = type_indices[0];
+
+        if let Some(merged) =
+            build_merged_ref_condition(&conditions, lifetime_idx, type_idx, &generic)
+        {
+            removed.insert(lifetime_idx);
+            removed.insert(type_idx);
+            new_conditions.push(merged);
+        }
+    }
+
+    // keep all non-removed originals, then append merged ones
+    let mut result = vec![];
+    for (idx, cond) in conditions.into_iter().enumerate() {
+        if !removed.contains(&idx) {
+            result.push(cond);
+        }
+    }
+    result.extend(new_conditions);
+    result
+}
+
+/// Build `T = &'a Type` from indices of `T = &'a _` and `T = &Type`.
+fn build_merged_ref_condition(
+    conditions: &[WhenCondition],
+    lifetime_idx: usize,
+    type_idx: usize,
+    generic: &str,
+) -> Option<WhenCondition> {
+    let lifetime = match &conditions[lifetime_idx] {
+        WhenCondition::Type(_, t) => t,
+        _ => return None,
+    };
+    let type_ = match &conditions[type_idx] {
+        WhenCondition::Type(_, t) => t,
+        _ => return None,
+    };
+
+    let (lt_opt, _) = split_ref_type(lifetime)?;
+    let (_, ty) = split_ref_type(type_)?;
+
+    let lt = lt_opt?;
+
+    Some(WhenCondition::Type(
+        generic.to_string(),
+        format!("& {} {}", lt, ty),
+    ))
+}
+
 /// Returns the list of types assigned to the given generic in the conditions,
 /// ordered from least specific to most specific.
 fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]) -> Vec<String> {
@@ -66,18 +185,6 @@ fn get_generic_types_from_conditions(generic: &str, conditions: &[WhenCondition]
     // `Vec<_>` is less specific than `Vec<String>`
     types.sort_by_key(|t| t.replace("_", "").len());
     types
-}
-
-pub struct TypeReplacer {
-    pub generic: String,
-    pub type_: Type,
-}
-
-impl VisitMut for TypeReplacer {
-    fn visit_type_mut(&mut self, node: &mut Type) {
-        replace_type(node, &self.generic, &self.type_);
-        visit_mut::visit_type_mut(self, node);
-    }
 }
 
 pub fn apply_type_condition<T: Specializable>(
@@ -118,8 +225,8 @@ pub fn apply_type_condition<T: Specializable>(
 
     // replace generic type with type in the items
     let mut replacer = TypeReplacer {
-        generic: item_generic.clone(),
-        type_: new_type.clone(),
+        prev: item_generic.clone(),
+        new: new_type.clone(),
     };
 
     target.handle_items_replace(&mut replacer);
@@ -231,7 +338,10 @@ pub fn handle_generics<F: FnMut(&str)>(generics_str: &str, mut generics_fn: F) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::conversions::{str_to_generics, to_string};
+    use crate::{
+        conversions::{str_to_generics, to_string},
+        types::TypeReplacer,
+    };
     use syn::{Generics, Type};
 
     #[test]
@@ -252,8 +362,8 @@ mod tests {
     #[test]
     fn type_replacer() {
         let mut replacer = TypeReplacer {
-            generic: "T".into(),
-            type_: str_to_type_name("u32"),
+            prev: "T".into(),
+            new: str_to_type_name("u32"),
         };
         let mut type_ = str_to_type_name("Vec<T>");
 
@@ -372,5 +482,73 @@ mod tests {
 
         let types_v = get_generic_types_from_conditions("V", &conditions);
         assert!(types_v.is_empty());
+    }
+
+    #[test]
+    fn split_ref_type_with_lifetime() {
+        let (lt, inner) = split_ref_type("&'a i32").expect("expected reference type");
+        assert_eq!(lt, Some("'a".to_string()));
+        assert_eq!(inner.replace(" ", ""), "i32");
+    }
+
+    #[test]
+    fn split_ref_type_non_reference() {
+        assert!(split_ref_type("i32").is_none());
+    }
+
+    #[test]
+    fn build_merged_ref_condition_basic() {
+        let conditions = vec![
+            WhenCondition::Type("T".into(), "&'a _".into()),
+            WhenCondition::Type("T".into(), "&i32".into()),
+        ];
+
+        let merged =
+            build_merged_ref_condition(&conditions, 0, 1, "T").expect("expected merged condition");
+
+        assert_eq!(merged, WhenCondition::Type("T".into(), "& 'a i32".into()));
+    }
+
+    #[test]
+    fn build_merged_ref_condition_invalid_indices() {
+        let conditions = vec![WhenCondition::Trait("T".into(), vec!["Copy".into()])];
+
+        let merged = build_merged_ref_condition(&conditions, 0, 0, "T");
+        assert!(merged.is_none());
+    }
+
+    #[test]
+    fn merge_ref_and_lifetime_single_pair() {
+        let conditions = vec![
+            WhenCondition::Type("T".into(), "&'a _".into()),
+            WhenCondition::Type("T".into(), "&str".into()),
+        ];
+
+        let res = merge_ref_and_lifetime(conditions);
+
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0], WhenCondition::Type("T".into(), "& 'a str".into()));
+    }
+
+    #[test]
+    fn merge_ref_and_lifetime_multiple_pairs() {
+        let conditions = vec![
+            WhenCondition::Type("T".into(), "&'a _".into()),
+            WhenCondition::Type("T".into(), "&'b _".into()),
+            WhenCondition::Type("T".into(), "&Foo".into()),
+            WhenCondition::Type("T".into(), "&Bar".into()),
+        ];
+
+        let res = merge_ref_and_lifetime(conditions);
+
+        assert_eq!(res.len(), 4);
+
+        let expected = vec![
+            WhenCondition::Type("T".into(), "&'a _".into()),
+            WhenCondition::Type("T".into(), "&'b _".into()),
+            WhenCondition::Type("T".into(), "&Foo".into()),
+            WhenCondition::Type("T".into(), "&Bar".into()),
+        ];
+        assert_eq!(res, expected);
     }
 }
