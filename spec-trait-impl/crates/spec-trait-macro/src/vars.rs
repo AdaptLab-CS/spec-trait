@@ -4,7 +4,7 @@ use spec_trait_utils::conversions::{
     str_to_generics, str_to_lifetime, str_to_type_name, to_string,
 };
 use spec_trait_utils::impls::ImplBody;
-use spec_trait_utils::parsing::get_generics_types;
+use spec_trait_utils::parsing::{get_generics_lifetimes, get_generics_types};
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{
     Aliases, GenericsMap, get_concrete_type, type_assignable, type_assignable_generic_constraints,
@@ -74,10 +74,11 @@ fn get_vars(
     aliases: &Aliases,
 ) -> Result<Vec<VarInfo>, String> {
     let generics = get_generics_types::<Vec<_>>(&impl_.impl_generics);
+    let lifetimes = get_generics_lifetimes::<Vec<_>>(&impl_.impl_generics);
 
     let mut res: HashSet<VarInfo> = HashSet::new();
 
-    for g in &generics {
+    for g in generics.iter().chain(lifetimes.iter()) {
         let from_type = get_generic_constraints_from_type(g, impl_, ann, aliases);
         let from_type_specialized =
             get_generic_constraints_from_type(g, impl_.specialized.as_ref().unwrap(), ann, aliases);
@@ -156,6 +157,7 @@ fn get_vars(
             }
         }
     }
+    println!("vars: {:?}\n", res);
 
     Ok(res.into_iter().collect())
 }
@@ -187,7 +189,7 @@ fn get_generic_constraints_from_trait(
     let trait_fn = trait_.find_fn(&ann.fn_, ann.args.len()).unwrap();
     let param_types = get_param_types(&trait_fn);
 
-    // find all params that use the generic
+    // find all params that use the generic (type or lifetime)
     let params_with_trait_generic = param_types
         .iter()
         .enumerate()
@@ -199,7 +201,7 @@ fn get_generic_constraints_from_trait(
         return Ok(vec![]);
     }
 
-    // unify constraints for all generics appearing in those params
+    // unify constraints for all generics (types + lifetimes) appearing in those params
     let mut unified_generics = GenericsMap::new();
 
     for (pos, trait_type_definition) in params_with_trait_generic {
@@ -218,6 +220,7 @@ fn get_generic_constraints_from_trait(
             )
         })?;
 
+        // unify type generics
         for (generic, constraint) in constrained_generics.types {
             if let Some(existing) = unified_generics.get(&generic) {
                 match (existing, &constraint) {
@@ -236,28 +239,65 @@ fn get_generic_constraints_from_trait(
                 unified_generics.insert(generic, constraint);
             }
         }
+
+        // unify lifetime generics
+        for (generic, constraint) in constrained_generics.lifetimes {
+            if let Some(existing) = unified_generics.get(&generic) {
+                match (existing, &constraint) {
+                    (Some(e), Some(c)) if e != c => {
+                        return Err(format!(
+                            "Multiple conflicting constraints found for lifetime generic {}: {:?} vs {:?}",
+                            generic, e, c
+                        ));
+                    }
+                    (None, Some(_)) => {
+                        unified_generics.insert(generic, constraint);
+                    }
+                    _ => {}
+                }
+            } else {
+                unified_generics.insert(generic, constraint);
+            }
+        }
     }
 
-    let mut res = HashSet::new();
+    // we now build VarInfo for both type and lifetime generics
+    let mut res: HashSet<VarInfo> = HashSet::new();
+
+    let lifetime_generics = get_generics_lifetimes::<Vec<_>>(&trait_.generics);
+    let trait_generics = str_to_generics(&trait_.generics);
 
     for (generic, constraint) in unified_generics {
         if let Some(constraint) = constraint {
             let impl_generic = impl_
-                .get_corresponding_generic(&str_to_generics(&trait_.generics), &generic)
+                .get_corresponding_generic(&trait_generics, &generic)
                 .unwrap();
-            res.insert((constraint, impl_generic, generic));
+
+            let is_lifetime = lifetime_generics.contains(&generic);
+
+            let concrete_type = if is_lifetime {
+                // for lifetime generics, keep the lifetime itself as "concrete type"
+                constraint.clone()
+            } else {
+                get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases)
+            };
+
+            let traits = if is_lifetime {
+                Vec::new()
+            } else {
+                get_type_traits(&constraint, &ann.annotations, aliases)
+            };
+
+            res.insert(VarInfo {
+                impl_generic,
+                trait_generic: Some(generic),
+                concrete_type,
+                traits,
+            });
         }
     }
 
-    Ok(res
-        .into_iter()
-        .map(|(constraint, impl_generic, trait_generic)| VarInfo {
-            impl_generic,
-            trait_generic: Some(trait_generic),
-            concrete_type: get_concrete_type_with_lifetime(&constraint, &ann.annotations, aliases),
-            traits: get_type_traits(&constraint, &ann.annotations, aliases),
-        })
-        .collect::<Vec<_>>())
+    Ok(res.into_iter().collect())
 }
 
 fn get_generic_constraints_from_type(

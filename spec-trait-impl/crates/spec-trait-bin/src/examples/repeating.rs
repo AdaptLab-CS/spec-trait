@@ -47,6 +47,20 @@ impl<T> NestedTrait<T, T> for BaseType {
     }
 }
 
+#[when(all(T = &str, T: 'a,U = &'a i32))]
+impl<'a, T, U> NestedTrait<T, U> for BaseType {
+    fn nested_method(&self, _x: T, _y: U) {
+        println!("T and U have the same lifetime");
+    }
+}
+
+#[when(all(T = &str, T: 'a,U = &'b i32))]
+impl<'a, 'b, T, U> NestedTrait<T, U> for BaseType {
+    fn nested_method(&self, _x: T, _y: U) {
+        println!("T and U have different lifetimes");
+    }
+}
+
 pub fn run() {
     println!("\n- Repeating Generics Examples:");
 
@@ -61,4 +75,9 @@ pub fn run() {
     spec! { x.nested_method(1i32, 2i32); BaseType; [i32, i32]; i32: Copy } // "T implements Copy for both parameters"
     spec! { x.nested_method(1i32, 2u8); BaseType; [i32, u8]; i32: Copy; u8: Copy } // "Default"
     spec! { x.nested_method(1i32, 2u8); BaseType; [i32, u8]; i32: Copy } // "Default"
+
+    spec! { x.nested_method("test", &2i32); BaseType; [&'static str, &'static i32] } // "T and U have the same lifetimes"
+    spec! { x.nested_method("test", &2i32); BaseType; [&'a str, &'a i32] } // "T and U have the same lifetimes"
+    spec! { x.nested_method("test", &2i32); BaseType; [&'static str, &'a i32] } // "T and U have different lifetimes"
+    spec! { x.nested_method("test", &2i32); BaseType; [&'a str, &'b i32] } // "T and U have different lifetimes"
 }

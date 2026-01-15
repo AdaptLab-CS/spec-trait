@@ -9,7 +9,7 @@ use spec_trait_utils::impls::ImplBody;
 use spec_trait_utils::parsing::{get_generics_lifetimes, get_generics_types};
 use spec_trait_utils::traits::TraitBody;
 use spec_trait_utils::types::{
-    assign_lifetimes, get_concrete_type, trait_assignable, type_assignable,
+    GenericsMap, assign_lifetimes, get_concrete_type, trait_assignable, type_assignable,
     type_assignable_generic_constraints,
 };
 use std::cmp::Ordering;
@@ -290,11 +290,17 @@ fn has_cross_generic_conflict(generic: &str, declared_type: &str, var: &VarBody)
         return false;
     };
 
-    generics_map
-        .types
-        .into_iter()
+    has_inner_generic_conflict(generic, &generics_map.types, var)
+        || has_inner_generic_conflict(generic, &generics_map.lifetimes, var)
+}
+
+fn has_inner_generic_conflict(generic: &str, generic_map: &GenericsMap, var: &VarBody) -> bool {
+    generic_map
+        .iter()
         .filter_map(|(inner_generic, constraint)| {
-            constraint.map(|concrete_type| (inner_generic, concrete_type))
+            constraint
+                .as_ref()
+                .and_then(|concrete_type| Some((inner_generic, concrete_type)))
         })
         .any(|(inner_generic, concrete_type)| {
             if inner_generic == generic {
@@ -303,7 +309,7 @@ fn has_cross_generic_conflict(generic: &str, declared_type: &str, var: &VarBody)
 
             // If we already know a concrete type for this inner generic from vars,
             // it must be compatible with the one implied by the condition.
-            if let Some(existing) = var.vars.iter().find(|v| v.impl_generic == inner_generic) {
+            if let Some(existing) = var.vars.iter().find(|v| v.impl_generic == *inner_generic) {
                 !type_assignable(
                     &existing.concrete_type,
                     &concrete_type,
