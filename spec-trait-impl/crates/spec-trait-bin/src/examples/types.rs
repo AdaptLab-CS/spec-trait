@@ -3,6 +3,9 @@ use spec_trait_macro::{spec, when};
 type MyAlias = u8;
 type MyVecAlias = Vec<i32>;
 
+trait Tr {}
+impl Tr for u8 {}
+
 struct BaseType;
 
 trait TypesTrait<T> {
@@ -64,6 +67,13 @@ impl<T> TypesTrait<T> for BaseType {
     }
 }
 
+#[when(T = &dyn Tr)]
+impl<T> TypesTrait<T> for BaseType {
+    fn types_method(&self, _x: T) {
+        println!("T is &dyn Tr");
+    }
+}
+
 pub fn run() {
     println!("\n- Types Examples:");
 
@@ -77,5 +87,6 @@ pub fn run() {
     spec! { x.types_method((1, 2)); BaseType; [(i32, i32)] } // -> "T is (i32, _)"
     spec! { x.types_method(&[1i32]); BaseType; [&[i32]] } // -> "T is &[i32]"
     spec! { x.types_method(|x: &u8| x); BaseType; [fn(&u8) -> &u8] } // -> "T is a function pointer from &u8 to &u8"
+    spec! { x.types_method(&1u8); BaseType; [&dyn Tr] } // -> "T is & dyn Tr"
     spec! { x.types_method(1i8); BaseType; [i8] } // -> "Default"
 }
