@@ -47,17 +47,24 @@ impl<T> RepeatingGenericsTrait<T, T> for BaseType {
     }
 }
 
-#[when(all(T = &str, T: 'a,U = &'a i32))]
+#[when(all(T = &str, T: 'a, U = &'a i32))]
 impl<'a, T, U> RepeatingGenericsTrait<T, U> for BaseType {
     fn repeating_generics_method(&self, _x: T, _y: U) {
         println!("T and U have the same lifetime");
     }
 }
 
-#[when(all(T = &str, T: 'a,U = &'b i32))]
+#[when(all(T = &str, T: 'a, U = &'b i32))]
 impl<'a, 'b, T, U> RepeatingGenericsTrait<T, U> for BaseType {
     fn repeating_generics_method(&self, _x: T, _y: U) {
         println!("T and U have different lifetimes");
+    }
+}
+
+#[when(all(T = &str, T: 'b, U = for<'a> fn(T, &'a i32)))]
+impl<'b, T, U> RepeatingGenericsTrait<T, U> for BaseType {
+    fn repeating_generics_method(&self, x: T, y: U) {
+        y(x, &42);
     }
 }
 
@@ -80,4 +87,15 @@ pub fn run() {
     spec! { x.repeating_generics_method("test", &2i32); BaseType; [&'a str, &'a i32] } // "T and U have the same lifetimes"
     spec! { x.repeating_generics_method("test", &2i32); BaseType; [&'static str, &'a i32] } // "T and U have different lifetimes"
     spec! { x.repeating_generics_method("test", &2i32); BaseType; [&'a str, &'b i32] } // "T and U have different lifetimes"
+
+    spec! {
+        x.repeating_generics_method(
+            "hello",
+            |s: &str, n: &i32| {
+                println!("Function called with s: {} and n: {}", s, n);
+            }
+        );
+        BaseType;
+        [&'static str, for<'a> fn(&'static str, &'a i32)]
+    } // "Function called with s: hello and n: 42"
 }
