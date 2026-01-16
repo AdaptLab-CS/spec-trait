@@ -178,6 +178,7 @@ fn get_param_types(trait_fn: &TraitItemFn) -> Vec<String> {
         .collect()
 }
 
+/// Get generic constraints from the trait function parameters
 fn get_generic_constraints_from_trait(
     trait_generic: &str,
     trait_: &TraitBody,
@@ -267,11 +268,9 @@ fn get_generic_constraints_from_trait(
     let trait_generics = str_to_generics(&trait_.generics);
 
     for (generic, constraint) in unified_generics {
-        if let Some(constraint) = constraint {
-            let impl_generic = impl_
-                .get_corresponding_generic(&trait_generics, &generic)
-                .unwrap();
-
+        if let Some(constraint) = constraint
+            && let Some(impl_generic) = impl_.get_corresponding_generic(&trait_generics, &generic)
+        {
             let is_lifetime = lifetime_generics.contains(&generic);
 
             let concrete_type = if is_lifetime {
