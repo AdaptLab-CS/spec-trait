@@ -159,13 +159,7 @@ fn satisfies_condition(
                     .iter()
                     .any(|t| type_assignable(&declared_type, t, &var.generics, &var.aliases)) ||
                 // generic parameter should implement a trait that the type does not implement
-                declared_type_var.is_none_or(|v|
-                    constraint.traits.iter().any(|t| !v.traits.contains(t))
-                )||
-                // generic parameter is already assigned to a different type
-                constraint.type_.as_ref().is_some_and(|ty| {
-                    !type_assignable(ty, &declared_type, &var.generics, &var.aliases)
-                })||
+                declared_type_var.is_none_or(|v| constraint.traits.iter().any(|t| !v.traits.contains(t))) ||
                 // the condition implies a different type for some other generic than what we already inferred
                 has_cross_generic_conflict(generic, &declared_type, var);
 
