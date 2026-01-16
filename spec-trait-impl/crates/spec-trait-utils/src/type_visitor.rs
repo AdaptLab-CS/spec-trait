@@ -26,6 +26,15 @@ pub trait VisitTypeInDepth {
         }
     }
 
+    // `T: Trait`
+    fn visit_bound(&mut self, bound: &mut TypeParamBound) {
+        if let TypeParamBound::Trait(trait_bound) = bound {
+            for segment in &mut trait_bound.path.segments {
+                self.visit_segment(segment);
+            }
+        }
+    }
+
     /// General Type visitor
     fn visit_type(&mut self, ty: &mut Type) {
         self.before_visit_type(ty);
@@ -38,6 +47,7 @@ pub trait VisitTypeInDepth {
             Type::BareFn(type_bare_fn) => self.visit_type_function(type_bare_fn),
             Type::ImplTrait(type_impl_trait) => self.visit_type_impl_trait(type_impl_trait),
             Type::Path(type_path) => self.visit_type_path(type_path),
+            Type::TraitObject(type_trait_object) => self.visit_type_trait_object(type_trait_object),
             _ => self.visit_type_default(ty),
         }
     }
@@ -91,11 +101,7 @@ pub trait VisitTypeInDepth {
     /// `impl T<U>`
     fn visit_type_impl_trait(&mut self, ty: &mut TypeImplTrait) {
         for bound in &mut ty.bounds {
-            if let TypeParamBound::Trait(trait_bound) = bound {
-                for segment in &mut trait_bound.path.segments {
-                    self.visit_segment(segment);
-                }
-            }
+            self.visit_bound(bound);
         }
     }
 
@@ -103,6 +109,13 @@ pub trait VisitTypeInDepth {
     fn visit_type_path(&mut self, ty: &mut TypePath) {
         for segment in &mut ty.path.segments {
             self.visit_segment(segment);
+        }
+    }
+
+    /// `dyn T<U>`
+    fn visit_type_trait_object(&mut self, ty: &mut syn::TypeTraitObject) {
+        for bound in &mut ty.bounds {
+            self.visit_bound(bound);
         }
     }
 }

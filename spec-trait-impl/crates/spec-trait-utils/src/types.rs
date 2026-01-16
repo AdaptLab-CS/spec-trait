@@ -296,6 +296,41 @@ fn can_assign(
                     })
         }
 
+        // `dyn T<U>`
+        (Type::TraitObject(to1), Type::TraitObject(to2)) => {
+            to1.bounds.len() == to2.bounds.len()
+                && to1
+                    .bounds
+                    .iter()
+                    .zip(&to2.bounds)
+                    .all(|(b1, b2)| match (b1, b2) {
+                        (TypeParamBound::Trait(tb1), TypeParamBound::Trait(tb2)) => {
+                            tb1.path.segments.len() == tb2.path.segments.len()
+                                && tb1.path.segments.iter().zip(&tb2.path.segments).all(
+                                    |(seg1, seg2)| match (&seg1.arguments, &seg2.arguments) {
+                                        (
+                                            PathArguments::AngleBracketed(args1),
+                                            PathArguments::AngleBracketed(args2),
+                                        ) => {
+                                            args1.args.len() == args2.args.len()
+                                                && args1.args.iter().zip(&args2.args).all(
+                                                    |(arg1, arg2)| match (arg1, arg2) {
+                                                        (
+                                                            GenericArgument::Type(t1),
+                                                            GenericArgument::Type(t2),
+                                                        ) => can_assign(t1, t2, generics),
+                                                        _ => false,
+                                                    },
+                                                )
+                                        }
+                                        _ => seg1.arguments.is_empty() && seg2.arguments.is_empty(),
+                                    },
+                                )
+                        }
+                        _ => false,
+                    })
+        }
+
         _ => false,
     }
 }
@@ -556,6 +591,31 @@ pub fn assign_lifetimes(t1: &mut Type, t2: &Type, generics: &mut ConstrainedGene
         // impl T<U>
         (Type::ImplTrait(impl1), Type::ImplTrait(impl2)) => {
             for (bound1, bound2) in impl1.bounds.iter_mut().zip(&impl2.bounds) {
+                if let (TypeParamBound::Trait(trait1), TypeParamBound::Trait(trait2)) =
+                    (bound1, bound2)
+                {
+                    for (seg1, seg2) in trait1.path.segments.iter_mut().zip(&trait2.path.segments) {
+                        if let (
+                            PathArguments::AngleBracketed(args1),
+                            PathArguments::AngleBracketed(args2),
+                        ) = (&mut seg1.arguments, &seg2.arguments)
+                        {
+                            for (arg1, arg2) in args1.args.iter_mut().zip(&args2.args) {
+                                if let (GenericArgument::Type(t1), GenericArgument::Type(t2)) =
+                                    (arg1, arg2)
+                                {
+                                    assign_lifetimes(t1, t2, generics);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // `dyn T<U>`
+        (Type::TraitObject(trait1), Type::TraitObject(trait2)) => {
+            for (bound1, bound2) in trait1.bounds.iter_mut().zip(&trait2.bounds) {
                 if let (TypeParamBound::Trait(trait1), TypeParamBound::Trait(trait2)) =
                     (bound1, bound2)
                 {
@@ -1091,6 +1151,20 @@ mod tests {
     }
 
     #[test]
+    fn compare_types_dyn_trait() {
+        let mut g = ConstrainedGenerics::default();
+
+        let t1 = str_to_type_name("dyn Into<u8>");
+        let t2 = str_to_type_name("dyn Into<u8>");
+        assert!(can_assign(&t1, &t2, &mut g));
+
+        g.types.insert("T".to_string(), None);
+        let t1 = str_to_type_name("dyn Into<u8>");
+        let t2 = str_to_type_name("dyn Into<T>");
+        assert!(can_assign(&t1, &t2, &mut g));
+    }
+
+    #[test]
     fn contains_type_true() {
         let types = vec![
             "T",
@@ -1102,6 +1176,8 @@ mod tests {
             "Other<T>",
             "T<Other>",
             "fn(T) -> Other",
+            "impl Trait<T>",
+            "dyn Trait<T>",
         ];
         for ty in types {
             let type_ = str_to_type_name(ty);
@@ -1121,6 +1197,8 @@ mod tests {
             "Other<T>",
             "T<VOther>",
             "fn(T) -> Other",
+            "impl Trait<T>",
+            "dyn Trait<T>",
         ];
         for ty in types {
             let type_ = str_to_type_name(ty);
@@ -1298,6 +1376,19 @@ mod tests {
     }
 
     #[test]
+    fn replace_type_dyn_trait() {
+        let new_ty: Type = parse2(quote! { String }).unwrap();
+
+        let mut ty: Type = parse2(quote! { dyn Into<T> }).unwrap();
+        replace_type(&mut ty, "T", &new_ty);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "dyn Into<String>".to_string().replace(" ", "")
+        );
+    }
+
+    #[test]
     fn replace_infers_simple() {
         let mut ty: Type = parse2(quote! { _ }).unwrap();
         let mut generics = HashSet::new();
@@ -1455,6 +1546,22 @@ mod tests {
                 "__G_2__".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn replace_infers_dyn_trait() {
+        let mut ty: Type = parse2(quote! { dyn Trait<_> }).unwrap();
+        let mut generics = HashSet::new();
+        let mut counter = 0;
+        let mut new_generics = vec![];
+
+        replace_infers(&mut ty, &mut generics, &mut counter, &mut new_generics);
+
+        assert_eq!(
+            to_string(&ty).replace(" ", ""),
+            "dyn Trait<__G_0__>".to_string().replace(" ", "")
+        );
+        assert_eq!(new_generics, vec!["__G_0__".to_string()]);
     }
 
     #[test]
