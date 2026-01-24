@@ -31,6 +31,12 @@ impl<T, U, V> SelfTrait<T> for (U, V) {
     }
 }
 
+impl<T> SelfTrait<T> for i32 {
+    fn self_method(&self, _x: T) {
+        println!("i32: Default");
+    }
+}
+
 #[when(T = u8)]
 impl<T> SelfTrait<T> for BaseType1 {
     fn self_method(&self, _x: T) {
@@ -59,6 +65,13 @@ impl<T, U, V> SelfTrait<T> for (U, V) {
     }
 }
 
+#[when(T = u8)]
+impl<T> SelfTrait<T> for i32 {
+    fn self_method(&self, _x: T) {
+        println!("i32: T is u8");
+    }
+}
+
 pub fn run() {
     println!("\n- Self Type Examples:");
 
@@ -70,13 +83,12 @@ pub fn run() {
     spec! { y.self_method(42u8); BaseType2; [u8] } // -> "BaseType2: T is u8"
     spec! { y.self_method(1i32); BaseType2; [i32] } // -> "BaseType2: Default"
 
-    let v1 = vec![1u8];
-    let v2 = vec![1i32];
-    spec! { v1.self_method(42u8); Vec<u8>; [u8] } // -> "Vec<U>: T is u8"
-    spec! { v2.self_method(1i32); Vec<i32>; [i32] } // -> "Vec<U>: Default"
+    spec! { vec![1u8].self_method(42u8); Vec<u8>; [u8] } // -> "Vec<U>: T is u8"
+    spec! { vec![1i32].self_method(1i32); Vec<i32>; [i32] } // -> "Vec<U>: Default"
 
-    let t1 = (1u8, 2u8);
-    let t2 = (1i32, 2i32);
-    spec! { t1.self_method(42u8); (u8, u8); [u8] } // -> "(U, V): T is u8"
-    spec! { t2.self_method(1i32); (i32, i32); [i32] } // -> "(U, V): Default"
+    spec! { (1u8, 2u8).self_method(42u8); (u8, u8); [u8] } // -> "(U, V): T is u8"
+    spec! { (1i32, 2i32).self_method(1i32); (i32, i32); [i32] } // -> "(U, V): Default"
+
+    spec! { 1i32.abs().self_method(42u8); i32; [u8] } // -> "i32: T is u8" 
+    spec! { 1i32.abs().self_method(1i32); i32; [i32] } // -> "i32: Default" 
 }
