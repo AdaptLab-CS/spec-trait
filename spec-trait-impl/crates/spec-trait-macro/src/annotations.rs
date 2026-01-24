@@ -3,7 +3,7 @@ use spec_trait_utils::conversions::to_string;
 use spec_trait_utils::parsing::{ParseTypeOrLifetimeOrTrait, parse_type_or_lifetime_or_trait};
 use std::fmt::Debug;
 use syn::parse::{Parse, ParseStream};
-use syn::{Error, Expr, Ident, Lit, Token, Type, bracketed, parenthesized, token};
+use syn::{Error, Expr, Token, Type, bracketed, token};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Annotation {
@@ -87,28 +87,25 @@ impl Parse for AnnotationBody {
 /// - `x.my_method(1u8, "abc")` -> `("x", "my_method", ["1u8", "abc"])`
 /// - `var.foo()` -> `("var", "foo", [])`
 fn parse_call(input: ParseStream) -> Result<(String, String, Vec<String>), Error> {
-    let var = if input.peek(Ident) {
-        to_string(&input.parse::<Ident>()?)
-    } else if input.peek(Lit) {
-        to_string(&input.parse::<Lit>()?)
-    } else {
-        return Err(Error::new(input.span(), "Expected identifier or literal"));
+    let method_call = match input.parse::<Expr>()? {
+        Expr::MethodCall(mc) => mc,
+        _ => {
+            return Err(Error::new(
+                input.span(),
+                "Expected a method call of the form `variable.function(args...)`",
+            ));
+        }
     };
 
-    input.parse::<Token![.]>()?; // consume the '.' token
-
-    let fn_: Ident = input.parse()?;
-
-    let content;
-    parenthesized!(content in input); // consume the '(' and ')' token pair
-
-    let args = content.parse_terminated(Expr::parse, Token![,])?;
+    let var = to_string(&method_call.receiver);
+    let fn_ = method_call.method.to_string();
+    let args = method_call.args.iter().map(to_string).collect();
 
     if input.peek(Token![;]) {
         input.parse::<Token![;]>()?; // consume the ';' token
     }
 
-    Ok((var, fn_.to_string(), args.iter().map(to_string).collect()))
+    Ok((var, fn_, args))
 }
 
 /// Parse the variable type and argument types
@@ -227,6 +224,29 @@ mod tests {
             assert!(result.args_types.is_empty());
             assert!(result.annotations.is_empty());
         }
+    }
+
+    #[test]
+    fn type_formats() {
+        let input = quote! { (a,b).foo(); (i32,i32) };
+        let result = AnnotationBody::try_from(input).unwrap();
+
+        assert_eq!(result.var.replace(" ", ""), "(a,b)");
+        assert_eq!(result.fn_, "foo");
+        assert!(result.args.is_empty());
+        assert_eq!(result.var_type.replace(" ", ""), "(i32,i32)");
+        assert!(result.args_types.is_empty());
+        assert!(result.annotations.is_empty());
+
+        let input = quote! { [1,2].foo(); [i32;2] };
+        let result = AnnotationBody::try_from(input).unwrap();
+
+        assert_eq!(result.var.replace(" ", ""), "[1,2]");
+        assert_eq!(result.fn_, "foo");
+        assert!(result.args.is_empty());
+        assert_eq!(result.var_type.replace(" ", ""), "[i32;2]");
+        assert!(result.args_types.is_empty());
+        assert!(result.annotations.is_empty());
     }
 
     #[test]
