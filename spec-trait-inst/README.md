@@ -1,7 +1,5 @@
 # Trait Specialization Instrumentation
 
-> [!NOTE] Add description here.
-
 ## Installation and Usage
 
 Note that for macOS, the `LD_LIBRARY_PATH` should be replaced with `DYLD_LIBRARY_PATH`.
@@ -32,9 +30,9 @@ clear && cargo clean && cargo build --manifest-path ../../../Cargo.toml && RUST_
 
 ### Cli (`cargo` wrapper)
 
-> ℹ️  Additional logs can be enabled by setting the `RUST_LOG` environment variable to `debug`.
+> ℹ️ Additional logs can be enabled by setting the `RUST_LOG` environment variable to `debug`.
 
-> ℹ️  The `RUST_LOG_STYLE` environment variable can be set to `always` to force the logs to be colored.
+> ℹ️ The `RUST_LOG_STYLE` environment variable can be set to `always` to force the logs to be colored.
 
 ```bash
 cd tests/workspaces/first
@@ -50,7 +48,7 @@ LD_LIBRARY_PATH=$(rustc --print sysroot)/lib ../../../target/debug/cargo-spec-tr
 
 ### Driver (`rustc` wrapper)
 
-> ⚠️  It is not currently possible to pass the plugin args to the driver without using an environment variable. Using the CLI is advised.
+> ⚠️ It is not currently possible to pass the plugin args to the driver without using an environment variable. Using the CLI is advised.
 
 TODO: Find a way to pass to the driver the plugin args using "PLUGIN_ARGS" environment variable
 
