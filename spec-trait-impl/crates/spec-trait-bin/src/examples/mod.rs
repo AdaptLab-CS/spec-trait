@@ -2,6 +2,7 @@ mod all;
 mod base;
 mod higher;
 mod lifetimes;
+mod lifetimes2;
 mod order;
 mod repeating;
 mod sself;
@@ -18,4 +19,5 @@ pub fn run() {
     higher::run();
     order::run();
     all::run();
+    lifetimes2::run();
 }

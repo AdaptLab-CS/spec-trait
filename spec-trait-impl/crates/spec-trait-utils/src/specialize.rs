@@ -9,7 +9,7 @@ use proc_macro2::Span;
 use syn::punctuated::Punctuated;
 use syn::visit::Visit;
 use syn::visit_mut::VisitMut;
-use syn::{GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam};
+use syn::{GenericParam, Generics, Ident, LifetimeParam, Type, TypeParam, TypeParamBound};
 
 // TODO: infer lifetimes as well
 
@@ -213,7 +213,11 @@ pub fn apply_type_condition<T: Specializable>(
 
     // add new generic types
     for generic in new_generics {
-        add_generic_type(generics, &generic);
+        if is_direct_reference_to_generic(&new_type, &generic) {
+            add_generic_type_relaxed(generics, &generic);
+        } else {
+            add_generic_type(generics, &generic);
+        }
         add_generic_type(other_generics, &generic);
         // TODO: add generic to impl Trait types
     }
@@ -232,6 +236,35 @@ pub fn apply_type_condition<T: Specializable>(
     target.handle_items_replace(&mut replacer);
 
     new_type
+}
+
+fn is_direct_reference_to_generic(ty: &Type, generic: &str) -> bool {
+    struct Finder<'a> {
+        generic: &'a str,
+        found: bool,
+    }
+
+    impl Visit<'_> for Finder<'_> {
+        fn visit_type_reference(&mut self, node: &syn::TypeReference) {
+            if let Type::Path(path) = node.elem.as_ref()
+                && path.qself.is_none()
+                && path.path.segments.len() == 1
+                && path.path.segments[0].ident == self.generic
+            {
+                self.found = true;
+                return;
+            }
+
+            syn::visit::visit_type_reference(self, node);
+        }
+    }
+
+    let mut finder = Finder {
+        generic,
+        found: false,
+    };
+    finder.visit_type(ty);
+    finder.found
 }
 
 pub fn remove_generic(generics: &mut Generics, generic: &str) {
@@ -274,6 +307,20 @@ pub fn add_generic_type(generics: &mut Generics, generic: &str) {
         ident: Ident::new(generic, Span::call_site()),
         colon_token: None,
         bounds: Punctuated::new(),
+        eq_token: None,
+        default: None,
+    }))
+}
+
+pub fn add_generic_type_relaxed(generics: &mut Generics, generic: &str) {
+    let mut bounds = Punctuated::new();
+    bounds.push(TypeParamBound::Verbatim(quote::quote!(?Sized)));
+
+    generics.params.push(GenericParam::Type(TypeParam {
+        attrs: vec![],
+        ident: Ident::new(generic, Span::call_site()),
+        colon_token: None,
+        bounds,
         eq_token: None,
         default: None,
     }))
