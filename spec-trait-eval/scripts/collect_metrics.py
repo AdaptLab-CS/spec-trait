@@ -30,14 +30,23 @@ def collect(criterion_dir: Path):
             continue
         group_name = group_dir.name  # e.g. "ex01_double_u8"
 
-        for variant_dir in sorted(group_dir.iterdir()):
-            if not variant_dir.is_dir():
-                continue
-            variant_name = variant_dir.name  # e.g. "spec/256"
+        # Criterion layout is typically: group/approach/size/new/estimates.json
+        # Keep compatibility with older layout: group/approach/new/estimates.json
+        for estimates_file in sorted(group_dir.rglob("new/estimates.json")):
+            rel = estimates_file.relative_to(group_dir)
+            parts = rel.parts
 
-            estimates_file = variant_dir / "new" / "estimates.json"
-            if not estimates_file.exists():
+            if len(parts) < 3:
                 continue
+
+            if len(parts) >= 4:
+                # approach/size/new/estimates.json
+                approach = parts[0]
+                size = parts[1]
+            else:
+                # approach/new/estimates.json
+                approach = parts[0]
+                size = ""
 
             with open(estimates_file, "r") as f:
                 data = json.load(f)
@@ -46,14 +55,6 @@ def collect(criterion_dir: Path):
             median_ns = data.get("median", {}).get("point_estimate", None)
             mean_ns = data.get("mean", {}).get("point_estimate", None)
             std_dev = data.get("mean", {}).get("standard_error", None)
-
-            # Parse variant and size from variant_name
-            parts = variant_name.split("/")
-            if len(parts) == 2:
-                approach, size = parts
-            else:
-                approach = variant_name
-                size = ""
 
             # Extract example number from group name
             match = re.match(r"(ex\d+)_(.+)", group_name)
@@ -90,6 +91,7 @@ def main():
 
     fieldnames = ["example", "operation", "group", "approach", "size",
                   "mean_ns", "median_ns", "std_error_ns"]
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
