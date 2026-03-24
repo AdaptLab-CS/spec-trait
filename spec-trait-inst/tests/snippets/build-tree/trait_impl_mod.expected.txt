@@ -1,0 +1,182 @@
+Node {
+    label: Block,
+    children: [
+        Node {
+            label: Trait(
+                "Tr",
+            ),
+            children: [
+                Node {
+                    label: VarDef(
+                        Const,
+                        "C",
+                    ),
+                    children: [],
+                },
+                Node {
+                    label: FnDef(
+                        Some(
+                            "a",
+                        ),
+                        2,
+                    ),
+                    children: [
+                        Node {
+                            label: Block,
+                            children: [],
+                        },
+                    ],
+                },
+                Node {
+                    label: FnDef(
+                        Some(
+                            "b",
+                        ),
+                        1,
+                    ),
+                    children: [
+                        Node {
+                            label: Block,
+                            children: [
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Lit(
+                                                "42",
+                                            ),
+                                            children: [],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Impl(
+                "i32",
+                Some(
+                    "Tr",
+                ),
+            ),
+            children: [
+                Node {
+                    label: VarDef(
+                        Const,
+                        "C",
+                    ),
+                    children: [
+                        Node {
+                            label: Lit(
+                                "10",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+                Node {
+                    label: FnDef(
+                        Some(
+                            "a",
+                        ),
+                        2,
+                    ),
+                    children: [
+                        Node {
+                            label: Block,
+                            children: [
+                                Node {
+                                    label: Jump(
+                                        Return,
+                                    ),
+                                    children: [
+                                        Node {
+                                            label: Op(
+                                                "+",
+                                            ),
+                                            children: [
+                                                Node {
+                                                    label: Op(
+                                                        "*",
+                                                    ),
+                                                    children: [
+                                                        Node {
+                                                            label: VarUse(
+                                                                "self",
+                                                            ),
+                                                            children: [],
+                                                        },
+                                                    ],
+                                                },
+                                                Node {
+                                                    label: VarUse(
+                                                        "value",
+                                                    ),
+                                                    children: [],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Struct(
+                "S",
+            ),
+            children: [],
+        },
+        Node {
+            label: Impl(
+                "S",
+                None,
+            ),
+            children: [
+                Node {
+                    label: FnDef(
+                        Some(
+                            "c",
+                        ),
+                        1,
+                    ),
+                    children: [
+                        Node {
+                            label: Block,
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: Mod(
+                "inner",
+            ),
+            children: [
+                Node {
+                    label: FnDef(
+                        Some(
+                            "inner_function",
+                        ),
+                        0,
+                    ),
+                    children: [
+                        Node {
+                            label: Block,
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}
