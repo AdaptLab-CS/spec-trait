@@ -1,0 +1,134 @@
+Node {
+    label: Block,
+    children: [
+        Node {
+            label: VarDef(
+                Const,
+                "INIT",
+            ),
+            children: [
+                Node {
+                    label: Lit(
+                        "10",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Static,
+                "ADDER",
+            ),
+            children: [
+                Node {
+                    label: Lit(
+                        "5",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "_",
+            ),
+            children: [
+                Node {
+                    label: Lit(
+                        "2.0",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "x",
+            ),
+            children: [
+                Node {
+                    label: VarUse(
+                        "INIT",
+                    ),
+                    children: [],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "y",
+            ),
+            children: [
+                Node {
+                    label: Op(
+                        "+",
+                    ),
+                    children: [
+                        Node {
+                            label: VarUse(
+                                "x",
+                            ),
+                            children: [],
+                        },
+                        Node {
+                            label: VarUse(
+                                "ADDER",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+        Node {
+            label: VarDef(
+                Local,
+                "z",
+            ),
+            children: [],
+        },
+        Node {
+            label: Assign(
+                "z",
+            ),
+            children: [
+                Node {
+                    label: Op(
+                        "/",
+                    ),
+                    children: [
+                        Node {
+                            label: Op(
+                                "*",
+                            ),
+                            children: [
+                                Node {
+                                    label: VarUse(
+                                        "x",
+                                    ),
+                                    children: [],
+                                },
+                                Node {
+                                    label: VarUse(
+                                        "y",
+                                    ),
+                                    children: [],
+                                },
+                            ],
+                        },
+                        Node {
+                            label: Lit(
+                                "2",
+                            ),
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        },
+    ],
+}
