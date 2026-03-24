@@ -15,7 +15,7 @@ echo "example,variant,iteration,build_time_secs" > "$OUT"
 
 cd "$CRATE_DIR"
 
-for i in $(seq 1 20); do
+for i in $(seq 1 33); do
     ex=$(printf "ex%02d" "$i")
     echo "[INFO] Measuring build time for $ex ..."
 

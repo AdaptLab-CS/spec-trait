@@ -6,14 +6,14 @@ Evaluation infrastructure for **Meta-Monomorphizing Specializations**.
 
 ```
 spec-trait-eval/
-├── benches-crate/          # Rust crate with 20 paired benchmarks
+├── benches-crate/          # Rust crate with 33 paired benchmarks
 │   ├── benches/bench_all.rs    # Criterion benchmark harness
 │   ├── src/
 │   │   ├── lib.rs
 │   │   ├── data.rs             # Test data generators
 │   │   └── examples/
-│   │       ├── ex01.rs … ex20.rs       # WITH spec!/when macros
-│   │       └── ex01_wo.rs … ex20_wo.rs # WITHOUT macros (standard approaches)
+│   │       ├── ex01.rs … ex33.rs       # WITH spec!/when macros
+│   │       └── ex01_wo.rs … ex33_wo.rs # WITHOUT macros (standard approaches)
 │   ├── build.rs
 │   └── Cargo.toml
 ├── scripts/
@@ -32,6 +32,8 @@ spec-trait-eval/
 # 1. Run runtime benchmarks (takes ~15–30 min)
 cd benches-crate
 cargo bench --bench bench_all
+# or for more control:
+cargo bench --bench bench_all example_name 
 
 # 2. Collect results into CSV
 cd ../scripts
@@ -79,6 +81,19 @@ Each example benchmarks a specific operation with up to 5 approaches:
 | 18 | FMA | `T = f64`, `T = f32`, `T = i32` |
 | 19 | Byte conversion | `T = u8`, `T = char`, `T = i32` |
 | 20 | Dot product | `T = f64`, `T = f32`, `T = i32` |
+| 21 | Lifetime parsing | `T = &'static str` vs `T = &'a str` (lifetime specialization) |
+| 22 | HRTB apply | `F = for<'a> fn(&'a T) -> T` (higher-ranked trait bounds) |
+| 23 | Multi-generic combine | `U = Vec<T>`, `T = Vec<U>` (repeating generics) |
+| 24 | Wildcard measure | `Vec<_>`, `(i32, _)`, `&[i32]`, `fn(&u8)->&u8` (complex types) |
+| 25 | Conditional process | `any(T=i32,T=i64)`, `not(T=u8)`, `all(…)` (combinators) |
+| 26 | Fn dispatch | `T: Fn(i32)->i32`, `T: for<'a> Fn(&'a i32)->i32` (Fn bounds) |
+| 27 | Multi-self transform | Same trait across TypeA, TypeB, Vec\<U\>, i32 |
+| 28 | Static hash | `T: 'static` lifetime bound specialization |
+| 29 | Dyn trait type | `T = &dyn Display`, `T = i32`, `T = String` (type patterns) |
+| 30 | Combined bounds dedup | `T: Copy + Eq` multi-trait bound, `T = u8` bitmap |
+| 31 | Many specs encode | 10 `#[when]` clauses (u8–f64) stress test |
+| 32 | Tuple points | `T = (i32,i32)`, `(f64,f64)`, `(f32,f32)` squared-sum |
+| 33 | Nested generics | `Vec<Vec<u8>>`, `Vec<String>`, `Vec<i32>` flatten |
 
 ## Approaches Compared
 
