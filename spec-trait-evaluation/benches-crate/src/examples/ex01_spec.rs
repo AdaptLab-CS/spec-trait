@@ -16,10 +16,6 @@ impl<T: Clone> ExtendTrait<T> for Extender {
     }
 }
 
-pub fn extend_u8(e: &Extender, dst: &mut Vec<u8>, src: &[u8]) {
-    spec! { e.extend_slice(dst, src); Extender; [&mut Vec<u8>, &[u8]]; u8: Copy }
-}
-
 #[when(T: Copy)]
 impl<T> ExtendTrait<T> for Extender {
     #[inline(never)]
@@ -31,6 +27,10 @@ impl<T> ExtendTrait<T> for Extender {
             dst.set_len(dst.len() + len);
         }
     }
+}
+
+pub fn extend_u8(e: &Extender, dst: &mut Vec<u8>, src: &[u8]) {
+    spec! { e.extend_slice(dst, src); Extender; [&mut Vec<u8>, &[u8]]; u8: Copy }
 }
 
 

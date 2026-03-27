@@ -2,14 +2,26 @@
 use std::collections::HashSet;
 use std::hash::Hash;
 
-#[inline(never)]
-pub fn dedup_naive<T: Clone + Eq + Hash>(data: &[T]) -> Vec<T> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for item in data {
-        if seen.insert(item) {
-            out.push(item.clone());
+pub struct Deduplicator;
+
+pub trait NaiveDedupTrait<T> {
+    fn dedup(&self, data: &[T]) -> Vec<T>;
+}
+
+impl<T: Clone + Eq + Hash> NaiveDedupTrait<T> for Deduplicator {
+    #[inline(never)]
+    fn dedup(&self, data: &[T]) -> Vec<T> {
+        let mut seen = HashSet::new();
+        let mut out = Vec::new();
+        for item in data {
+            if seen.insert(item) {
+                out.push(item.clone());
+            }
         }
+        out
     }
-    out
+}
+
+pub fn dedup_naive(d: &Deduplicator, data: &[u8]) -> Vec<u8> {
+    d.dedup(data)
 }
