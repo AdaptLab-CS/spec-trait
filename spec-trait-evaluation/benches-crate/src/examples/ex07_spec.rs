@@ -1,55 +1,42 @@
-// Ex07 -- spec: Dedup (remove all duplicates, keep first occurrence)
+// Ex07 -- spec: hash_key — identity hash for u64 vs SipHash (DefaultHasher)
 use spec_trait_macro::{spec, when};
-use std::collections::HashSet;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
-pub struct Deduplicator;
+pub struct HashOp;
 
-pub trait DedupTrait<T> {
-    fn dedup(&self, data: &[T]) -> Vec<T>;
+pub trait HashKeyTrait<K> {
+    fn hash_all(&self, keys: &[K]) -> u64;
 }
 
-impl<T: Clone + Eq + Hash> DedupTrait<T> for Deduplicator {
+impl<K: Hash> HashKeyTrait<K> for HashOp {
     #[inline(never)]
-    fn dedup(&self, data: &[T]) -> Vec<T> {
-        let mut seen = HashSet::new();
-        let mut out = Vec::new();
-        for item in data {
-            if seen.insert(item) {
-                out.push(item.clone());
-            }
+    fn hash_all(&self, keys: &[K]) -> u64 {
+        let mut acc: u64 = 0;
+        for key in keys {
+            let mut h = DefaultHasher::new();
+            key.hash(&mut h);
+            acc ^= h.finish();
         }
-        out
+        acc
     }
 }
 
-#[when(T = u8)]
-impl<T> DedupTrait<T> for Deduplicator {
+#[when(K = u64)]
+impl<K> HashKeyTrait<K> for HashOp {
     #[inline(never)]
-    fn dedup(&self, data: &[T]) -> Vec<T> {
-        let mut seen = [false; 256];
-        let mut out = Vec::new();
-        for &b in data {
-            if !seen[b as usize] {
-                seen[b as usize] = true;
-                out.push(b);
-            }
+    fn hash_all(&self, keys: &[K]) -> u64 {
+        let slice = unsafe {
+            std::slice::from_raw_parts(keys.as_ptr() as *const u64, keys.len())
+        };
+        let mut acc: u64 = 0;
+        for &k in slice {
+            acc ^= k;
         }
-        out
+        acc
     }
 }
 
-pub fn dedup_u8(d: &Deduplicator, data: &[u8]) -> Vec<u8> {
-    spec! { d.dedup(data); Deduplicator; [&[u8]] }
-}
-
-pub fn _dedup_generic<T: Clone + Eq + Hash>(_d: &Deduplicator, data: &[T]) -> Vec<T> {
-    let mut seen = HashSet::new();
-    let mut out = Vec::new();
-    for item in data {
-        if seen.insert(item) {
-            out.push(item.clone());
-        }
-    }
-    out
+pub fn hash_all_u64(h: &HashOp, keys: &[u64]) -> u64 {
+    spec! { h.hash_all(keys); HashOp; [&[u64]] }
 }

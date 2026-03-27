@@ -1,45 +1,36 @@
-// Ex01 -- spec: Histogram -- max frequency count, specialized for u8
+// Ex01 -- spec: extend_from_slice — Copy memcpy vs Clone loop
 use spec_trait_macro::{spec, when};
-use std::collections::HashMap;
-use std::hash::Hash;
 
-pub struct HistogramOp;
+pub struct Extender;
 
-pub trait HistogramTrait<T> {
-    fn max_freq(&self, data: &[T]) -> u32;
+pub trait ExtendTrait<T> {
+    fn extend_slice(&self, dst: &mut Vec<T>, src: &[T]);
 }
 
-impl<T: Eq + Hash> HistogramTrait<T> for HistogramOp {
+impl<T: Clone> ExtendTrait<T> for Extender {
     #[inline(never)]
-    fn max_freq(&self, data: &[T]) -> u32 {
-        let mut map = HashMap::<&T, u32>::new();
-        for item in data {
-            *map.entry(item).or_insert(0) += 1;
+    fn extend_slice(&self, dst: &mut Vec<T>, src: &[T]) {
+        for item in src {
+            dst.push(item.clone());
         }
-        map.values().copied().max().unwrap_or(0)
     }
 }
 
-#[when(T = u8)]
-impl<T> HistogramTrait<T> for HistogramOp {
+pub fn extend_u8(e: &Extender, dst: &mut Vec<u8>, src: &[u8]) {
+    spec! { e.extend_slice(dst, src); Extender; [&mut Vec<u8>, &[u8]]; u8: Copy }
+}
+
+#[when(T: Copy)]
+impl<T> ExtendTrait<T> for Extender {
     #[inline(never)]
-    fn max_freq(&self, data: &[T]) -> u32 {
-        let mut counts = [0u32; 256];
-        for &b in data {
-            counts[b as usize] += 1;
+    fn extend_slice(&self, dst: &mut Vec<T>, src: &[T]) {
+        let len = src.len();
+        dst.reserve(len);
+        unsafe {
+            std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr().add(dst.len()), len);
+            dst.set_len(dst.len() + len);
         }
-        counts.iter().copied().max().unwrap_or(0)
     }
 }
 
-pub fn max_freq_u8(h: &HistogramOp, data: &[u8]) -> u32 {
-    spec! { h.max_freq(data); HistogramOp; [&[u8]] }
-}
 
-pub fn _max_freq_generic<T: Eq + Hash>(_h: &HistogramOp, data: &[T]) -> u32 {
-    let mut map = HashMap::<&T, u32>::new();
-    for item in data {
-        *map.entry(item).or_insert(0) += 1;
-    }
-    map.values().copied().max().unwrap_or(0)
-}

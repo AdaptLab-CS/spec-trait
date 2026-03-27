@@ -1,17 +1,24 @@
-// Ex05 -- runtime TypeId dispatch: Distinct count
+// Ex05 -- runtime TypeId dispatch: histogram
 use std::any::TypeId;
-use std::collections::HashSet;
+use std::collections::HashMap;
+use std::hash::Hash;
 
 #[inline(never)]
-pub fn distinct_runtime_u8(data: &[u8]) -> usize {
-    if TypeId::of::<u8>() == TypeId::of::<u8>() {
-        let mut seen = [false; 256];
-        for &b in data {
-            seen[b as usize] = true;
+pub fn max_freq_runtime<T: Eq + Hash + 'static>(data: &[T]) -> u32 {
+    if TypeId::of::<T>() == TypeId::of::<u8>() {
+        let slice = unsafe {
+            std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
+        };
+        let mut counts = [0u32; 256];
+        for &b in slice {
+            counts[b as usize] += 1;
         }
-        seen.iter().filter(|&&v| v).count()
+        counts.iter().copied().max().unwrap_or(0)
     } else {
-        let set: HashSet<u8> = data.iter().copied().collect();
-        set.len()
+        let mut map = HashMap::<&T, u32>::new();
+        for item in data {
+            *map.entry(item).or_insert(0) += 1;
+        }
+        map.values().copied().max().unwrap_or(0)
     }
 }

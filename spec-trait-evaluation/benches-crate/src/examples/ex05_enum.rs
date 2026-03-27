@@ -1,24 +1,18 @@
-// Ex05 -- enum dispatch: Distinct count
-use std::collections::HashSet;
+// Ex05 -- enum dispatch: histogram
 
-pub enum DistinctEnum<'a> {
+pub enum HistEnum<'a> {
     U8(&'a [u8]),
-    I32(&'a [i32]),
 }
 
 #[inline(never)]
-pub fn distinct_enum(variant: &DistinctEnum<'_>) -> usize {
-    match variant {
-        DistinctEnum::U8(data) => {
-            let mut seen = [false; 256];
+pub fn histogram_enum(e: &HistEnum<'_>) -> u32 {
+    match e {
+        HistEnum::U8(data) => {
+            let mut counts = [0u32; 256];
             for &b in *data {
-                seen[b as usize] = true;
+                counts[b as usize] += 1;
             }
-            seen.iter().filter(|&&v| v).count()
-        }
-        DistinctEnum::I32(data) => {
-            let set: HashSet<i32> = data.iter().copied().collect();
-            set.len()
+            counts.iter().copied().max().unwrap_or(0)
         }
     }
 }

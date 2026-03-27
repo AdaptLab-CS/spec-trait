@@ -18,6 +18,10 @@ pub fn make_sorted_u8(n: usize) -> Vec<u8> {
     data
 }
 
+pub fn make_u64(n: usize) -> Vec<u64> {
+    (0..n as u64).collect()
+}
+
 pub fn make_strings(n: usize) -> Vec<String> {
     (0..n).map(|i| format!("item_{}", i)).collect()
 }

@@ -1,30 +1,29 @@
 # spec-trait Evaluation
 
-Benchmark suite that compares `spec!`/`#[when]` compile-time specialization against four alternative dispatch strategies:
+Benchmark suite that compares `spec!`/`#[when]` compile-time specialization against three alternative dispatch strategies:
 
 | Approach | Description |
 |---|---|
 | **spec** | Compile-time specialization via `spec!`/`#[when]` macros |
-| **dyn** | Trait-object dynamic dispatch |
+| **naive** | Plain generic fallback (no specialization) |
 | **enum** | Enum-based match dispatch |
-| **generic** | Plain generic (no specialization) |
 | **runtime_typeid** | `TypeId`-based runtime branching |
 
 ## Examples
 
-Each example implements the same operation with up to 5 dispatch approaches.
-The `spec` variant exploits type-specific knowledge (e.g. fixed-size arrays, SIMD byte search) that a generic fallback cannot use.
+Each example implements the same operation with 4 dispatch approaches.
+The `spec` variant exploits type-specific knowledge (e.g. memcpy, SIMD byte search, counting sort) that a naive generic fallback cannot use.
 
-| # | Operation | spec strategy | Generic fallback | Speedup (n=65536) |
-|---|-----------|---------------|------------------|-------------------|
-| ex01 | Histogram (max frequency) | `[u32; 256]` direct index | `HashMap<u8, u32>` | 22–66× |
-| ex02 | Set intersection count | `[bool; 256]` bitmap | `HashSet<u8>` | 36–41× |
-| ex03 | Contains search | `memchr` SIMD | `iter().any()` | 19–20× |
-| ex04 | Sort | `[u32; 256]` counting sort | `sort_unstable()` | 7–11× |
-| ex05 | Distinct count | `[bool; 256]` bitmap | `HashSet<u8>` | 43–46× |
-| ex06 | Bulk serialize | `to_vec()` zero-copy | `format!()` per element | 166–1993× |
-| ex07 | Dedup (keep first) | `[bool; 256]` bitmap | `HashSet<u8>` | 21–24× |
-| ex08 | Count value occurrences | `memchr_iter().count()` | `filter().count()` | 4–7× |
+| # | Operation | `when` condition | spec strategy | Naive fallback |
+|---|-----------|-----------------|---------------|----------------|
+| ex01 | extend_from_slice | `T: Copy` | `ptr::copy_nonoverlapping` (memcpy) | clone loop |
+| ex02 | to_bytes | `T: Copy` | raw `transmute` (zero-copy) | `format!()` per element |
+| ex03 | contains | `T = u8` | `memchr` SIMD | `iter().any()` |
+| ex04 | sort | `T = u8` | counting sort `[u32; 256]` | `sort_unstable()` |
+| ex05 | histogram (max freq) | `T = u8` | `[u32; 256]` direct index | `HashMap<&T, u32>` |
+| ex06 | dedup (keep first) | `T = u8` | `[bool; 256]` bitmap | `HashSet` |
+| ex07 | hash_key | `K = u64` | identity XOR (no hashing) | `DefaultHasher` (SipHash) |
+| ex08 | count_value | `T = u8` | `memchr_iter().count()` | `filter().count()` |
 
 ## Project structure
 
@@ -38,7 +37,7 @@ spec-trait-evaluation/
 │   └── src/
 │       ├── lib.rs
 │       ├── data.rs           # Input generators (make_u8, make_i32, ...)
-│       └── examples/         # 36 source files (8 examples × 4–5 variants)
+│       └── examples/         # 32 source files (8 examples × 4 variants)
 ├── scripts/
 │   ├── run_all.sh            # Run benchmarks + collect all metrics
 │   ├── collect_metrics.py    # Parse Criterion JSON → runtime.csv
@@ -96,7 +95,7 @@ jupyter notebook notebooks/eval.ipynb
 ## Benchmark parameters
 
 - **Input sizes**: 256, 1024, 4096, 16384, 65536 elements
-- **Data type**: `u8` (all examples use byte-level specialization)
+- **Data type**: `u8` (most examples), `u64` (ex07 hash_key)
 - **Criterion config**: warm-up 3s, measurement 5s, 100 samples (default); `--quick` uses 1s/3s/10
 - **Build time**: `cargo check` from clean local crate (dependencies pre-cached), 3 iterations
 - **Binary size**: release-mode `rlib` artifact (`opt-level=3`, `lto=false`, `codegen-units=16`)
