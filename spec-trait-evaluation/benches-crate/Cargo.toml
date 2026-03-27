@@ -1,0 +1,23 @@
+[package]
+name = "spec-trait-evaluation"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+spec-trait-macro = { path = "../../spec-trait-impl/crates/spec-trait-macro" }
+memchr = "2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports", "csv_output"] }
+
+[build-dependencies]
+spec-trait-order = { path = "../../spec-trait-impl/crates/spec-trait-order" }
+
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 16
+
+[[bench]]
+name = "bench_all"
+harness = false
