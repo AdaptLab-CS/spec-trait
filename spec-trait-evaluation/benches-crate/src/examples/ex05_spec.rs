@@ -1,39 +1,40 @@
-// Ex05 -- spec: Distinct element count, specialized for u8
+// Ex05 -- spec: histogram — array[256] indexing vs HashMap
 use spec_trait_macro::{spec, when};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::hash::Hash;
 
-pub struct DistinctOp;
+pub struct HistogramOp;
 
-pub trait DistinctTrait<T> {
-    fn distinct(&self, data: &[T]) -> usize;
+pub trait HistogramTrait<T> {
+    fn max_freq(&self, data: &[T]) -> u32;
 }
 
-impl<T: Eq + Hash> DistinctTrait<T> for DistinctOp {
+impl<T: Eq + Hash> HistogramTrait<T> for HistogramOp {
     #[inline(never)]
-    fn distinct(&self, data: &[T]) -> usize {
-        let set: HashSet<&T> = data.iter().collect();
-        set.len()
+    fn max_freq(&self, data: &[T]) -> u32 {
+        let mut map = HashMap::<&T, u32>::new();
+        for item in data {
+            *map.entry(item).or_insert(0) += 1;
+        }
+        map.values().copied().max().unwrap_or(0)
     }
 }
 
 #[when(T = u8)]
-impl<T> DistinctTrait<T> for DistinctOp {
+impl<T> HistogramTrait<T> for HistogramOp {
     #[inline(never)]
-    fn distinct(&self, data: &[T]) -> usize {
-        let mut seen = [false; 256];
-        for &b in data {
-            seen[b as usize] = true;
+    fn max_freq(&self, data: &[T]) -> u32 {
+        let slice = unsafe {
+            std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
+        };
+        let mut counts = [0u32; 256];
+        for &b in slice {
+            counts[b as usize] += 1;
         }
-        seen.iter().filter(|&&v| v).count()
+        counts.iter().copied().max().unwrap_or(0)
     }
 }
 
-pub fn distinct_u8(op: &DistinctOp, data: &[u8]) -> usize {
-    spec! { op.distinct(data); DistinctOp; [&[u8]] }
-}
-
-pub fn _distinct_generic<T: Eq + Hash>(_op: &DistinctOp, data: &[T]) -> usize {
-    let set: HashSet<&T> = data.iter().collect();
-    set.len()
+pub fn max_freq_u8(h: &HistogramOp, data: &[u8]) -> u32 {
+    spec! { h.max_freq(data); HistogramOp; [&[u8]] }
 }

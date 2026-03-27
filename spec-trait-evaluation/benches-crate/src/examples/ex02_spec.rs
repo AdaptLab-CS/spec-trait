@@ -1,39 +1,38 @@
-// Ex02 -- spec: Set intersection count, specialized for u8
+// Ex02 -- spec: to_bytes — Copy raw transmute vs Display formatting
 use spec_trait_macro::{spec, when};
-use std::collections::HashSet;
-use std::hash::Hash;
+use std::fmt::Display;
 
-pub struct IntersectOp;
+pub struct Serializer;
 
-pub trait IntersectTrait<T> {
-    fn intersection_count(&self, a: &[T], b: &[T]) -> usize;
+pub trait ToByteTrait<T> {
+    fn to_bytes(&self, data: &[T]) -> Vec<u8>;
 }
 
-impl<T: Eq + Hash> IntersectTrait<T> for IntersectOp {
+impl<T: Display> ToByteTrait<T> for Serializer {
     #[inline(never)]
-    fn intersection_count(&self, a: &[T], b: &[T]) -> usize {
-        let set: HashSet<&T> = a.iter().collect();
-        b.iter().filter(|x| set.contains(x)).count()
-    }
-}
-
-#[when(T = u8)]
-impl<T> IntersectTrait<T> for IntersectOp {
-    #[inline(never)]
-    fn intersection_count(&self, a: &[T], b: &[T]) -> usize {
-        let mut present = [false; 256];
-        for &v in a {
-            present[v as usize] = true;
+    fn to_bytes(&self, data: &[T]) -> Vec<u8> {
+        let mut result = Vec::new();
+        for item in data {
+            result.extend_from_slice(format!("{}", item).as_bytes());
         }
-        b.iter().filter(|&&v| present[v as usize]).count()
+        result
     }
 }
 
-pub fn intersect_u8(op: &IntersectOp, a: &[u8], b: &[u8]) -> usize {
-    spec! { op.intersection_count(a, b); IntersectOp; [&[u8], &[u8]] }
+#[when(T: Copy)]
+impl<T> ToByteTrait<T> for Serializer {
+    #[inline(never)]
+    fn to_bytes(&self, data: &[T]) -> Vec<u8> {
+        unsafe {
+            std::slice::from_raw_parts(
+                data.as_ptr() as *const u8,
+                data.len() * std::mem::size_of::<T>(),
+            )
+            .to_vec()
+        }
+    }
 }
 
-pub fn _intersect_generic<T: Eq + Hash>(_op: &IntersectOp, a: &[T], b: &[T]) -> usize {
-    let set: HashSet<&T> = a.iter().collect();
-    b.iter().filter(|x| set.contains(x)).count()
+pub fn to_bytes_u8(s: &Serializer, data: &[u8]) -> Vec<u8> {
+    spec! { s.to_bytes(data); Serializer; [&[u8]]; u8: Copy }
 }

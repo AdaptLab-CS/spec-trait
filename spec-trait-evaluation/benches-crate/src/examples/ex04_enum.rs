@@ -1,11 +1,12 @@
-// Ex04 — enum dispatch: Sort
+// Ex04 -- enum dispatch: sort
+
 pub enum SortEnum<'a> {
     U8(&'a mut [u8]),
 }
 
 #[inline(never)]
-pub fn sort_enum(variant: &mut SortEnum<'_>) {
-    match variant {
+pub fn sort_enum(e: &mut SortEnum<'_>) {
+    match e {
         SortEnum::U8(data) => {
             let mut counts = [0u32; 256];
             for &b in data.iter() {

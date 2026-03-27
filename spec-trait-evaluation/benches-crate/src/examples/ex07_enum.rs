@@ -1,34 +1,18 @@
-// Ex07 -- enum dispatch: Dedup
-use std::collections::HashSet;
+// Ex07 -- enum dispatch: hash_key
 
-pub enum DedupEnum<'a> {
-    U8(&'a [u8]),
-    I32(&'a [i32]),
+pub enum HashEnum<'a> {
+    U64(&'a [u64]),
 }
 
 #[inline(never)]
-pub fn dedup_enum(variant: &DedupEnum<'_>) -> usize {
-    match variant {
-        DedupEnum::U8(data) => {
-            let mut seen = [false; 256];
-            let mut count = 0usize;
-            for &b in *data {
-                if !seen[b as usize] {
-                    seen[b as usize] = true;
-                    count += 1;
-                }
+pub fn hash_all_enum(e: &HashEnum<'_>) -> u64 {
+    match e {
+        HashEnum::U64(keys) => {
+            let mut acc: u64 = 0;
+            for &k in *keys {
+                acc ^= k;
             }
-            count
-        }
-        DedupEnum::I32(data) => {
-            let mut seen = HashSet::new();
-            let mut count = 0usize;
-            for &v in *data {
-                if seen.insert(v) {
-                    count += 1;
-                }
-            }
-            count
+            acc
         }
     }
 }

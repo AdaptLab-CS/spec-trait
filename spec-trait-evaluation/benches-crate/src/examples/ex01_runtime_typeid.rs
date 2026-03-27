@@ -1,20 +1,18 @@
-// Ex01 -- runtime TypeId dispatch: Histogram
+// Ex01 -- runtime TypeId dispatch: extend_from_slice
 use std::any::TypeId;
-use std::collections::HashMap;
 
 #[inline(never)]
-pub fn max_freq_runtime_u8(data: &[u8]) -> u32 {
-    if TypeId::of::<u8>() == TypeId::of::<u8>() {
-        let mut counts = [0u32; 256];
-        for &b in data {
-            counts[b as usize] += 1;
+pub fn extend_runtime<T: Clone + Copy + 'static>(dst: &mut Vec<T>, src: &[T]) {
+    if TypeId::of::<T>() == TypeId::of::<u8>() {
+        let len = src.len();
+        dst.reserve(len);
+        unsafe {
+            std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr().add(dst.len()), len);
+            dst.set_len(dst.len() + len);
         }
-        counts.iter().copied().max().unwrap_or(0)
     } else {
-        let mut map = HashMap::<u8, u32>::new();
-        for &b in data {
-            *map.entry(b).or_insert(0) += 1;
+        for item in src {
+            dst.push(item.clone());
         }
-        map.values().copied().max().unwrap_or(0)
     }
 }

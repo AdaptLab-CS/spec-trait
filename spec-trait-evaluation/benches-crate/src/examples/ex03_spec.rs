@@ -1,4 +1,4 @@
-// Ex03 — spec!: Contains search, u8 specialized via memchr
+// Ex03 -- spec: contains — memchr SIMD vs linear scan
 use spec_trait_macro::{spec, when};
 
 pub struct Searcher;
@@ -18,14 +18,14 @@ impl<T: PartialEq> ContainsTrait<T> for Searcher {
 impl<T> ContainsTrait<T> for Searcher {
     #[inline(never)]
     fn contains(&self, data: &[T], needle: &T) -> bool {
-        memchr::memchr(*needle, data).is_some()
+        let byte_slice = unsafe {
+            std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
+        };
+        let n = unsafe { *(needle as *const T as *const u8) };
+        memchr::memchr(n, byte_slice).is_some()
     }
 }
 
 pub fn contains_u8(s: &Searcher, data: &[u8], needle: &u8) -> bool {
     spec! { s.contains(data, needle); Searcher; [&[u8], &u8] }
-}
-
-pub fn contains_generic<T: PartialEq>(_s: &Searcher, data: &[T], needle: &T) -> bool {
-    data.iter().any(|x| x == needle)
 }

@@ -1,18 +1,20 @@
-// Ex06 — enum dispatch: Bulk serialize
-pub enum BulkSerEnum<'a> {
+// Ex06 -- enum dispatch: dedup
+
+pub enum DedupEnum<'a> {
     U8(&'a [u8]),
-    I32(&'a [i32]),
 }
 
 #[inline(never)]
-pub fn bulkser_enum(variant: &BulkSerEnum<'_>) -> Vec<u8> {
-    match variant {
-        BulkSerEnum::U8(data) => data.to_vec(),
-        BulkSerEnum::I32(data) => {
+pub fn dedup_enum(e: &DedupEnum<'_>) -> Vec<u8> {
+    match e {
+        DedupEnum::U8(data) => {
+            let mut seen = [false; 256];
             let mut out = Vec::new();
-            for item in *data {
-                out.extend_from_slice(format!("{}", item).as_bytes());
-                out.push(b',');
+            for &b in *data {
+                if !seen[b as usize] {
+                    seen[b as usize] = true;
+                    out.push(b);
+                }
             }
             out
         }
