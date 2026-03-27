@@ -11,6 +11,8 @@ fn bench_ex01(c: &mut Criterion) {
         let src = make_u8(n);
         g.throughput(Throughput::Elements(n as u64));
         let ext = ex01_spec::Extender;
+        let ext_naive = ex01_naive::Extender;
+        let ext_rt = ex01_runtime_typeid::Extender;
         g.bench_with_input(BenchmarkId::new("spec", n), &src, |b, src| {
             b.iter(|| {
                 let mut dst = Vec::new();
@@ -21,7 +23,7 @@ fn bench_ex01(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("naive", n), &src, |b, src| {
             b.iter(|| {
                 let mut dst = Vec::new();
-                ex01_naive::extend_naive(&mut dst, std::hint::black_box(src));
+                ex01_naive::extend_naive(&ext_naive, &mut dst, std::hint::black_box(src));
                 dst
             })
         });
@@ -36,7 +38,7 @@ fn bench_ex01(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &src, |b, src| {
             b.iter(|| {
                 let mut dst = Vec::new();
-                ex01_runtime_typeid::extend_runtime(&mut dst, std::hint::black_box(src));
+                ex01_runtime_typeid::extend_runtime(&ext_rt, &mut dst, std::hint::black_box(src));
                 dst
             })
         });
@@ -51,18 +53,20 @@ fn bench_ex02(c: &mut Criterion) {
         let data = make_u8(n);
         g.throughput(Throughput::Elements(n as u64));
         let s = ex02_spec::Serializer;
+        let s_naive = ex02_naive::Serializer;
+        let s_rt = ex02_runtime_typeid::Serializer;
         g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
             b.iter(|| ex02_spec::to_bytes_u8(&s, std::hint::black_box(data)))
         });
         g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
-            b.iter(|| ex02_naive::to_bytes_naive(std::hint::black_box(data)))
+            b.iter(|| ex02_naive::to_bytes_naive(&s_naive, std::hint::black_box(data)))
         });
         g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
             let e = ex02_enum::ToBytesEnum::U8(data);
             b.iter(|| ex02_enum::to_bytes_enum(&e))
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
-            b.iter(|| ex02_runtime_typeid::to_bytes_runtime(std::hint::black_box(data)))
+            b.iter(|| ex02_runtime_typeid::to_bytes_runtime(&s_rt, std::hint::black_box(data)))
         });
     }
     g.finish();
@@ -76,18 +80,20 @@ fn bench_ex03(c: &mut Criterion) {
         let needle: u8 = 200;
         g.throughput(Throughput::Elements(n as u64));
         let sc = ex03_spec::Searcher;
+        let sc_naive = ex03_naive::Searcher;
+        let sc_rt = ex03_runtime_typeid::Searcher;
         g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
             b.iter(|| ex03_spec::contains_u8(&sc, std::hint::black_box(data), &needle))
         });
         g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
-            b.iter(|| ex03_naive::contains_naive(std::hint::black_box(data), &needle))
+            b.iter(|| ex03_naive::contains_naive(&sc_naive, std::hint::black_box(data), &needle))
         });
         g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
             let e = ex03_enum::ContainsEnum::U8(data, needle);
             b.iter(|| ex03_enum::contains_enum(&e))
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
-            b.iter(|| ex03_runtime_typeid::contains_runtime(std::hint::black_box(data), &needle))
+            b.iter(|| ex03_runtime_typeid::contains_runtime(&sc_rt, std::hint::black_box(data), &needle))
         });
     }
     g.finish();
@@ -100,6 +106,8 @@ fn bench_ex04(c: &mut Criterion) {
         let base = make_u8(n);
         g.throughput(Throughput::Elements(n as u64));
         let sr = ex04_spec::Sorter;
+        let sr_naive = ex04_naive::Sorter;
+        let sr_rt = ex04_runtime_typeid::Sorter;
         g.bench_with_input(BenchmarkId::new("spec", n), &base, |b, base| {
             b.iter(|| {
                 let mut d = base.clone();
@@ -110,7 +118,7 @@ fn bench_ex04(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("naive", n), &base, |b, base| {
             b.iter(|| {
                 let mut d = base.clone();
-                ex04_naive::sort_naive(std::hint::black_box(&mut d));
+                ex04_naive::sort_naive(&sr_naive, std::hint::black_box(&mut d));
                 d
             })
         });
@@ -124,7 +132,7 @@ fn bench_ex04(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &base, |b, base| {
             b.iter(|| {
                 let mut d = base.clone();
-                ex04_runtime_typeid::sort_runtime(std::hint::black_box(&mut d));
+                ex04_runtime_typeid::sort_runtime(&sr_rt, std::hint::black_box(&mut d));
                 d
             })
         });
@@ -139,18 +147,20 @@ fn bench_ex05(c: &mut Criterion) {
         let data = make_u8(n);
         g.throughput(Throughput::Elements(n as u64));
         let h = ex05_spec::HistogramOp;
+        let h_naive = ex05_naive::HistogramOp;
+        let h_rt = ex05_runtime_typeid::HistogramOp;
         g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
             b.iter(|| ex05_spec::max_freq_u8(&h, std::hint::black_box(data)))
         });
         g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
-            b.iter(|| ex05_naive::max_freq_naive(std::hint::black_box(data)))
+            b.iter(|| ex05_naive::max_freq_naive(&h_naive, std::hint::black_box(data)))
         });
         g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
             let e = ex05_enum::HistEnum::U8(data);
             b.iter(|| ex05_enum::histogram_enum(&e))
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
-            b.iter(|| ex05_runtime_typeid::max_freq_runtime(std::hint::black_box(data)))
+            b.iter(|| ex05_runtime_typeid::max_freq_runtime(&h_rt, std::hint::black_box(data)))
         });
     }
     g.finish();
@@ -163,18 +173,20 @@ fn bench_ex06(c: &mut Criterion) {
         let data = make_u8(n);
         g.throughput(Throughput::Elements(n as u64));
         let dd = ex06_spec::Deduplicator;
+        let dd_naive = ex06_naive::Deduplicator;
+        let dd_rt = ex06_runtime_typeid::Deduplicator;
         g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
             b.iter(|| ex06_spec::dedup_u8(&dd, std::hint::black_box(data)))
         });
         g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
-            b.iter(|| ex06_naive::dedup_naive(std::hint::black_box(data)))
+            b.iter(|| ex06_naive::dedup_naive(&dd_naive, std::hint::black_box(data)))
         });
         g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
             let e = ex06_enum::DedupEnum::U8(data);
             b.iter(|| ex06_enum::dedup_enum(&e))
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
-            b.iter(|| ex06_runtime_typeid::dedup_runtime(std::hint::black_box(data)))
+            b.iter(|| ex06_runtime_typeid::dedup_runtime(&dd_rt, std::hint::black_box(data)))
         });
     }
     g.finish();
@@ -187,18 +199,20 @@ fn bench_ex07(c: &mut Criterion) {
         let keys = make_u64(n);
         g.throughput(Throughput::Elements(n as u64));
         let h = ex07_spec::HashOp;
+        let h_naive = ex07_naive::HashOp;
+        let h_rt = ex07_runtime_typeid::HashOp;
         g.bench_with_input(BenchmarkId::new("spec", n), &keys, |b, keys| {
             b.iter(|| ex07_spec::hash_all_u64(&h, std::hint::black_box(keys)))
         });
         g.bench_with_input(BenchmarkId::new("naive", n), &keys, |b, keys| {
-            b.iter(|| ex07_naive::hash_all_naive(std::hint::black_box(keys)))
+            b.iter(|| ex07_naive::hash_all_naive(&h_naive, std::hint::black_box(keys)))
         });
         g.bench_with_input(BenchmarkId::new("enum", n), &keys, |b, keys| {
             let e = ex07_enum::HashEnum::U64(keys);
             b.iter(|| ex07_enum::hash_all_enum(&e))
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &keys, |b, keys| {
-            b.iter(|| ex07_runtime_typeid::hash_all_runtime(std::hint::black_box(keys)))
+            b.iter(|| ex07_runtime_typeid::hash_all_runtime(&h_rt, std::hint::black_box(keys)))
         });
     }
     g.finish();
@@ -212,18 +226,20 @@ fn bench_ex08(c: &mut Criterion) {
         let needle: u8 = 42;
         g.throughput(Throughput::Elements(n as u64));
         let op = ex08_spec::CountValOp;
+        let op_naive = ex08_naive::CountValOp;
+        let op_rt = ex08_runtime_typeid::CountValOp;
         g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
             b.iter(|| ex08_spec::count_val_u8(&op, std::hint::black_box(data), &needle))
         });
         g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
-            b.iter(|| ex08_naive::count_val_naive(std::hint::black_box(data), &needle))
+            b.iter(|| ex08_naive::count_val_naive(&op_naive, std::hint::black_box(data), &needle))
         });
         g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
             let e = ex08_enum::CountValEnum::U8(data, needle);
             b.iter(|| ex08_enum::count_val_enum(&e))
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
-            b.iter(|| ex08_runtime_typeid::count_val_runtime(std::hint::black_box(data), &needle))
+            b.iter(|| ex08_runtime_typeid::count_val_runtime(&op_rt, std::hint::black_box(data), &needle))
         });
     }
     g.finish();

@@ -2,3 +2,5 @@ pandas>=2.0
 matplotlib>=3.7
 seaborn>=0.13
 numpy>=1.24
+ipykernel>=6.0
+jinja2>=3.0
