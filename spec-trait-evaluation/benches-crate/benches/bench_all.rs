@@ -245,6 +245,218 @@ fn bench_ex08(c: &mut Criterion) {
     g.finish();
 }
 
+// ── Ex09: format_collect — 'static lifetime bound ──────────────────────
+fn bench_ex09(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex09_format_collect");
+    for &n in &SIZES {
+        let data = make_i32(n);
+        g.throughput(Throughput::Elements(n as u64));
+        let f = ex09_spec::Formatter;
+        let f_naive = ex09_naive::Formatter;
+        let f_enum = ex09_enum::Formatter;
+        let f_rt = ex09_runtime_typeid::Formatter;
+        g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
+            b.iter(|| ex09_spec::format_collect_i32(&f, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
+            b.iter(|| ex09_naive::format_collect_naive(&f_naive, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
+            b.iter(|| ex09_enum::format_collect_enum(&f_enum, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
+            b.iter(|| ex09_runtime_typeid::format_collect_runtime(&f_rt, std::hint::black_box(data)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex10: sum_slice — reference lifetime specialization ────────────────
+fn bench_ex10(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex10_sum_slice");
+    for &n in &SIZES {
+        let refs = make_static_i32_refs(n);
+        g.throughput(Throughput::Elements(n as u64));
+        let s = ex10_spec::Summer;
+        let s_naive = ex10_naive::Summer;
+        let s_enum = ex10_enum::Summer;
+        let s_rt = ex10_runtime_typeid::Summer;
+        g.bench_with_input(BenchmarkId::new("spec", n), &refs, |b, refs| {
+            b.iter(|| ex10_spec::sum_slice_static_refs(&s, std::hint::black_box(refs)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &refs, |b, refs| {
+            b.iter(|| ex10_naive::sum_slice_naive(&s_naive, std::hint::black_box(refs)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &refs, |b, refs| {
+            b.iter(|| ex10_enum::sum_slice_enum(&s_enum, std::hint::black_box(refs)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &refs, |b, refs| {
+            b.iter(|| ex10_runtime_typeid::sum_slice_runtime(&s_rt, std::hint::black_box(refs)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex11: map_transform — higher-order fn pointer ──────────────────────
+fn bench_ex11(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex11_map_transform");
+    for &n in &SIZES {
+        let data = make_i32(n);
+        g.throughput(Throughput::Elements(n as u64));
+        let m = ex11_spec::Mapper;
+        let m_naive = ex11_naive::Mapper;
+        let m_enum = ex11_enum::Mapper;
+        let m_rt = ex11_runtime_typeid::Mapper;
+        g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
+            b.iter(|| ex11_spec::map_transform_fn_ptr(&m, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
+            b.iter(|| ex11_naive::map_transform_naive(&m_naive, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
+            b.iter(|| ex11_enum::map_transform_enum(&m_enum, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
+            b.iter(|| ex11_runtime_typeid::map_transform_runtime(&m_rt, std::hint::black_box(data)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex12: fold_with — higher-ranked trait bound ────────────────────────
+fn bench_ex12(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex12_fold_with");
+    for &n in &SIZES {
+        let data = make_i32(n);
+        g.throughput(Throughput::Elements(n as u64));
+        let folder = ex12_spec::Folder;
+        let folder_naive = ex12_naive::Folder;
+        let folder_enum = ex12_enum::Folder;
+        let folder_rt = ex12_runtime_typeid::Folder;
+        g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
+            b.iter(|| ex12_spec::fold_with_hrtb(&folder, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
+            b.iter(|| ex12_naive::fold_with_naive(&folder_naive, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
+            b.iter(|| ex12_enum::fold_with_enum(&folder_enum, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
+            b.iter(|| ex12_runtime_typeid::fold_with_runtime(&folder_rt, std::hint::black_box(data)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex13: flatten_sum — compound all() condition ───────────────────────
+fn bench_ex13(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex13_flatten_sum");
+    for &n in &SIZES {
+        let outer = make_nested_vec_u8(n / 16, 16);
+        g.throughput(Throughput::Elements(n as u64));
+        let fl = ex13_spec::Flattener;
+        let fl_naive = ex13_naive::Flattener;
+        let fl_enum = ex13_enum::Flattener;
+        let fl_rt = ex13_runtime_typeid::Flattener;
+        g.bench_with_input(BenchmarkId::new("spec", n), &outer, |b, outer| {
+            b.iter(|| ex13_spec::flatten_sum_vec_u8(&fl, std::hint::black_box(outer)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &outer, |b, outer| {
+            b.iter(|| ex13_naive::flatten_sum_naive(&fl_naive, std::hint::black_box(outer)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &outer, |b, outer| {
+            b.iter(|| ex13_enum::flatten_sum_enum(&fl_enum, std::hint::black_box(outer)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &outer, |b, outer| {
+            b.iter(|| ex13_runtime_typeid::flatten_sum_runtime(&fl_rt, std::hint::black_box(outer)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex14: encode_val — negation/alternation dispatch ───────────────────
+fn bench_ex14(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex14_encode_val");
+    for &n in &SIZES {
+        let data = make_i32(n);
+        g.throughput(Throughput::Elements(n as u64));
+        let enc = ex14_spec::Encoder;
+        let enc_naive = ex14_naive::Encoder;
+        let enc_enum = ex14_enum::Encoder;
+        let enc_rt = ex14_runtime_typeid::Encoder;
+        g.bench_with_input(BenchmarkId::new("spec", n), &data, |b, data| {
+            b.iter(|| ex14_spec::encode_val_i32(&enc, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &data, |b, data| {
+            b.iter(|| ex14_naive::encode_val_naive(&enc_naive, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &data, |b, data| {
+            b.iter(|| ex14_enum::encode_val_enum(&enc_enum, std::hint::black_box(data)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &data, |b, data| {
+            b.iter(|| ex14_runtime_typeid::encode_val_runtime(&enc_rt, std::hint::black_box(data)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex15: compute_sum — trait object specialization ────────────────────
+fn bench_ex15(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex15_compute_sum");
+    for &n in &SIZES {
+        let values: Vec<i32> = make_i32(n);
+        let dyn_items: Vec<&dyn ex15_spec::Summable> = values.iter().map(|v| v as &dyn ex15_spec::Summable).collect();
+        let dyn_items_naive: Vec<&dyn ex15_naive::Summable> = values.iter().map(|v| v as &dyn ex15_naive::Summable).collect();
+        let dyn_items_enum: Vec<&dyn ex15_enum::Summable> = values.iter().map(|v| v as &dyn ex15_enum::Summable).collect();
+        let dyn_items_rt: Vec<&dyn ex15_runtime_typeid::Summable> = values.iter().map(|v| v as &dyn ex15_runtime_typeid::Summable).collect();
+        g.throughput(Throughput::Elements(n as u64));
+        let comp = ex15_spec::Computer;
+        let comp_naive = ex15_naive::Computer;
+        let comp_enum = ex15_enum::Computer;
+        let comp_rt = ex15_runtime_typeid::Computer;
+        g.bench_with_input(BenchmarkId::new("spec", n), &dyn_items, |b, items| {
+            b.iter(|| ex15_spec::compute_sum_dyn(&comp, std::hint::black_box(items)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &dyn_items_naive, |b, items| {
+            b.iter(|| ex15_naive::compute_sum_naive(&comp_naive, std::hint::black_box(items)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &dyn_items_enum, |b, items| {
+            b.iter(|| ex15_enum::compute_sum_enum(&comp_enum, std::hint::black_box(items)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &dyn_items_rt, |b, items| {
+            b.iter(|| ex15_runtime_typeid::compute_sum_runtime(&comp_rt, std::hint::black_box(items)))
+        });
+    }
+    g.finish();
+}
+
+// ── Ex16: total_capacity — wildcard + type alias ───────────────────────
+fn bench_ex16(c: &mut Criterion) {
+    let mut g = c.benchmark_group("ex16_total_capacity");
+    for &n in &SIZES {
+        let items = make_vec_u8_items(n / 16, 16);
+        g.throughput(Throughput::Elements(n as u64));
+        let op = ex16_spec::CapacityOp;
+        let op_naive = ex16_naive::CapacityOp;
+        let op_enum = ex16_enum::CapacityOp;
+        let op_rt = ex16_runtime_typeid::CapacityOp;
+        g.bench_with_input(BenchmarkId::new("spec", n), &items, |b, items| {
+            b.iter(|| ex16_spec::total_capacity_vec_u8(&op, std::hint::black_box(items)))
+        });
+        g.bench_with_input(BenchmarkId::new("naive", n), &items, |b, items| {
+            b.iter(|| ex16_naive::total_capacity_naive(&op_naive, std::hint::black_box(items)))
+        });
+        g.bench_with_input(BenchmarkId::new("enum", n), &items, |b, items| {
+            b.iter(|| ex16_enum::total_capacity_enum(&op_enum, std::hint::black_box(items)))
+        });
+        g.bench_with_input(BenchmarkId::new("runtime_typeid", n), &items, |b, items| {
+            b.iter(|| ex16_runtime_typeid::total_capacity_runtime(&op_rt, std::hint::black_box(items)))
+        });
+    }
+    g.finish();
+}
+
 criterion_group!(
     benches,
     bench_ex01,
@@ -255,5 +467,13 @@ criterion_group!(
     bench_ex06,
     bench_ex07,
     bench_ex08,
+    bench_ex09,
+    bench_ex10,
+    bench_ex11,
+    bench_ex12,
+    bench_ex13,
+    bench_ex14,
+    bench_ex15,
+    bench_ex16,
 );
 criterion_main!(benches);
