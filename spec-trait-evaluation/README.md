@@ -59,19 +59,12 @@ spec-trait-evaluation/
 - Rust nightly (edition 2024)
 - Python 3 with `pandas`, `matplotlib`, `seaborn`
 
-### Run everything
-
-```bash
-cd scripts
-bash run_all.sh          # full benchmarks (slow)
-bash run_all.sh --quick  # quick benchmarks (fewer samples)
-```
-
 ### Run individual measurements
 
 ```bash
 # Runtime benchmarks (Criterion)
-cargo bench --manifest-path benches-crate/Cargo.toml --bench bench_all
+cargo bench --manifest-path benches-crate/Cargo.toml --bench bench_all 
+cargo bench --manifest-path benches-crate/Cargo.toml --bench bench_all -- --warm-up-time 1 --measurement-time 3 --sample-size 10
 
 # Collect runtime CSV from Criterion output
 python3 scripts/collect_metrics.py \

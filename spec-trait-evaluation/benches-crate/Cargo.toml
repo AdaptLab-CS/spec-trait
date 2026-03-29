@@ -14,10 +14,14 @@ criterion = { version = "0.5", features = ["html_reports", "csv_output"] }
 spec-trait-order = { path = "../../spec-trait-impl/crates/spec-trait-order" }
 
 [profile.release]
-opt-level = 3
+opt-level = 0
 lto = false
 codegen-units = 16
 
 [[bench]]
 name = "bench_all"
+harness = false
+
+[[bench]]
+name = "bench"
 harness = false
