@@ -29,23 +29,23 @@ The `spec` variant exploits type-specific knowledge (e.g. memcpy, SIMD byte sear
 
 ```
 spec-trait-evaluation/
-├── benches-crate/           # Rust crate with benchmarks
+├── benches-crate/             # Rust crate with benchmarks
 │   ├── Cargo.toml
 │   ├── build.rs
 │   ├── benches/
-│   │   └── bench_all.rs     # Criterion harness (8 benchmark groups)
+│   │   └── bench.rs           # Criterion harness (8 benchmark groups)
 │   └── src/
 │       ├── lib.rs
-│       ├── data.rs           # Input generators (make_u8, make_i32, ...)
-│       └── examples/         # 32 source files (8 examples × 4 variants)
+│       ├── data.rs            # Input generators (make_u8, make_i32, ...)
+│       └── examples/          # 32 source files (8 examples × 4 variants)
 ├── scripts/
-│   ├── run_all.sh            # Run benchmarks + collect all metrics
-│   ├── collect_metrics.py    # Parse Criterion JSON → runtime.csv
-│   ├── measure_build_time.sh # Per-variant cargo check timing → build_time.csv
-│   └── measure_binary_size.sh# Per-variant release rlib sizes → binary_size.csv
+│   ├── run_all.sh             # Run benchmarks + collect all metrics
+│   ├── collect_metrics.py     # Parse Criterion JSON → runtime.csv
+│   ├── measure_build_time.sh  # Per-variant cargo check timing → build_time.csv
+│   └── measure_binary_size.sh # Per-variant release rlib sizes → binary_size.csv
 ├── notebooks/
-│   ├── eval.ipynb            # Analysis notebook (plots + summary tables)
-│   └── requirements.txt      # Python dependencies
+│   ├── eval.ipynb             # Analysis notebook (plots + summary tables)
+│   └── requirements.txt       # Python dependencies
 └── results/
     ├── runtime.csv
     ├── build_time.csv
@@ -63,8 +63,8 @@ spec-trait-evaluation/
 
 ```bash
 # Runtime benchmarks (Criterion)
-cargo bench --manifest-path benches-crate/Cargo.toml --bench bench_all 
-cargo bench --manifest-path benches-crate/Cargo.toml --bench bench_all -- --warm-up-time 1 --measurement-time 3 --sample-size 10
+cargo bench --manifest-path benches-crate/Cargo.toml --bench bench
+cargo bench --manifest-path benches-crate/Cargo.toml --bench bench -- --warm-up-time 1 --measurement-time 3 --sample-size 10
 
 # Collect runtime CSV from Criterion output
 python3 scripts/collect_metrics.py \

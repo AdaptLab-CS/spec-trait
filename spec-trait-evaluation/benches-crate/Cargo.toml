@@ -19,9 +19,5 @@ lto = false
 codegen-units = 16
 
 [[bench]]
-name = "bench_all"
-harness = false
-
-[[bench]]
 name = "bench"
 harness = false

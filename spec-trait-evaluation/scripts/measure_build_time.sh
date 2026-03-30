@@ -19,7 +19,7 @@ mkdir -p "$RESULTS_DIR"
 OUT="$RESULTS_DIR/build_time.csv"
 echo "example,variant,iteration,build_time_secs" > "$OUT"
 
-VARIANTS=(spec naive enum runtime_typeid)
+VARIANTS=(spec naive runtime_typeid)
 
 TMP_CRATE="$(mktemp -d -t spec-trait-build-time-XXXXXX)"
 trap 'rm -rf "$TMP_CRATE"' EXIT
