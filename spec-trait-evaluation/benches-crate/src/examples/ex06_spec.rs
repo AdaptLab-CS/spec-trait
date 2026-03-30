@@ -1,52 +1,41 @@
-// Ex06 -- spec: dedup (keep first occurrence) — bitmap vs HashSet
+// Ex06 -- spec: transform — XOR remap for u8 vs hash-based remap
 use spec_trait_macro::{spec, when};
-use std::collections::HashSet;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 pub struct Deduplicator;
 
-pub trait DedupTrait<T> {
-    fn dedup(&self, data: &[T]) -> Vec<T>;
+pub trait TransformTrait<T> {
+    fn transform(&self, item: &T) -> u8;
 }
 
-impl<T: Clone + Eq + Hash> DedupTrait<T> for Deduplicator {
+impl<T: Hash> TransformTrait<T> for Deduplicator {
     #[inline(never)]
-    fn dedup(&self, data: &[T]) -> Vec<T> {
-        let mut seen = HashSet::new();
-        let mut out = Vec::new();
-        for item in data {
-            if seen.insert(item) {
-                out.push(item.clone());
-            }
-        }
-        out
+    fn transform(&self, item: &T) -> u8 {
+        let mut h = DefaultHasher::new();
+        item.hash(&mut h);
+        (h.finish() & 0xFF) as u8
     }
 }
 
 #[when(T = u8)]
-impl<T> DedupTrait<T> for Deduplicator {
+impl<T> TransformTrait<T> for Deduplicator {
     #[inline(never)]
-    fn dedup(&self, data: &[T]) -> Vec<T> {
-        let slice = unsafe {
-            std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
-        };
-        let mut seen = [false; 256];
-        let mut out_bytes = Vec::new();
-        for &b in slice {
-            if !seen[b as usize] {
-                seen[b as usize] = true;
-                out_bytes.push(b);
-            }
-        }
-        let mut out = Vec::with_capacity(out_bytes.len());
-        unsafe {
-            std::ptr::copy_nonoverlapping(out_bytes.as_ptr(), out.as_mut_ptr() as *mut u8, out_bytes.len());
-            out.set_len(out_bytes.len());
-        }
-        out
+    fn transform(&self, item: &T) -> u8 {
+        let b = unsafe { *(item as *const T as *const u8) };
+        b ^ 0x55
     }
 }
 
+#[inline(always)]
+fn transform_spec(d: &Deduplicator, item: &u8) -> u8 {
+    spec! { d.transform(item); Deduplicator; [&u8] }
+}
+
 pub fn dedup_u8(d: &Deduplicator, data: &[u8]) -> Vec<u8> {
-    spec! { d.dedup(data); Deduplicator; [&[u8]] }
+    let mut result = Vec::with_capacity(data.len());
+    for item in data {
+        result.push(transform_spec(d, item));
+    }
+    result
 }

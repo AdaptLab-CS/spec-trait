@@ -7,6 +7,11 @@ pub enum HashEnum<'a, K> {
     Generic(&'a [K]),
 }
 
+#[inline(never)]
+fn hash_one_u64_direct(key: &u64) -> u64 {
+    *key
+}
+
 pub trait EnumHashKeyTrait<K> {
     fn hash_all(&self) -> u64;
 }
@@ -17,8 +22,8 @@ impl<K: Hash> EnumHashKeyTrait<K> for HashEnum<'_, K> {
         match self {
             HashEnum::U64(keys) => {
                 let mut acc: u64 = 0;
-                for &k in *keys {
-                    acc ^= k;
+                for k in *keys {
+                    acc ^= hash_one_u64_direct(k);
                 }
                 acc
             }

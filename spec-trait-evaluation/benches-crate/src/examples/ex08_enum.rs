@@ -5,6 +5,11 @@ pub enum CountValEnum<'a, T> {
     Generic(&'a [T], T),
 }
 
+#[inline(never)]
+fn matches_u8_direct(item: &u8, needle: &u8) -> bool {
+    *item == *needle
+}
+
 pub trait EnumCountValTrait<T> {
     fn count_val(&self) -> usize;
 }
@@ -14,7 +19,13 @@ impl<T: PartialEq> EnumCountValTrait<T> for CountValEnum<'_, T> {
     fn count_val(&self) -> usize {
         match self {
             CountValEnum::U8(data, needle) => {
-                memchr::memchr_iter(*needle, data).count()
+                let mut count = 0;
+                for item in *data {
+                    if matches_u8_direct(item, needle) {
+                        count += 1;
+                    }
+                }
+                count
             }
             CountValEnum::Generic(data, needle) => {
                 data.iter().filter(|x| *x == needle).count()
