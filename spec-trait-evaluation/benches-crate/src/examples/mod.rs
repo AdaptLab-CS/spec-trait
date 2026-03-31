@@ -8,7 +8,7 @@ pub mod ex02_spec;
 pub mod ex02_naive;
 pub mod ex02_runtime_typeid;
 
-// Ex03: contains — memchr SIMD vs linear scan
+// Ex03: contains — byte range check vs PartialOrd
 pub mod ex03_spec;
 pub mod ex03_naive;
 pub mod ex03_runtime_typeid;
@@ -18,7 +18,7 @@ pub mod ex04_spec;
 pub mod ex04_naive;
 pub mod ex04_runtime_typeid;
 
-// Ex05: histogram — array[256] vs HashMap
+// Ex05: histogram — direct byte index vs hash bucket
 pub mod ex05_spec;
 pub mod ex05_naive;
 pub mod ex05_runtime_typeid;

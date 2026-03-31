@@ -70,10 +70,11 @@ fn bench_ex02(c: &mut Criterion) {
     g.finish();
 }
 
-// ── Ex03: contains — memchr SIMD vs linear scan ────────────────────────
+// ── Ex03: contains — byte range check vs PartialOrd ────────────────────
 fn bench_ex03(c: &mut Criterion) {
     let mut g = c.benchmark_group("ex03_contains");
-    let needle: u8 = 200;
+    let lo: u8 = 50;
+    let hi: u8 = 200;
     for &size in &SIZES {
         let data = make_u8(size);
         let sc = ex03_spec::Searcher;
@@ -81,17 +82,17 @@ fn bench_ex03(c: &mut Criterion) {
         let sc_rt = ex03_runtime_typeid::Searcher;
         g.bench_with_input(BenchmarkId::new("spec", size), &data, |b, data| {
             b.iter(|| {
-                std::hint::black_box(ex03_spec::contains_u8(&sc, std::hint::black_box(data), &needle))
+                std::hint::black_box(ex03_spec::contains_u8(&sc, std::hint::black_box(data), &lo, &hi))
             })
         });
         g.bench_with_input(BenchmarkId::new("naive", size), &data, |b, data| {
             b.iter(|| {
-                std::hint::black_box(ex03_naive::contains_naive(&sc_naive, std::hint::black_box(data), &needle))
+                std::hint::black_box(ex03_naive::contains_naive(&sc_naive, std::hint::black_box(data), &lo, &hi))
             })
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &data, |b, data| {
             b.iter(|| {
-                std::hint::black_box(ex03_runtime_typeid::contains_runtime(&sc_rt, std::hint::black_box(data), &needle))
+                std::hint::black_box(ex03_runtime_typeid::contains_runtime(&sc_rt, std::hint::black_box(data), &lo, &hi))
             })
         });
     }

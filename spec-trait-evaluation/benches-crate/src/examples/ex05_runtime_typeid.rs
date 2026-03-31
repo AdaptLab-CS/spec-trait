@@ -1,36 +1,31 @@
 // Ex05 -- runtime TypeId dispatch: histogram
 use std::any::TypeId;
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 pub struct HistogramOp;
 
-pub trait RtHistogramTrait<T> {
-    fn max_freq(&self, data: &[T]) -> u32;
+pub trait RtBucketTrait<T> {
+    fn bucket(&self, item: &T) -> usize;
 }
 
-impl<T: Eq + Hash + 'static> RtHistogramTrait<T> for HistogramOp {
+impl<T: Hash + 'static> RtBucketTrait<T> for HistogramOp {
     #[inline(never)]
-    fn max_freq(&self, data: &[T]) -> u32 {
+    fn bucket(&self, item: &T) -> usize {
         if TypeId::of::<T>() == TypeId::of::<u8>() {
-            let slice = unsafe {
-                std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
-            };
-            let mut counts = [0u32; 256];
-            for &b in slice {
-                counts[b as usize] += 1;
-            }
-            counts.iter().copied().max().unwrap_or(0)
+            unsafe { *(item as *const T as *const u8) as usize }
         } else {
-            let mut map = HashMap::<&T, u32>::new();
-            for item in data {
-                *map.entry(item).or_insert(0) += 1;
-            }
-            map.values().copied().max().unwrap_or(0)
+            let mut h = DefaultHasher::new();
+            item.hash(&mut h);
+            (h.finish() % 256) as usize
         }
     }
 }
 
 pub fn max_freq_runtime(h: &HistogramOp, data: &[u8]) -> u32 {
-    h.max_freq(data)
+    let mut counts = [0u32; 256];
+    for item in data {
+        counts[h.bucket(item)] += 1;
+    }
+    counts.iter().copied().max().unwrap_or(0)
 }
