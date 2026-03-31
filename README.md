@@ -6,7 +6,7 @@
 [![GitHub CI][github-ci-shield]][github-ci]
 
 This repository contains the artifact for the paper "Meta-monomorphizing Specializations".
-The artifact consists of two main components: a prototype implementation and an instrumentation tool for empirical analysis.
+The artifact consists of three main components: a prototype implementation, an instrumentation tool for empirical analysis, and a benchmark evaluation suite.
 
 ---
 
@@ -18,6 +18,7 @@ The artifact consists of two main components: a prototype implementation and an 
 - [Getting Started](#getting-started)
   - [Prototype Implementation (`spec-trait-impl`)](#prototype-implementation-spec-trait-impl)
   - [Instrumentation Tool (`spec-trait-inst`)](#instrumentation-tool-spec-trait-inst)
+  - [Evaluation Benchmarks (`spec-trait-evaluation`)](#evaluation-benchmarks-spec-trait-evaluation)
 - [Reproducing the Empirical Evaluation](#reproducing-the-empirical-evaluation)
 - [Pre-computed Results](#pre-computed-results)
 - [Contact](#contact)
@@ -32,6 +33,8 @@ This artifact provides:
 
 2. **`spec-trait-inst/`** — An instrumentation tool built as a `cargo`/`rustc` wrapper that statically analyzes Rust projects to identify trait specialization opportunities.
 
+3. **`spec-trait-evaluation/`** — A benchmark suite that compares `spec!`/`#[when]` compile-time specialization against alternative dispatch strategies (naive, enum, runtime `TypeId`), measuring runtime performance, build time, and binary size. See the [evaluation README](spec-trait-evaluation/README.md) for details.
+
 ---
 
 ## Repository Structure
@@ -45,9 +48,15 @@ spec-trait/
 │       ├── spec-trait-order/     # Compile-time trait ordering
 │       └── spec-trait-utils/     # Shared utilities
 │
-└── spec-trait-inst/              # Instrumentation tool
-    ├── src/                      # Source code
-    └── tests/
+├── spec-trait-inst/              # Instrumentation tool
+│   ├── src/                      # Source code
+│   └── tests/
+│
+└── spec-trait-evaluation/        # Benchmark evaluation suite
+    ├── benches-crate/            # Criterion benchmarks
+    ├── notebooks/                # Analysis notebooks
+    ├── results/                  # Pre-computed CSV results
+    └── scripts/                  # Metric collection scripts
         ├── scripts/              # Analysis scripts and results
         │   ├── analysis.sh       # Main analysis script
         │   ├── repos.txt         # List of repositories analyzed

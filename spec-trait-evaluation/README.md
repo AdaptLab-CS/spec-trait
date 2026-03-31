@@ -65,6 +65,7 @@ spec-trait-evaluation/
 # Runtime benchmarks (Criterion)
 cargo bench --manifest-path benches-crate/Cargo.toml --bench bench
 cargo bench --manifest-path benches-crate/Cargo.toml --bench bench -- --warm-up-time 1 --measurement-time 3 --sample-size 10
+cargo bench --manifest-path benches-crate/Cargo.toml --bench bench -- --warm-up-time 1 --measurement-time 3 --sample-size 10 <name_filter>
 
 # Collect runtime CSV from Criterion output
 python3 scripts/collect_metrics.py \
@@ -82,7 +83,7 @@ bash scripts/measure_binary_size.sh 8
 
 ```bash
 pip install -r notebooks/requirements.txt
-jupyter notebook notebooks/eval.ipynb
+jupyter notebook notebooks/eval_pretty.ipynb
 ```
 
 ## Benchmark parameters
