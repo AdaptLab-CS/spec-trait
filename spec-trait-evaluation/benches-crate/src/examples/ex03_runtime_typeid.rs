@@ -4,24 +4,29 @@ use std::any::TypeId;
 pub struct Searcher;
 
 pub trait RtContainsTrait<T> {
-    fn contains(&self, data: &[T], needle: &T) -> bool;
+    fn in_range(&self, item: &T, lo: &T, hi: &T) -> bool;
 }
 
-impl<T: PartialEq + 'static> RtContainsTrait<T> for Searcher {
+impl<T: PartialOrd + 'static> RtContainsTrait<T> for Searcher {
     #[inline(never)]
-    fn contains(&self, data: &[T], needle: &T) -> bool {
+    fn in_range(&self, item: &T, lo: &T, hi: &T) -> bool {
         if TypeId::of::<T>() == TypeId::of::<u8>() {
-            let byte_slice = unsafe {
-                std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
-            };
-            let n = unsafe { *(needle as *const T as *const u8) };
-            memchr::memchr(n, byte_slice).is_some()
+            let b = unsafe { *(item as *const T as *const u8) };
+            let lo_b = unsafe { *(lo as *const T as *const u8) };
+            let hi_b = unsafe { *(hi as *const T as *const u8) };
+            b >= lo_b && b <= hi_b
         } else {
-            data.iter().any(|x| x == needle)
+            item >= lo && item <= hi
         }
     }
 }
 
-pub fn contains_runtime(s: &Searcher, data: &[u8], needle: &u8) -> bool {
-    s.contains(data, needle)
+pub fn contains_runtime(s: &Searcher, data: &[u8], lo: &u8, hi: &u8) -> usize {
+    let mut count = 0;
+    for item in data {
+        if s.in_range(item, lo, hi) {
+            count += 1;
+        }
+    }
+    count
 }

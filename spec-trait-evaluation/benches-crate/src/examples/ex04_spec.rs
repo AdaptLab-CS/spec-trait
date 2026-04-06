@@ -1,40 +1,41 @@
-// Ex04 -- spec: sort — counting sort for u8 vs generic sort_unstable
+// Ex04 -- spec: sort — direct byte comparison for u8 vs generic Ord
 use spec_trait_macro::{spec, when};
+use std::cmp::Ordering;
 
 pub struct Sorter;
 
-pub trait SortTrait<T> {
-    fn sort(&self, data: &mut [T]);
+pub trait CmpTrait<T> {
+    fn compare(&self, a: &T, b: &T) -> Ordering;
 }
 
-impl<T: Ord> SortTrait<T> for Sorter {
+impl<T: Ord> CmpTrait<T> for Sorter {
     #[inline(never)]
-    fn sort(&self, data: &mut [T]) {
-        data.sort_unstable();
+    fn compare(&self, a: &T, b: &T) -> Ordering {
+        a.cmp(b)
     }
 }
 
 #[when(T = u8)]
-impl<T> SortTrait<T> for Sorter {
+impl<T> CmpTrait<T> for Sorter {
     #[inline(never)]
-    fn sort(&self, data: &mut [T]) {
-        let slice = unsafe {
-            std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len())
-        };
-        let mut counts = [0u32; 256];
-        for &b in slice.iter() {
-            counts[b as usize] += 1;
-        }
-        let mut idx = 0;
-        for (val, &cnt) in counts.iter().enumerate() {
-            for _ in 0..cnt {
-                slice[idx] = val as u8;
-                idx += 1;
-            }
+    fn compare(&self, a: &T, b: &T) -> Ordering {
+        let a_byte = unsafe { *(a as *const T as *const u8) };
+        let b_byte = unsafe { *(b as *const T as *const u8) };
+        if a_byte < b_byte {
+            Ordering::Less
+        } else if a_byte > b_byte {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
         }
     }
 }
 
+#[inline(always)]
+fn compare_spec(s: &Sorter, a: &u8, b: &u8) -> Ordering {
+    spec! { s.compare(a, b); Sorter; [&u8, &u8] }
+}
+
 pub fn sort_u8(s: &Sorter, data: &mut [u8]) {
-    spec! { s.sort(data); Sorter; [&mut [u8]] }
+    data.sort_unstable_by(|a, b| compare_spec(s, a, b));
 }

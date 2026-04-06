@@ -1,36 +1,32 @@
 // Ex04 -- runtime TypeId dispatch: sort
 use std::any::TypeId;
+use std::cmp::Ordering;
 
 pub struct Sorter;
 
-pub trait RtSortTrait<T> {
-    fn sort(&self, data: &mut [T]);
+pub trait RtCmpTrait<T> {
+    fn compare(&self, a: &T, b: &T) -> Ordering;
 }
 
-impl<T: Ord + 'static> RtSortTrait<T> for Sorter {
+impl<T: Ord + 'static> RtCmpTrait<T> for Sorter {
     #[inline(never)]
-    fn sort(&self, data: &mut [T]) {
+    fn compare(&self, a: &T, b: &T) -> Ordering {
         if TypeId::of::<T>() == TypeId::of::<u8>() {
-            let slice = unsafe {
-                std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len())
-            };
-            let mut counts = [0u32; 256];
-            for &b in slice.iter() {
-                counts[b as usize] += 1;
-            }
-            let mut idx = 0;
-            for (val, &cnt) in counts.iter().enumerate() {
-                for _ in 0..cnt {
-                    slice[idx] = val as u8;
-                    idx += 1;
-                }
+            let a_byte = unsafe { *(a as *const T as *const u8) };
+            let b_byte = unsafe { *(b as *const T as *const u8) };
+            if a_byte < b_byte {
+                Ordering::Less
+            } else if a_byte > b_byte {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
             }
         } else {
-            data.sort_unstable();
+            a.cmp(b)
         }
     }
 }
 
 pub fn sort_runtime(s: &Sorter, data: &mut [u8]) {
-    s.sort(data);
+    data.sort_unstable_by(|a, b| s.compare(a, b));
 }

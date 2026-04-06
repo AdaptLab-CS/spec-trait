@@ -4,23 +4,23 @@ use std::collections::hash_map::DefaultHasher;
 
 pub struct HashOp;
 
-pub trait NaiveHashKeyTrait<K> {
-    fn hash_all(&self, keys: &[K]) -> u64;
+pub trait NaiveHashOneTrait<K> {
+    fn hash_one(&self, key: &K) -> u64;
 }
 
-impl<K: Hash> NaiveHashKeyTrait<K> for HashOp {
+impl<K: Hash> NaiveHashOneTrait<K> for HashOp {
     #[inline(never)]
-    fn hash_all(&self, keys: &[K]) -> u64 {
-        let mut acc: u64 = 0;
-        for key in keys {
-            let mut h = DefaultHasher::new();
-            key.hash(&mut h);
-            acc ^= h.finish();
-        }
-        acc
+    fn hash_one(&self, key: &K) -> u64 {
+        let mut h = DefaultHasher::new();
+        key.hash(&mut h);
+        h.finish()
     }
 }
 
 pub fn hash_all_naive(h: &HashOp, keys: &[u64]) -> u64 {
-    h.hash_all(keys)
+    let mut acc: u64 = 0;
+    for key in keys {
+        acc ^= h.hash_one(key);
+    }
+    acc
 }

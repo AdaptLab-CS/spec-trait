@@ -1,40 +1,40 @@
-// Ex05 -- spec: histogram — array[256] indexing vs HashMap
+// Ex05 -- spec: histogram — direct byte index vs hash bucket
 use spec_trait_macro::{spec, when};
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 pub struct HistogramOp;
 
-pub trait HistogramTrait<T> {
-    fn max_freq(&self, data: &[T]) -> u32;
+pub trait BucketTrait<T> {
+    fn bucket(&self, item: &T) -> usize;
 }
 
-impl<T: Eq + Hash> HistogramTrait<T> for HistogramOp {
+impl<T: Hash> BucketTrait<T> for HistogramOp {
     #[inline(never)]
-    fn max_freq(&self, data: &[T]) -> u32 {
-        let mut map = HashMap::<&T, u32>::new();
-        for item in data {
-            *map.entry(item).or_insert(0) += 1;
-        }
-        map.values().copied().max().unwrap_or(0)
+    fn bucket(&self, item: &T) -> usize {
+        let mut h = DefaultHasher::new();
+        item.hash(&mut h);
+        (h.finish() % 256) as usize
     }
 }
 
 #[when(T = u8)]
-impl<T> HistogramTrait<T> for HistogramOp {
+impl<T> BucketTrait<T> for HistogramOp {
     #[inline(never)]
-    fn max_freq(&self, data: &[T]) -> u32 {
-        let slice = unsafe {
-            std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
-        };
-        let mut counts = [0u32; 256];
-        for &b in slice {
-            counts[b as usize] += 1;
-        }
-        counts.iter().copied().max().unwrap_or(0)
+    fn bucket(&self, item: &T) -> usize {
+        unsafe { *(item as *const T as *const u8) as usize }
     }
 }
 
+#[inline(always)]
+fn bucket_spec(h: &HistogramOp, item: &u8) -> usize {
+    spec! { h.bucket(item); HistogramOp; [&u8] }
+}
+
 pub fn max_freq_u8(h: &HistogramOp, data: &[u8]) -> u32 {
-    spec! { h.max_freq(data); HistogramOp; [&[u8]] }
+    let mut counts = [0u32; 256];
+    for item in data {
+        counts[bucket_spec(h, item)] += 1;
+    }
+    counts.iter().copied().max().unwrap_or(0)
 }

@@ -1,48 +1,32 @@
-// Ex06 -- runtime TypeId dispatch: dedup
+// Ex06 -- runtime TypeId dispatch: transform
 use std::any::TypeId;
-use std::collections::HashSet;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 pub struct Deduplicator;
 
-pub trait RtDedupTrait<T> {
-    fn dedup(&self, data: &[T]) -> Vec<T>;
+pub trait RtTransformTrait<T> {
+    fn transform(&self, item: &T) -> u8;
 }
 
-impl<T: Clone + Eq + Hash + 'static> RtDedupTrait<T> for Deduplicator {
+impl<T: Hash + 'static> RtTransformTrait<T> for Deduplicator {
     #[inline(never)]
-    fn dedup(&self, data: &[T]) -> Vec<T> {
+    fn transform(&self, item: &T) -> u8 {
         if TypeId::of::<T>() == TypeId::of::<u8>() {
-            let slice = unsafe {
-                std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
-            };
-            let mut seen = [false; 256];
-            let mut out_bytes = Vec::new();
-            for &b in slice {
-                if !seen[b as usize] {
-                    seen[b as usize] = true;
-                    out_bytes.push(b);
-                }
-            }
-            let mut out = Vec::with_capacity(out_bytes.len());
-            unsafe {
-                std::ptr::copy_nonoverlapping(out_bytes.as_ptr(), out.as_mut_ptr() as *mut u8, out_bytes.len());
-                out.set_len(out_bytes.len());
-            }
-            out
+            let b = unsafe { *(item as *const T as *const u8) };
+            b ^ 0x55
         } else {
-            let mut seen = HashSet::new();
-            let mut out = Vec::new();
-            for item in data {
-                if seen.insert(item) {
-                    out.push(item.clone());
-                }
-            }
-            out
+            let mut h = DefaultHasher::new();
+            item.hash(&mut h);
+            (h.finish() & 0xFF) as u8
         }
     }
 }
 
 pub fn dedup_runtime(d: &Deduplicator, data: &[u8]) -> Vec<u8> {
-    d.dedup(data)
+    let mut result = Vec::with_capacity(data.len());
+    for item in data {
+        result.push(d.transform(item));
+    }
+    result
 }

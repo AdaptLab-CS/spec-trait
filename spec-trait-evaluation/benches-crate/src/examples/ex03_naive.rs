@@ -1,18 +1,24 @@
-// Ex03 -- naive: contains — linear scan (no specialization)
+// Ex03 -- naive: contains — PartialOrd (no specialization)
 
 pub struct Searcher;
 
 pub trait NaiveContainsTrait<T> {
-    fn contains(&self, data: &[T], needle: &T) -> bool;
+    fn in_range(&self, item: &T, lo: &T, hi: &T) -> bool;
 }
 
-impl<T: PartialEq> NaiveContainsTrait<T> for Searcher {
+impl<T: PartialOrd> NaiveContainsTrait<T> for Searcher {
     #[inline(never)]
-    fn contains(&self, data: &[T], needle: &T) -> bool {
-        data.iter().any(|x| x == needle)
+    fn in_range(&self, item: &T, lo: &T, hi: &T) -> bool {
+        item >= lo && item <= hi
     }
 }
 
-pub fn contains_naive(s: &Searcher, data: &[u8], needle: &u8) -> bool {
-    s.contains(data, needle)
+pub fn contains_naive(s: &Searcher, data: &[u8], lo: &u8, hi: &u8) -> usize {
+    let mut count = 0;
+    for item in data {
+        if s.in_range(item, lo, hi) {
+            count += 1;
+        }
+    }
+    count
 }

@@ -18,7 +18,7 @@ mkdir -p "$RESULTS_DIR"
 OUT="$RESULTS_DIR/binary_size.csv"
 echo "example,variant,binary_size_bytes,stripped_size_bytes" > "$OUT"
 
-VARIANTS=(spec naive enum runtime_typeid)
+VARIANTS=(spec naive runtime_typeid)
 
 TMP_CRATE="$(mktemp -d -t spec-trait-bin-size-XXXXXX)"
 trap 'rm -rf "$TMP_CRATE"' EXIT

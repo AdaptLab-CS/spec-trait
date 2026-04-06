@@ -3,6 +3,7 @@ mod base;
 mod higher;
 mod lifetimes;
 mod lifetimes2;
+mod lifetimes3;
 mod order;
 mod repeating;
 mod sself;
@@ -20,4 +21,5 @@ pub fn run() {
     order::run();
     all::run();
     lifetimes2::run();
+    lifetimes3::run();
 }

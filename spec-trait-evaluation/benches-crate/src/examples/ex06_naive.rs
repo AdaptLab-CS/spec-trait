@@ -1,27 +1,26 @@
-// Ex06 -- naive: dedup — HashSet (no specialization)
-use std::collections::HashSet;
-use std::hash::Hash;
+// Ex06 -- naive: transform — hash-based remap (no specialization)
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
 
 pub struct Deduplicator;
 
-pub trait NaiveDedupTrait<T> {
-    fn dedup(&self, data: &[T]) -> Vec<T>;
+pub trait NaiveTransformTrait<T> {
+    fn transform(&self, item: &T) -> u8;
 }
 
-impl<T: Clone + Eq + Hash> NaiveDedupTrait<T> for Deduplicator {
+impl<T: Hash> NaiveTransformTrait<T> for Deduplicator {
     #[inline(never)]
-    fn dedup(&self, data: &[T]) -> Vec<T> {
-        let mut seen = HashSet::new();
-        let mut out = Vec::new();
-        for item in data {
-            if seen.insert(item) {
-                out.push(item.clone());
-            }
-        }
-        out
+    fn transform(&self, item: &T) -> u8 {
+        let mut h = DefaultHasher::new();
+        item.hash(&mut h);
+        (h.finish() & 0xFF) as u8
     }
 }
 
 pub fn dedup_naive(d: &Deduplicator, data: &[u8]) -> Vec<u8> {
-    d.dedup(data)
+    let mut result = Vec::with_capacity(data.len());
+    for item in data {
+        result.push(d.transform(item));
+    }
+    result
 }

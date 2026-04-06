@@ -31,15 +31,6 @@ fn bench_ex01(c: &mut Criterion) {
                 std::hint::black_box(&dst);
             })
         });
-        g.bench_with_input(BenchmarkId::new("enum", size), &src, |b, src| {
-            let mut dst = Vec::with_capacity(size);
-            b.iter(|| {
-                dst.clear();
-                let e = ex01_enum::ExtendEnum::U8(src);
-                ex01_enum::extend_enum(&e, &mut dst);
-                std::hint::black_box(&dst);
-            })
-        });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &src, |b, src| {
             let mut dst = Vec::with_capacity(size);
             b.iter(|| {
@@ -70,12 +61,6 @@ fn bench_ex02(c: &mut Criterion) {
                 std::hint::black_box(ex02_naive::to_bytes_naive(&s_naive, std::hint::black_box(data)))
             })
         });
-        g.bench_with_input(BenchmarkId::new("enum", size), &data, |b, data| {
-            let e = ex02_enum::ToBytesEnum::U8(data);
-            b.iter(|| {
-                std::hint::black_box(ex02_enum::to_bytes_enum(&e))
-            })
-        });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &data, |b, data| {
             b.iter(|| {
                 std::hint::black_box(ex02_runtime_typeid::to_bytes_runtime(&s_rt, std::hint::black_box(data)))
@@ -85,10 +70,11 @@ fn bench_ex02(c: &mut Criterion) {
     g.finish();
 }
 
-// ── Ex03: contains — memchr SIMD vs linear scan ────────────────────────
+// ── Ex03: contains — byte range check vs PartialOrd ────────────────────
 fn bench_ex03(c: &mut Criterion) {
     let mut g = c.benchmark_group("ex03_contains");
-    let needle: u8 = 200;
+    let lo: u8 = 50;
+    let hi: u8 = 200;
     for &size in &SIZES {
         let data = make_u8(size);
         let sc = ex03_spec::Searcher;
@@ -96,23 +82,17 @@ fn bench_ex03(c: &mut Criterion) {
         let sc_rt = ex03_runtime_typeid::Searcher;
         g.bench_with_input(BenchmarkId::new("spec", size), &data, |b, data| {
             b.iter(|| {
-                std::hint::black_box(ex03_spec::contains_u8(&sc, std::hint::black_box(data), &needle))
+                std::hint::black_box(ex03_spec::contains_u8(&sc, std::hint::black_box(data), &lo, &hi))
             })
         });
         g.bench_with_input(BenchmarkId::new("naive", size), &data, |b, data| {
             b.iter(|| {
-                std::hint::black_box(ex03_naive::contains_naive(&sc_naive, std::hint::black_box(data), &needle))
-            })
-        });
-        g.bench_with_input(BenchmarkId::new("enum", size), &data, |b, data| {
-            let e = ex03_enum::ContainsEnum::U8(data, needle);
-            b.iter(|| {
-                std::hint::black_box(ex03_enum::contains_enum(&e))
+                std::hint::black_box(ex03_naive::contains_naive(&sc_naive, std::hint::black_box(data), &lo, &hi))
             })
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &data, |b, data| {
             b.iter(|| {
-                std::hint::black_box(ex03_runtime_typeid::contains_runtime(&sc_rt, std::hint::black_box(data), &needle))
+                std::hint::black_box(ex03_runtime_typeid::contains_runtime(&sc_rt, std::hint::black_box(data), &lo, &hi))
             })
         });
     }
@@ -138,13 +118,6 @@ fn bench_ex04(c: &mut Criterion) {
             b.iter(|| {
                 let mut d = base.clone();
                 ex04_naive::sort_naive(&sr_naive, std::hint::black_box(&mut d));
-                std::hint::black_box(&d);
-            })
-        });
-        g.bench_with_input(BenchmarkId::new("enum", size), &base, |b, base| {
-            b.iter(|| {
-                let mut d = base.clone();
-                ex04_enum::sort_enum(&mut ex04_enum::SortEnum::U8(&mut d));
                 std::hint::black_box(&d);
             })
         });
@@ -177,12 +150,6 @@ fn bench_ex05(c: &mut Criterion) {
                 std::hint::black_box(ex05_naive::max_freq_naive(&h_naive, std::hint::black_box(data)))
             })
         });
-        g.bench_with_input(BenchmarkId::new("enum", size), &data, |b, data| {
-            let e = ex05_enum::HistEnum::U8(data);
-            b.iter(|| {
-                std::hint::black_box(ex05_enum::histogram_enum(&e))
-            })
-        });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &data, |b, data| {
             b.iter(|| {
                 std::hint::black_box(ex05_runtime_typeid::max_freq_runtime(&h_rt, std::hint::black_box(data)))
@@ -208,12 +175,6 @@ fn bench_ex06(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("naive", size), &data, |b, data| {
             b.iter(|| {
                 std::hint::black_box(ex06_naive::dedup_naive(&dd_naive, std::hint::black_box(data)))
-            })
-        });
-        g.bench_with_input(BenchmarkId::new("enum", size), &data, |b, data| {
-            let e = ex06_enum::DedupEnum::U8(data);
-            b.iter(|| {
-                std::hint::black_box(ex06_enum::dedup_enum(&e))
             })
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &data, |b, data| {
@@ -243,12 +204,6 @@ fn bench_ex07(c: &mut Criterion) {
                 std::hint::black_box(ex07_naive::hash_all_naive(&h_naive, std::hint::black_box(keys)))
             })
         });
-        g.bench_with_input(BenchmarkId::new("enum", size), &keys, |b, keys| {
-            let e = ex07_enum::HashEnum::U64(keys);
-            b.iter(|| {
-                std::hint::black_box(ex07_enum::hash_all_enum(&e))
-            })
-        });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &keys, |b, keys| {
             b.iter(|| {
                 std::hint::black_box(ex07_runtime_typeid::hash_all_runtime(&h_rt, std::hint::black_box(keys)))
@@ -275,12 +230,6 @@ fn bench_ex08(c: &mut Criterion) {
         g.bench_with_input(BenchmarkId::new("naive", size), &data, |b, data| {
             b.iter(|| {
                 std::hint::black_box(ex08_naive::count_val_naive(&op_naive, std::hint::black_box(data), &needle))
-            })
-        });
-        g.bench_with_input(BenchmarkId::new("enum", size), &data, |b, data| {
-            let e = ex08_enum::CountValEnum::U8(data, needle);
-            b.iter(|| {
-                std::hint::black_box(ex08_enum::count_val_enum(&e))
             })
         });
         g.bench_with_input(BenchmarkId::new("runtime_typeid", size), &data, |b, data| {

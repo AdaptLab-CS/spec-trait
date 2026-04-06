@@ -1,31 +1,38 @@
-// Ex08 -- spec: count_value — memchr SIMD vs filter().count()
+// Ex08 -- spec: count_value — direct byte match for u8 vs PartialEq
 use spec_trait_macro::{spec, when};
 
 pub struct CountValOp;
 
-pub trait CountValTrait<T> {
-    fn count_val(&self, data: &[T], needle: &T) -> usize;
+pub trait MatchesTrait<T> {
+    fn matches(&self, item: &T, needle: &T) -> bool;
 }
 
-impl<T: PartialEq> CountValTrait<T> for CountValOp {
+impl<T: PartialEq> MatchesTrait<T> for CountValOp {
     #[inline(never)]
-    fn count_val(&self, data: &[T], needle: &T) -> usize {
-        data.iter().filter(|x| *x == needle).count()
+    fn matches(&self, item: &T, needle: &T) -> bool {
+        item == needle
     }
 }
 
 #[when(T = u8)]
-impl<T> CountValTrait<T> for CountValOp {
+impl<T> MatchesTrait<T> for CountValOp {
     #[inline(never)]
-    fn count_val(&self, data: &[T], needle: &T) -> usize {
-        let byte_slice = unsafe {
-            std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len())
-        };
-        let n = unsafe { *(needle as *const T as *const u8) };
-        memchr::memchr_iter(n, byte_slice).count()
+    fn matches(&self, item: &T, needle: &T) -> bool {
+        unsafe { *(item as *const T as *const u8) == *(needle as *const T as *const u8) }
     }
 }
 
+#[inline(always)]
+fn matches_spec(op: &CountValOp, item: &u8, needle: &u8) -> bool {
+    spec! { op.matches(item, needle); CountValOp; [&u8, &u8] }
+}
+
 pub fn count_val_u8(op: &CountValOp, data: &[u8], needle: &u8) -> usize {
-    spec! { op.count_val(data, needle); CountValOp; [&[u8], &u8] }
+    let mut count = 0;
+    for item in data {
+        if matches_spec(op, item, needle) {
+            count += 1;
+        }
+    }
+    count
 }
